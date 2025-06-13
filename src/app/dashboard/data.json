@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "Project Alpha",
+    "date": "2024-01-15",
+    "status": "completed",
+    "clips": 12,
+    "views": 1523
+  },
+  {
+    "id": 2,
+    "name": "Marketing Campaign",
+    "date": "2024-01-20",
+    "status": "processing",
+    "clips": 8,
+    "views": 892
+  },
+  {
+    "id": 3,
+    "name": "Tutorial Series",
+    "date": "2024-01-25",
+    "status": "completed",
+    "clips": 15,
+    "views": 2341
+  }
+] 

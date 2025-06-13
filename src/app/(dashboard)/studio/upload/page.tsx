@@ -1,0 +1,603 @@
+"use client"
+
+import { useState, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "sonner"
+import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconCloud, IconEdit, IconArrowRight } from "@tabler/icons-react"
+import { storeVideo, retrieveVideo, storeThumbnail } from "@/lib/db-migration"
+import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
+import { UploadProgress } from "@/components/loading-states"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { ProjectService } from "@/lib/db-migration"
+import { VideoMetadata } from "@/lib/project-types"
+import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-selection"
+import { v4 as uuidv4 } from 'uuid'
+import Image from "next/image"
+
+export default function UploadPage() {
+  const router = useRouter()
+  const { userId } = useAuth()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  
+  const [file, setFile] = useState<File | null>(null)
+  const [projectTitle, setProjectTitle] = useState("")
+  const [projectDescription, setProjectDescription] = useState("")
+  const [videoPreview, setVideoPreview] = useState<string>("")
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [dragActive, setDragActive] = useState(false)
+  const [error, setError] = useState("")
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [thumbnail, setThumbnail] = useState<string>("")
+  const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(false)
+  const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
+  const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
+    transcription: true,
+    clips: true,
+    blog: false,
+    social: false,
+    podcast: false
+  })
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true)
+    } else if (e.type === "dragleave") {
+      setDragActive(false)
+    }
+  }, [])
+
+  const validateFile = (file: File) => {
+    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm']
+    if (!validTypes.includes(file.type)) {
+      throw new Error('Invalid file type. Please upload MP4, MOV, AVI, or WebM files.')
+    }
+
+    const maxSize = 2 * 1024 * 1024 * 1024 // 2GB
+    if (file.size > maxSize) {
+      throw new Error('File too large. Maximum size is 2GB.')
+    }
+  }
+
+  const handleFile = async (file: File) => {
+    try {
+      setError("")
+      setProcessing(true)
+      validateFile(file)
+      setFile(file)
+      
+      // Set default project title from filename
+      const defaultTitle = file.name.replace(/\.[^/.]+$/, "")
+      setProjectTitle(defaultTitle)
+      
+      // Create preview URL
+      const url = URL.createObjectURL(file)
+      setVideoPreview(url)
+      setVideoUrl(url)
+      
+      // Extract video metadata
+      toast.info("Extracting video metadata...")
+      const metadata = await extractVideoMetadata(file)
+      
+      // Convert to our VideoMetadata type
+      const formattedMetadata: VideoMetadata = {
+        duration: metadata.duration || 0,
+        width: metadata.width || 1920,
+        height: metadata.height || 1080,
+        fps: 30, // Default FPS - browser doesn't provide this
+        codec: 'h264', // Default codec - browser doesn't provide this
+        bitrate: 0, // Browser doesn't provide bitrate
+        size: file.size,
+        format: file.type.split('/')[1] || 'mp4'
+      }
+      
+      setVideoMetadata(formattedMetadata)
+      
+      // Generate thumbnail
+      toast.info("Generating thumbnail...")
+      const thumbnailUrl = await generateVideoThumbnail(file)
+      setThumbnail(thumbnailUrl)
+      
+      toast.success("Video processed successfully!")
+      setShowMetadata(true)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An error occurred'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault()
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0])
+    }
+  }
+
+  const removeFile = () => {
+    setFile(null)
+    setVideoPreview("")
+    setError("")
+    setVideoUrl(null)
+    setThumbnail("")
+    setVideoMetadata(null)
+    setProcessing(false)
+    setProjectTitle("")
+    setProjectDescription("")
+    setShowMetadata(false)
+    setShowWorkflowSelection(false)
+    setWorkflowOptions({
+      transcription: true,
+      clips: true,
+      blog: false,
+      social: false,
+      podcast: false
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  const handleContinueToWorkflows = () => {
+    if (!projectTitle.trim()) {
+      toast.error("Please enter a project title")
+      return
+    }
+    setShowWorkflowSelection(true)
+  }
+
+  const handleUpload = async () => {
+    if (!file || !videoUrl || !videoMetadata) return
+
+    // Validate that at least one workflow is selected
+    const hasSelectedWorkflow = Object.values(workflowOptions).some(v => v)
+    if (!hasSelectedWorkflow) {
+      toast.error("Please select at least one workflow")
+      return
+    }
+
+    setUploading(true)
+    setUploadProgress(0)
+
+    try {
+      // Create FormData with the file
+      const formData = new FormData()
+      formData.append('file', file)
+
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return 90
+          }
+          return prev + 10
+        })
+      }, 300)
+
+      // Upload to API
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('text/html')) {
+          console.error('Received HTML instead of JSON:', response.status)
+          throw new Error(`Server error: ${response.status} ${response.statusText}`)
+        }
+        const error = await response.json()
+        throw new Error(error.error || 'Upload failed')
+      }
+
+      await response.json()
+
+      // Generate video ID for storage
+      const videoId = uuidv4()
+
+      // First, store the video file in Supabase Storage
+      const videoStored = await storeVideo(videoId, file)
+      if (!videoStored) {
+        throw new Error('Failed to upload video to storage')
+      }
+
+      // Get the public URL for the video
+      const supabaseVideoUrl = await retrieveVideo(videoId)
+      if (!supabaseVideoUrl) {
+        throw new Error('Failed to get video URL')
+      }
+
+      // Store thumbnail if exists
+      let supabaseThumbnailUrl = thumbnail
+      if (thumbnail) {
+        // Convert data URL to blob
+        const response = await fetch(thumbnail)
+        const blob = await response.blob()
+        const thumbnailUrl = await storeThumbnail(videoId, blob)
+        if (thumbnailUrl) {
+          supabaseThumbnailUrl = thumbnailUrl
+        }
+      }
+
+      // Create a new project using the ProjectService with Supabase URLs
+      const project = await ProjectService.createProject(
+        projectTitle || file.name.replace(/\.[^/.]+$/, ""),
+        file,
+        supabaseVideoUrl,
+        supabaseThumbnailUrl,
+        videoMetadata,
+        workflowOptions,
+        userId || undefined
+      )
+
+      // Update project with description if provided
+      if (projectDescription) {
+        await ProjectService.updateProject(project.id, { 
+          description: projectDescription 
+        })
+      }
+
+      toast.success('Project created successfully!')
+      
+      // Redirect to processing page
+      router.push(`/studio/processing/${project.id}`)
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to upload video')
+      setUploading(false)
+      setUploadProgress(0)
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl animate-in">
+      {/* Header Section */}
+      <div className="text-center mb-10">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4 animate-float">
+          <IconCloud className="h-4 w-4" />
+          Secure Cloud Upload
+        </div>
+        <h1 className="text-4xl font-bold mb-3">
+          Upload Your <span className="gradient-text">Video</span>
+        </h1>
+        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          Transform your video content into transcriptions, clips, blog posts, and more with AI
+        </p>
+      </div>
+
+      <div className="grid gap-8">
+        {/* Upload Area */}
+        <Card className={`overflow-hidden transition-all duration-300 ${dragActive ? "border-primary shadow-xl scale-[1.02]" : ""}`}>
+          <div className="h-1 gradient-premium" />
+          <CardContent className="p-0">
+            <div
+              className={`relative border-2 border-dashed rounded-lg p-16 text-center transition-all ${
+                dragActive 
+                  ? "border-primary bg-gradient-to-br from-primary/10 to-accent/10" 
+                  : "border-muted-foreground/25 hover:border-primary/50"
+              } ${file ? "border-solid bg-muted/30" : ""}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              {/* Animated background pattern */}
+              {!file && (
+                <div className="absolute inset-0 opacity-5">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--primary)_0%,transparent_70%)] animate-pulse" />
+                </div>
+              )}
+
+              {!file ? (
+                <div className="relative">
+                  <div className="inline-flex p-6 rounded-full gradient-premium-subtle mb-6 animate-float">
+                    <IconUpload className="h-12 w-12 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-semibold mb-3">
+                    Drag and drop your video here
+                  </h3>
+                  <p className="text-muted-foreground mb-6">
+                    or click to browse files
+                  </p>
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    size="lg"
+                    className="gradient-premium hover:opacity-90 transition-opacity shadow-lg"
+                  >
+                    <IconFileUpload className="h-5 w-5 mr-2" />
+                    Select Video
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="video/mp4,video/quicktime,video/x-msvideo,video/webm"
+                    onChange={handleChange}
+                    aria-label="Select video file"
+                  />
+                  <p className="text-sm text-muted-foreground mt-6">
+                    Supported formats: MP4, MOV, AVI, WebM • Max 2GB
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Video Preview with Thumbnail */}
+                  {videoPreview && (
+                    <div className="relative mx-auto max-w-3xl">
+                      <div className="grid gap-4">
+                        {/* Video */}
+                        <div className="relative group">
+                          <video
+                            ref={videoRef}
+                            src={videoPreview}
+                            className="w-full rounded-xl bg-black shadow-2xl"
+                            controls
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="absolute top-3 right-3 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={removeFile}
+                            disabled={uploading || processing}
+                          >
+                            <IconX className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        {/* Project Details Form */}
+                        {showMetadata && !showWorkflowSelection && (
+                          <Card className="border-primary/20 shadow-lg">
+                            <CardHeader>
+                              <CardTitle className="flex items-center gap-2">
+                                <IconEdit className="h-5 w-5 text-primary" />
+                                Project Details
+                              </CardTitle>
+                              <CardDescription>
+                                Give your project a name and description
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="project-title">Project Title</Label>
+                                <Input
+                                  id="project-title"
+                                  value={projectTitle}
+                                  onChange={(e) => setProjectTitle(e.target.value)}
+                                  placeholder="Enter project title"
+                                  className="text-lg"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="project-description">Description (optional)</Label>
+                                <Textarea
+                                  id="project-description"
+                                  value={projectDescription}
+                                  onChange={(e) => setProjectDescription(e.target.value)}
+                                  placeholder="Describe your video content..."
+                                  rows={3}
+                                />
+                              </div>
+                              <Button 
+                                onClick={handleContinueToWorkflows}
+                                className="w-full gradient-premium hover:opacity-90 transition-opacity"
+                                disabled={!projectTitle.trim()}
+                              >
+                                Continue to Workflow Selection
+                                <IconArrowRight className="h-4 w-4 ml-2" />
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Workflow Selection */}
+                        {showWorkflowSelection && (
+                          <WorkflowSelection
+                            options={workflowOptions}
+                            onChange={setWorkflowOptions}
+                            disabled={uploading}
+                          />
+                        )}
+                        
+                        {/* Thumbnail Preview */}
+                        {thumbnail && (
+                          <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl border border-primary/20">
+                            <Image 
+                              src={thumbnail} 
+                              alt="Generated thumbnail" 
+                              width={80}
+                              height={56}
+                              className="w-20 h-14 object-cover rounded-lg shadow-md"
+                            />
+                            <div className="flex-1">
+                              <p className="font-medium flex items-center gap-2">
+                                <IconCheck className="h-4 w-4 text-green-600" />
+                                Thumbnail generated
+                              </p>
+                              <p className="text-sm text-muted-foreground">This will be used as your project thumbnail</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Processing indicator */}
+                        {processing && (
+                          <div className="flex items-center justify-center gap-3 p-4 bg-primary/5 rounded-xl">
+                            <LoadingSpinner size="sm" />
+                            <span className="font-medium">Processing video metadata...</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* File Info */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <IconFile className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{file.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Video Metadata */}
+                    {videoMetadata && (
+                      <div className="flex items-center justify-center gap-6 p-3 bg-secondary/50 rounded-lg">
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Resolution</p>
+                          <p className="font-medium">{videoMetadata.width}x{videoMetadata.height}</p>
+                        </div>
+                        <div className="h-8 w-px bg-border" />
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Duration</p>
+                          <p className="font-medium">{formatDuration(videoMetadata.duration)}</p>
+                        </div>
+                        <div className="h-8 w-px bg-border" />
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Format</p>
+                          <p className="font-medium">{videoMetadata.format.toUpperCase()}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Button */}
+                  {!uploading && showMetadata && showWorkflowSelection && (
+                    <div className="flex gap-3 justify-center">
+                      <Button 
+                        onClick={handleUpload} 
+                        size="lg" 
+                        className="gradient-premium hover:opacity-90 transition-opacity shadow-lg px-8"
+                        disabled={!projectTitle.trim() || !Object.values(workflowOptions).some(v => v)}
+                      >
+                        <IconSparkles className="h-5 w-5 mr-2" />
+                        Create Project & Start Processing
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowWorkflowSelection(false)}
+                        size="lg"
+                        className="px-8"
+                      >
+                        Back
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Upload Progress */}
+              {uploading && file && (
+                <div className="mt-6">
+                  <UploadProgress 
+                    progress={uploadProgress}
+                    fileName={file.name}
+                    fileSize={formatFileSize(file.size)}
+                    onCancel={() => {
+                      setUploading(false)
+                      setUploadProgress(0)
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <Alert variant="destructive" className="mt-6 max-w-md mx-auto">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tips with gradient cards */}
+        <div className="grid md:grid-cols-3 gap-6">
+          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-violet-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 text-white">
+                  <IconVideo className="h-4 w-4" />
+                </div>
+                Quality Matters
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Upload high-quality videos for better AI processing results
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-amber-500 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+                  <IconClock className="h-4 w-4" />
+                </div>
+                Processing Time
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Longer videos take more time to process. Be patient!
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
+                  <IconSparkles className="h-4 w-4" />
+                </div>
+                AI Magic
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Our AI will extract the best content from your video
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+} 
