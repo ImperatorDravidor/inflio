@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { GlobalSearch } from "@/components/global-search"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 export function DashboardHeader() {
   const router = useRouter()
@@ -98,6 +99,9 @@ export function DashboardHeader() {
             <IconBell className="h-4 w-4" />
             <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
           </Button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle />
 
           {/* User Menu */}
           <UserMenu />

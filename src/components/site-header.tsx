@@ -17,8 +17,10 @@ export function SiteHeader() {
         />
         
         {/* Logo/Title for mobile */}
-        <div className="flex items-center gap-2 lg:hidden">
-          <InflioLogo size="sm" showText={false} />
+        <div className="flex-1 flex items-center lg:hidden">
+          <Link href="/" className="flex items-center px-2">
+            <InflioLogo size="sm" />
+          </Link>
         </div>
 
         {/* Action Buttons */}
