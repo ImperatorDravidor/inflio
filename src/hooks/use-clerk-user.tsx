@@ -3,7 +3,7 @@
 import { useUser, useAuth } from '@clerk/nextjs'
 import { useState, useEffect, useCallback } from 'react'
 import { Project } from '@/lib/project-types'
-import { ProjectService } from '@/lib/db-migration'
+import { ProjectService } from '@/lib/services'
 
 export function useClerkUser() {
   const { isLoaded, isSignedIn, user } = useUser()

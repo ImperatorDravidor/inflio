@@ -11,18 +11,20 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconCloud, IconEdit, IconArrowRight } from "@tabler/icons-react"
-import { storeVideo, retrieveVideo, storeThumbnail } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { ProjectService } from "@/lib/db-migration"
 import { VideoMetadata } from "@/lib/project-types"
 import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-selection"
 import { v4 as uuidv4 } from 'uuid'
 import Image from "next/image"
+import { APP_CONFIG, ROUTES } from "@/lib/constants"
+import { useProjectNavigation } from "@/hooks/use-project-navigation"
+import { handleError } from "@/lib/error-handler"
 
 export default function UploadPage() {
-  const router = useRouter()
+  const { navigateToProject } = useProjectNavigation()
   const { userId } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -60,13 +62,11 @@ export default function UploadPage() {
   }, [])
 
   const validateFile = (file: File) => {
-    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm']
-    if (!validTypes.includes(file.type)) {
+    if (!APP_CONFIG.SUPPORTED_VIDEO_TYPES.includes(file.type as any)) {
       throw new Error('Invalid file type. Please upload MP4, MOV, AVI, or WebM files.')
     }
 
-    const maxSize = 2 * 1024 * 1024 * 1024 // 2GB
-    if (file.size > maxSize) {
+    if (file.size > APP_CONFIG.MAX_FILE_SIZE) {
       throw new Error('File too large. Maximum size is 2GB.')
     }
   }
@@ -172,120 +172,125 @@ export default function UploadPage() {
   }
 
   const handleUpload = async () => {
-    if (!file || !videoUrl || !videoMetadata) return
+    if (!file || !videoMetadata) return;
 
-    // Validate that at least one workflow is selected
-    const hasSelectedWorkflow = Object.values(workflowOptions).some(v => v)
+    const hasSelectedWorkflow = Object.values(workflowOptions).some(v => v);
     if (!hasSelectedWorkflow) {
-      toast.error("Please select at least one workflow")
-      return
+      toast.error("Please select at least one workflow");
+      return;
     }
 
-    setUploading(true)
-    setUploadProgress(0)
+    setUploading(true);
+    setUploadProgress(0);
+    const toastId = toast.loading("Uploading video... Please wait.");
 
     try {
-      // Create FormData with the file
-      const formData = new FormData()
-      formData.append('file', file)
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return 90
-          }
-          return prev + 10
-        })
-      }, 300)
-
-      // Upload to API
+      // Step 1: Upload the file to our backend.
+      // The backend will handle storing it in Supabase and return the public URL.
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
-      })
+      });
 
-      clearInterval(progressInterval)
-      setUploadProgress(100)
+      const result = await response.json();
 
       if (!response.ok) {
-        const contentType = response.headers.get('content-type')
-        if (contentType && contentType.includes('text/html')) {
-          console.error('Received HTML instead of JSON:', response.status)
-          throw new Error(`Server error: ${response.status} ${response.statusText}`)
-        }
-        const error = await response.json()
-        throw new Error(error.error || 'Upload failed')
+        throw new Error(result.error || 'Upload failed');
       }
 
-      await response.json()
-
-      // Generate video ID for storage
-      const videoId = uuidv4()
-
-      // First, store the video file in Supabase Storage
-      const videoStored = await storeVideo(videoId, file)
-      if (!videoStored) {
-        throw new Error('Failed to upload video to storage')
-      }
-
-      // Get the public URL for the video
-      const supabaseVideoUrl = await retrieveVideo(videoId)
+      const supabaseVideoUrl = result.url;
       if (!supabaseVideoUrl) {
-        throw new Error('Failed to get video URL')
+        throw new Error("Did not receive a valid video URL from the server.");
       }
+      
+      toast.success("Video uploaded successfully!", { id: toastId });
+      setUploadProgress(100);
 
-      // Store thumbnail if exists
-      let supabaseThumbnailUrl = thumbnail
-      if (thumbnail) {
-        // Convert data URL to blob
-        const response = await fetch(thumbnail)
-        const blob = await response.blob()
-        const thumbnailUrl = await storeThumbnail(videoId, blob)
-        if (thumbnailUrl) {
-          supabaseThumbnailUrl = thumbnailUrl
-        }
-      }
-
-      // Create a new project using the ProjectService with Supabase URLs
+      // Step 2: Create the project in our database with the returned URL.
+      toast.info("Creating project...");
       const project = await ProjectService.createProject(
         projectTitle || file.name.replace(/\.[^/.]+$/, ""),
         file,
         supabaseVideoUrl,
-        supabaseThumbnailUrl,
+        thumbnail, // Use the locally generated thumbnail for now
         videoMetadata,
         workflowOptions,
         userId || undefined
-      )
+      );
 
-      // Update project with description if provided
       if (projectDescription) {
         await ProjectService.updateProject(project.id, { 
           description: projectDescription 
-        })
+        });
       }
 
-      toast.success('Project created successfully!')
+      toast.success('Project created successfully!');
       
-      // Redirect to processing page
-      router.push(`/studio/processing/${project.id}`)
+      // Step 3a: If transcription workflow is selected, trigger transcription processing
+      if (workflowOptions.transcription) {
+        toast.info('Starting AI transcription...');
+        
+        const transcriptionResponse = await fetch('/api/process-transcription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: project.id,
+            videoUrl: supabaseVideoUrl,
+            language: 'en' // Could be made configurable
+          })
+        });
+
+        const transcriptionResult = await transcriptionResponse.json();
+
+        if (!transcriptionResponse.ok) {
+          console.error('Transcription failed:', transcriptionResult.error);
+          toast.warning('Transcription processing failed, but project was created');
+        } else {
+          toast.success('Transcription started successfully!');
+        }
+      }
+      
+      // Step 3b: If clips workflow is selected, trigger AI clip generation
+      if (workflowOptions.clips) {
+        toast.info('Starting AI clip generation...');
+        
+        // No need to import dynamically, just call the API route
+        const klapResponse = await fetch('/api/process-klap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId: project.id,
+                videoUrl: supabaseVideoUrl
+            })
+        });
+
+        const klapResult = await klapResponse.json();
+
+        if (!klapResponse.ok) {
+            throw new Error(klapResult.error || "Failed to start Klap processing.");
+        }
+        
+        toast.success('AI processing started successfully!');
+      }
+      
+      // Redirect to the processing page to see progress
+      navigateToProject({ id: project.id, status: 'processing' });
+
     } catch (error) {
-      console.error('Upload error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload video')
-      setUploading(false)
-      setUploadProgress(0)
+      console.error('Upload process error:', error);
+      toast.error(error instanceof Error ? error.message : 'An unknown error occurred.', { id: toastId });
+      setUploading(false);
+      setUploadProgress(0);
     }
-  }
+  };
 
   return (
     <div className="mx-auto max-w-5xl animate-in">
       {/* Header Section */}
       <div className="text-center mb-10">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4 animate-float">
-          <IconCloud className="h-4 w-4" />
-          Secure Cloud Upload
-        </div>
         <h1 className="text-4xl font-bold mb-3">
           Upload Your <span className="gradient-text">Video</span>
         </h1>
@@ -319,20 +324,18 @@ export default function UploadPage() {
 
               {!file ? (
                 <div className="relative">
-                  <div className="inline-flex p-6 rounded-full gradient-premium-subtle mb-6 animate-float">
-                    <IconUpload className="h-12 w-12 text-primary" />
-                  </div>
-                  <h3 className="text-2xl font-semibold mb-3">
-                    Drag and drop your video here
+                  <IconUpload className="h-16 w-16 text-muted-foreground mb-6 mx-auto" />
+                  <h3 className="text-xl font-semibold mb-2">
+                    Drop your video here
                   </h3>
                   <p className="text-muted-foreground mb-6">
-                    or click to browse files
+                    or click to browse
                   </p>
                   <Button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
                     size="lg"
-                    className="gradient-premium hover:opacity-90 transition-opacity shadow-lg"
+                    className="gradient-premium hover:opacity-90 transition-opacity"
                   >
                     <IconFileUpload className="h-5 w-5 mr-2" />
                     Select Video
@@ -345,8 +348,8 @@ export default function UploadPage() {
                     onChange={handleChange}
                     aria-label="Select video file"
                   />
-                  <p className="text-sm text-muted-foreground mt-6">
-                    Supported formats: MP4, MOV, AVI, WebM • Max 2GB
+                  <p className="text-sm text-muted-foreground mt-4">
+                    MP4, MOV, AVI, WebM • Max 2GB
                   </p>
                 </div>
               ) : (
@@ -376,25 +379,17 @@ export default function UploadPage() {
                         
                         {/* Project Details Form */}
                         {showMetadata && !showWorkflowSelection && (
-                          <Card className="border-primary/20 shadow-lg">
-                            <CardHeader>
-                              <CardTitle className="flex items-center gap-2">
-                                <IconEdit className="h-5 w-5 text-primary" />
-                                Project Details
-                              </CardTitle>
-                              <CardDescription>
-                                Give your project a name and description
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
+                          <div className="space-y-4 p-6 bg-muted/30 rounded-lg">
+                            <h3 className="font-semibold text-lg">Project Details</h3>
+                            <div className="space-y-4">
                               <div className="space-y-2">
-                                <Label htmlFor="project-title">Project Title</Label>
+                                <Label htmlFor="project-title">Title</Label>
                                 <Input
                                   id="project-title"
                                   value={projectTitle}
                                   onChange={(e) => setProjectTitle(e.target.value)}
-                                  placeholder="Enter project title"
-                                  className="text-lg"
+                                  placeholder="Give your project a title"
+                                  className="text-base"
                                 />
                               </div>
                               <div className="space-y-2">
@@ -403,20 +398,20 @@ export default function UploadPage() {
                                   id="project-description"
                                   value={projectDescription}
                                   onChange={(e) => setProjectDescription(e.target.value)}
-                                  placeholder="Describe your video content..."
-                                  rows={3}
+                                  placeholder="What's this video about?"
+                                  rows={2}
                                 />
                               </div>
                               <Button 
                                 onClick={handleContinueToWorkflows}
-                                className="w-full gradient-premium hover:opacity-90 transition-opacity"
+                                className="w-full"
                                 disabled={!projectTitle.trim()}
                               >
-                                Continue to Workflow Selection
+                                Next: Select Workflows
                                 <IconArrowRight className="h-4 w-4 ml-2" />
                               </Button>
-                            </CardContent>
-                          </Card>
+                            </div>
+                          </div>
                         )}
 
                         {/* Workflow Selection */}
@@ -500,17 +495,16 @@ export default function UploadPage() {
                       <Button 
                         onClick={handleUpload} 
                         size="lg" 
-                        className="gradient-premium hover:opacity-90 transition-opacity shadow-lg px-8"
+                        className="gradient-premium hover:opacity-90 transition-opacity px-8"
                         disabled={!projectTitle.trim() || !Object.values(workflowOptions).some(v => v)}
                       >
                         <IconSparkles className="h-5 w-5 mr-2" />
-                        Create Project & Start Processing
+                        Start Processing
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => setShowWorkflowSelection(false)}
                         size="lg"
-                        className="px-8"
                       >
                         Back
                       </Button>
@@ -544,58 +538,29 @@ export default function UploadPage() {
           </CardContent>
         </Card>
 
-        {/* Tips with gradient cards */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-violet-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 text-white">
-                  <IconVideo className="h-4 w-4" />
-                </div>
-                Quality Matters
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Upload high-quality videos for better AI processing results
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-amber-500 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
-                  <IconClock className="h-4 w-4" />
-                </div>
-                Processing Time
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Longer videos take more time to process. Be patient!
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
-                  <IconSparkles className="h-4 w-4" />
-                </div>
-                AI Magic
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Our AI will extract the best content from your video
-              </p>
-            </CardContent>
-          </Card>
+        {/* Quick Info */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <IconVideo className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-medium text-sm">High Quality</p>
+              <p className="text-xs text-muted-foreground">Better quality = better results</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <IconClock className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-medium text-sm">Processing Time</p>
+              <p className="text-xs text-muted-foreground">Usually 2-5 minutes per video</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <IconSparkles className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-medium text-sm">AI Powered</p>
+              <p className="text-xs text-muted-foreground">Advanced AI analyzes your content</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

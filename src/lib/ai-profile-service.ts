@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, SupabaseClient } from "@supabase/supabase-js"
 import { OpenAI } from "openai"
 import { UserProfile } from "@/hooks/use-user-profile"
 
@@ -36,14 +36,36 @@ interface StyledContent {
   [key: string]: unknown
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Lazy initialization of clients
+let supabase: SupabaseClient | null = null
+let openai: OpenAI | null = null
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!
-})
+function getSupabase(): SupabaseClient {
+  if (!supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (!url || !key) {
+      throw new Error('Supabase configuration is missing')
+    }
+    
+    supabase = createClient(url, key)
+  }
+  return supabase
+}
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY
+    
+    if (!apiKey) {
+      throw new Error('OpenAI API key is missing')
+    }
+    
+    openai = new OpenAI({ apiKey })
+  }
+  return openai
+}
 
 export class AIProfileService {
   private profile: UserProfile
@@ -65,7 +87,7 @@ export class AIProfileService {
     //   .order("created_at", { ascending: false })
     //   .limit(5)
 
-    const { data: recentHistory } = await supabase
+    const { data: recentHistory } = await getSupabase()
       .from("user_content_history")
       .select("*")
       .eq("user_profile_id", this.profile.id)
@@ -111,7 +133,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
       social: `Generate social media posts for ${this.profile.primary_platforms.join(", ")} that align with the user's content goals: ${this.profile.content_goals.join(", ")}.`
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4",
       messages: [
         {
@@ -140,7 +162,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
     editedVersion?: Record<string, unknown>
   ): Promise<void> {
     // Store the interaction
-    await supabase
+    await getSupabase()
       .from("user_content_history")
       .insert({
         user_profile_id: this.profile.id,
@@ -166,7 +188,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
    * Analyze edits to understand user preferences
    */
   private async analyzeEdit(original: Record<string, unknown>, edited: Record<string, unknown>): Promise<string> {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
@@ -187,12 +209,12 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
    * Update user embeddings based on new insights
    */
   private async updateUserEmbeddings(insights: string) {
-    const embeddingResponse = await openai.embeddings.create({
+    const embeddingResponse = await getOpenAI().embeddings.create({
       model: "text-embedding-3-small",
       input: insights,
     })
 
-    await supabase
+    await getSupabase()
       .from("user_embeddings")
       .insert({
         user_profile_id: this.profile.id,
@@ -213,7 +235,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
     currentContent: string
   ): Promise<ContentHistory[]> {
     // Generate embedding for current content
-    const embeddingResponse = await openai.embeddings.create({
+    const embeddingResponse = await getOpenAI().embeddings.create({
       model: "text-embedding-3-small",
       input: currentContent,
     })
@@ -221,7 +243,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
     const embedding = embeddingResponse.data[0].embedding
 
     // Find similar content from history with good performance
-    const { data: similarContent } = await supabase
+    const { data: similarContent } = await getSupabase()
       .rpc("match_user_content", {
         query_embedding: embedding,
         match_threshold: 0.8,

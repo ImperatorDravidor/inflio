@@ -24,7 +24,7 @@ import {
   IconHistory,
   IconX
 } from "@tabler/icons-react"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { Project } from "@/lib/project-types"
 import { useAuth } from "@clerk/nextjs"
 import { cn } from "@/lib/utils"

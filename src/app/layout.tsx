@@ -34,7 +34,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
-        <body className="antialiased">
+        <body className="antialiased" suppressHydrationWarning>
           <UserProfileProvider>
             <NextThemesProvider
               attribute="class"

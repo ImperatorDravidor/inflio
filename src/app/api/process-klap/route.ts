@@ -1,93 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { KlapAPIService } from '@/lib/klap-api'
-import { ProjectService } from '@/lib/db-migration'
+import { ProjectService } from '@/lib/services'
 import { auth } from '@clerk/nextjs/server'
 
 export async function POST(request: NextRequest) {
+  const { projectId, videoUrl } = await request.json()
+
+  // Authenticate the user
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Validate the request body
+  if (!projectId || !videoUrl) {
+    return NextResponse.json({ error: 'Missing projectId or videoUrl' }, { status: 400 })
+  }
+
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    const project = await ProjectService.getProject(projectId)
+    if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const { projectId, videoUrl } = await request.json()
+    console.log(`[Klap Route] Starting Klap processing for project: ${projectId}`)
+    
+    // The single public method handles the entire workflow: task creation, polling, and result fetching.
+    const klapResult = await KlapAPIService.processVideo(videoUrl, project.title)
 
-    if (!projectId || !videoUrl) {
+    console.log(`[Klap Route] Klap processing complete for project ${projectId}. Storing results.`)
+
+    // Store Klap results and only update transcription if it doesn't exist
+    const updateData: any = {
+      klap_project_id: klapResult.klapFolderId // Use folder ID as the main reference
+    }
+
+    // Only update transcription if it hasn't been done by AssemblyAI
+    if (!project.transcription) {
+      updateData.transcription = klapResult.transcription
+      await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+    }
+
+    await ProjectService.updateProject(projectId, updateData)
+
+    // Store the generated clips from Klap
+    const clipsToStore = klapResult.clips.map((clip: any) => ({
+      id: clip.id,
+      title: clip.name,
+      description: clip.transcript || 'AI-generated clip.',
+      startTime: 0, 
+      endTime: 0,
+      duration: 0,
+      thumbnail: `https://klap.app/player/${clip.id}/thumbnail`,
+      tags: [],
+      score: clip.virality_score || 0.8,
+      type: 'highlight' as const,
+      klapProjectId: clip.id,
+      previewUrl: `https://klap.app/player/${clip.id}`,
+    }))
+
+    for (const clip of clipsToStore) {
+      await ProjectService.addToFolder(projectId, 'clips', clip)
+    }
+    await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
+    
+    console.log(`[Klap Route] Stored ${klapResult.clips.length} clips and transcription.`)
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully processed and stored ${klapResult.clips.length} clips.`,
+      ...klapResult
+    })
+
+  } catch (error) {
+    console.error(`[Klap Route] Critical error for project ${projectId}:`, error)
+    if (projectId) {
+        await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+    }
+    
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'An unknown error occurred while processing with Klap.' },
+      { status: 500 }
+    )
+  }
+}
+
+// Check Klap processing status
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const projectId = searchParams.get('projectId')
+
+    if (!projectId) {
       return NextResponse.json(
-        { error: 'Missing required fields: projectId, videoUrl' },
+        { error: 'Missing projectId parameter' },
         { status: 400 }
       )
     }
 
-    // Get project to verify ownership and status
+    // Get project
     const project = await ProjectService.getProject(projectId)
-    if (!project) {
+    if (!project || !project.klap_project_id) {
       return NextResponse.json(
-        { error: 'Project not found' },
+        { error: 'Project or Klap project not found' },
         { status: 404 }
       )
     }
 
-    // Process video with Klap API
-    const result = await KlapAPIService.processVideoToClips(videoUrl, {
-      language: 'en',
-      maxDuration: 60,
-      maxClipCount: 5,
-      onProgress: async (message) => {
-        // Update task progress in database
-        const progress = message.includes('Creating') ? 10 :
-                        message.includes('Processing') ? 50 :
-                        message.includes('Retrieving') ? 90 : 50
-        
-        await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
-      }
-    })
-
-    // Store clips information in project - map to ClipData format
-    const clipsData = result.clips.map((clip, index) => ({
-      id: clip.id,
-      title: clip.name,
-      description: `AI-generated clip with virality score: ${(clip.viralityScore * 100).toFixed(0)}%`,
-      startTime: 0, // Klap doesn't provide specific timestamps
-      endTime: 60, // Default to 60 seconds as per maxDuration
-      duration: 60,
-      thumbnail: '', // Will need to be generated separately
-      tags: ['ai-generated', 'viral-clip', `score-${Math.round(clip.viralityScore * 100)}`],
-      score: clip.viralityScore,
-      type: 'highlight' as const,
-      // Store Klap-specific data as additional properties
-      klapProjectId: clip.id,
-      klapFolderId: result.folderId,
-      previewUrl: clip.previewUrl
-    }))
-
-    // Add clips to project folder
-    for (const clip of clipsData) {
-      await ProjectService.addToFolder(projectId, 'clips', clip)
-    }
-
-    // Mark clips task as completed
-    await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-
+    // Check Klap status
+    const status = await KlapAPIService.getProjectStatus(project.klap_project_id)
+    
     return NextResponse.json({
       success: true,
-      clips: clipsData,
-      folderId: result.folderId
+      status: status.status,
+      progress: status.progress,
+      message: status.message
     })
   } catch (error) {
-    console.error('Klap processing error:', error)
-    
-    // Update task status to failed if projectId is available
-    const body = await request.json().catch(() => ({}))
-    if (body.projectId) {
-      await ProjectService.updateTaskProgress(body.projectId, 'clips', 0, 'failed')
-    }
-
+    console.error('Klap status check error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process video with Klap' },
+      { error: error instanceof Error ? error.message : 'Failed to check status' },
       { status: 500 }
     )
   }

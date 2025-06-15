@@ -134,6 +134,7 @@ export interface Project {
   status: 'draft' | 'processing' | 'ready' | 'published'
   tags: string[]
   user_id?: string
+  klap_project_id?: string // Klap API project ID for tracking
 }
 
 export interface ProjectSettings {

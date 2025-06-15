@@ -10,7 +10,7 @@ import {
   IconArticle,
   IconFileText
 } from "@tabler/icons-react"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 
 interface AnalyticsData {

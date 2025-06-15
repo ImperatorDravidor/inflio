@@ -48,7 +48,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useRouter } from "next/navigation"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { Project } from "@/lib/project-types"
 import { formatDuration, formatFileSize } from "@/lib/video-utils"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -94,9 +94,18 @@ function ProjectCard({
   onDelete: (id: string) => void 
 }) {
   const router = useRouter()
-  const progress = ProjectService.calculateProjectProgress(project)
   const stats = ProjectService.getProjectStats(project)
-  
+  const progress = ProjectService.calculateProjectProgress(project)
+
+  // Helper function to handle project navigation
+  const handleProjectClick = () => {
+    if (project.status === 'processing') {
+      router.push(`/studio/processing/${project.id}`)
+    } else {
+      router.push(`/projects/${project.id}`)
+    }
+  }
+
   if (viewMode === 'list') {
     return (
       <MotionCard
@@ -108,7 +117,7 @@ function ProjectCard({
           {/* Thumbnail */}
           <div 
             className="relative w-32 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 cursor-pointer group"
-            onClick={() => router.push(`/projects/${project.id}`)}
+            onClick={handleProjectClick}
           >
             {project.thumbnail_url ? (
               <Image 
@@ -133,7 +142,7 @@ function ProjectCard({
             <div className="flex items-center gap-2 mb-1">
               <h3 
                 className="font-semibold truncate cursor-pointer hover:text-primary transition-colors"
-                onClick={() => router.push(`/projects/${project.id}`)}
+                onClick={handleProjectClick}
               >
                 {project.title}
               </h3>
@@ -175,7 +184,7 @@ function ProjectCard({
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => router.push(`/projects/${project.id}`)}
+              onClick={handleProjectClick}
             >
               <IconEye className="h-4 w-4" />
             </Button>
@@ -186,7 +195,7 @@ function ProjectCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push(`/projects/${project.id}`)}>
+                <DropdownMenuItem onClick={handleProjectClick}>
                   <IconEye className="h-4 w-4 mr-2" />
                   View Details
                 </DropdownMenuItem>
@@ -226,7 +235,7 @@ function ProjectCard({
       {/* Thumbnail */}
       <div 
         className="relative aspect-video overflow-hidden bg-muted cursor-pointer"
-        onClick={() => router.push(`/projects/${project.id}`)}
+        onClick={handleProjectClick}
       >
         {project.thumbnail_url ? (
           <Image 
@@ -279,7 +288,7 @@ function ProjectCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push(`/projects/${project.id}`)}>
+              <DropdownMenuItem onClick={handleProjectClick}>
                 <IconEye className="h-4 w-4 mr-2" />
                 View Details
               </DropdownMenuItem>

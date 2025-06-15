@@ -23,7 +23,7 @@ import {
   IconBrandInstagram
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { Project } from "@/lib/project-types"
 import { formatDuration } from "@/lib/video-utils"
 import { useAuth } from "@clerk/nextjs"
@@ -287,7 +287,13 @@ export default function DashboardPage() {
                         key={project.id}
                         whileHover={{ x: 4 }}
                         className="group cursor-pointer"
-                        onClick={() => router.push(`/projects/${project.id}`)}
+                        onClick={() => {
+                          if (project.status === 'processing') {
+                            router.push(`/studio/processing/${project.id}`)
+                          } else {
+                            router.push(`/projects/${project.id}`)
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-4 p-4 rounded-xl border hover:border-primary/50 transition-all">
                           <div className="relative h-16 w-24 rounded-lg overflow-hidden bg-muted">

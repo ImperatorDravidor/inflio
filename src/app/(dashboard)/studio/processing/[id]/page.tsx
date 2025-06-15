@@ -19,9 +19,10 @@ import {
   IconLoader2,
   IconClock,
   IconFolder,
-  IconArrowRight
+  IconArrowRight,
+  IconRefresh
 } from "@tabler/icons-react"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 import { Project, ProcessingTask } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
@@ -32,7 +33,7 @@ const taskDetails = {
     title: "AI Transcription",
     description: "Converting speech to text using advanced AI",
     color: "from-violet-500 to-purple-500",
-    estimatedTime: { min: 5, max: 7 }
+    estimatedTime: { min: 1, max: 3 }
   },
   clips: {
     icon: IconScissors,
@@ -74,6 +75,8 @@ export default function ProcessingPage() {
   const [processingStarted, setProcessingStarted] = useState(false)
   const [startTime, setStartTime] = useState<Date | null>(null)
   const [estimatedEndTime, setEstimatedEndTime] = useState<Date | null>(null)
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  const [transcriptionStatus, setTranscriptionStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending')
 
   const loadProject = useCallback(async () => {
     try {
@@ -92,190 +95,117 @@ export default function ProcessingPage() {
     }
   }, [projectId, router])
 
-  const simulateProcessing = useCallback(async () => {
-    if (!project || processingStarted) return
+  const startKlapProcessing = useCallback(async () => {
+    if (!project || !project.video_url) {
+      toast.error("Project data or video URL is missing.")
+      return
+    }
 
     setProcessingStarted(true)
     setStartTime(new Date())
+    toast.info("Starting AI processing...")
     
-    // Calculate total estimated time
-    let maxTime = 0
-    const parallelTasks = ['transcription', 'clips']
-    const dependentTasks = ['blog', 'social', 'podcast']
-    
-    // Check which tasks are included
-    const hasParallelTasks = project.tasks.some(t => parallelTasks.includes(t.type))
-    const hasDependentTasks = project.tasks.some(t => dependentTasks.includes(t.type))
-    
-    if (hasParallelTasks) {
-      maxTime = 7 // Max 7 minutes for parallel tasks
-    }
-    
-    if (hasDependentTasks) {
-      const maxDependentTime = Math.max(
-        ...project.tasks
-          .filter(t => dependentTasks.includes(t.type))
-          .map(t => taskDetails[t.type].estimatedTime.max)
-      )
-      maxTime += maxDependentTime
-    }
-    
-    setEstimatedEndTime(new Date(Date.now() + maxTime * 60 * 1000))
-    
-    // Update project status
     await ProjectService.updateProject(projectId, { status: 'processing' })
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
 
-    // Simulate realistic processing with proper timing
-    await processTasksWithRealisticTiming()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, projectId, processingStarted])
-
-  const processTasksWithRealisticTiming = async () => {
-    if (!project) return
-
-    // Process transcription and clips in parallel (5-7 minutes)
-    const parallelTasks = project.tasks.filter(t => ['transcription', 'clips'].includes(t.type))
-    const dependentTasks = project.tasks.filter(t => ['blog', 'social', 'podcast'].includes(t.type))
-
-    // Start parallel tasks
-    if (parallelTasks.length > 0) {
-      await Promise.all(parallelTasks.map(task => processTaskWithRealisticProgress(task, 5, 7)))
-    }
-
-    // Then process dependent tasks
-    for (const task of dependentTasks) {
-      const detail = taskDetails[task.type]
-      await processTaskWithRealisticProgress(task, detail.estimatedTime.min, detail.estimatedTime.max)
-    }
-
-    // Update project status to ready
-    await ProjectService.updateProject(projectId, { status: 'ready' })
-    toast.success("All processing completed! Your content is ready.")
-    
-    // Redirect to project details after a delay
-    setTimeout(() => {
-      router.push(`/projects/${projectId}`)
-    }, 2000)
-  }
-
-  const processTaskWithRealisticProgress = async (
-    task: ProcessingTask, 
-    minMinutes: number, 
-    maxMinutes: number
-  ) => {
-    // Start the task
-    await ProjectService.updateTaskProgress(projectId, task.type, 0, 'processing')
-    
-    // For clips task, use Klap API
-    if (task.type === 'clips' && project?.video_url) {
-      try {
-        const response = await fetch('/api/process-klap', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectId,
-            videoUrl: project.video_url
-          }),
+    try {
+      const response = await fetch('/api/process-klap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.id,
+          videoUrl: project.video_url
         })
+      })
 
-        if (!response.ok) {
-          throw new Error('Failed to process clips with Klap')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to process with Klap")
+      }
+
+      const result = await response.json()
+      
+      console.log("Klap processing result:", result)
+      toast.success("AI processing complete! Your content is ready.")
+
+      // Refresh the project data to show the new content
+      await loadProject()
+      
+      // Update the main project status
+      await ProjectService.updateProject(projectId, { status: 'ready' })
+
+      // Redirect to the project page after a short delay
+      setTimeout(() => {
+        router.push(`/projects/${projectId}`)
+      }, 2000)
+
+    } catch (error) {
+      console.error("Klap processing failed:", error)
+      toast.error(error instanceof Error ? error.message : "An unknown error occurred during processing.")
+      await ProjectService.updateProject(projectId, { status: 'draft' }) // Revert status
+      setProcessingStarted(false)
+    }
+
+  }, [project, projectId, router, loadProject])
+
+  const checkTranscriptionStatus = useCallback(async () => {
+    if (!project || transcriptionStatus === 'completed' || transcriptionStatus === 'failed') return
+
+    try {
+      // Check if transcription is complete by looking at the project
+      const updatedProject = await ProjectService.getProject(projectId)
+      if (updatedProject?.transcription && updatedProject.transcription.text) {
+        setTranscriptionStatus('completed')
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+      } else {
+        const transcriptionTask = updatedProject?.tasks.find(t => t.type === 'transcription')
+        if (transcriptionTask?.status === 'failed') {
+          setTranscriptionStatus('failed')
+        } else if (transcriptionTask?.status === 'processing') {
+          setTranscriptionStatus('processing')
         }
-
-        const result = await response.json()
-        toast.success(`Generated ${result.clips.length} clips!`)
-      } catch (error) {
-        console.error('Klap processing error:', error)
-        await ProjectService.updateTaskProgress(projectId, task.type, 0, 'failed')
-        toast.error('Failed to generate clips')
-        return
       }
-    } 
-    // For transcription task, use Whisper API
-    else if (task.type === 'transcription' && project?.video_url) {
-      try {
-        const response = await fetch('/api/process-transcription', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectId,
-            videoUrl: project.video_url,
-            language: project.settings?.language || 'en'
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error('Failed to transcribe video')
-        }
-
-        const result = await response.json()
-        toast.success(`Transcription completed! ${result.segmentCount} segments found.`)
-      } catch (error) {
-        console.error('Transcription error:', error)
-        await ProjectService.updateTaskProgress(projectId, task.type, 0, 'failed')
-        toast.error('Failed to transcribe video')
-        return
-      }
+    } catch (error) {
+      console.error('Error checking transcription status:', error)
     }
-    else {
-      // For other tasks, use simulated progress
-      const actualMinutes = minMinutes + Math.random() * (maxMinutes - minMinutes)
-      const totalMilliseconds = actualMinutes * 60 * 1000
-      const updateInterval = 2000 // Update every 2 seconds
-      const totalUpdates = Math.floor(totalMilliseconds / updateInterval)
-      
-      for (let i = 0; i <= totalUpdates; i++) {
-        const progress = Math.min(100, Math.round((i / totalUpdates) * 100))
-        await ProjectService.updateTaskProgress(projectId, task.type, progress, 'processing')
-        await loadProject()
-        await new Promise(resolve => setTimeout(resolve, updateInterval))
-      }
-      
-      // Complete the task
-      await ProjectService.updateTaskProgress(projectId, task.type, 100, 'completed')
-      
-      // Add mock content when task completes
-      await addMockContent(task.type)
-    }
-    
-    toast.success(`${taskDetails[task.type].title} completed!`)
-  }
-
-  const addMockContent = async (taskType: ProcessingTask['type']) => {
-    if (!project) return
-
-    switch (taskType) {
-      case 'clips':
-        await ProjectService.addToFolder(projectId, 'clips', {
-          id: `clip-${Date.now()}`,
-          title: "Key Moment: Introduction",
-          description: "The opening segment with strong hook",
-          startTime: 0,
-          endTime: 60,
-          duration: 60,
-          thumbnail: project.thumbnail_url,
-          tags: ['intro', 'highlight'],
-          score: 0.95,
-          type: 'highlight'
-        })
-        break
-      // Add other content types as needed
-    }
-  }
+  }, [project, projectId, transcriptionStatus])
 
   useEffect(() => {
     loadProject()
-  }, [loadProject])
+    
+    // Start polling for updates
+    const interval = setInterval(async () => {
+      await loadProject()
+      await checkTranscriptionStatus()
+    }, 2000) // Poll every 2 seconds
+    
+    setPollingInterval(interval)
+    
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [])
 
   useEffect(() => {
-    if (project && !processingStarted && project.status === 'draft') {
-      simulateProcessing()
+    // Check if all tasks are complete
+    if (project) {
+      const allTasksComplete = project.tasks.every(
+        task => task.status === 'completed' || task.status === 'failed'
+      )
+      
+      if (allTasksComplete && pollingInterval) {
+        clearInterval(pollingInterval)
+        setPollingInterval(null)
+      }
     }
-  }, [project, processingStarted, simulateProcessing])
+  }, [project, pollingInterval])
+
+  useEffect(() => {
+    if (project && !processingStarted && project.status !== 'ready' && project.status !== 'processing') {
+      startKlapProcessing()
+    }
+  }, [project, processingStarted, startKlapProcessing])
 
   // Update timer every second
   useEffect(() => {
@@ -437,7 +367,9 @@ export default function ProcessingPage() {
                         <div className="space-y-2 mt-2">
                           <Progress value={task.progress} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Processing...</span>
+                            <span>
+                              Processing...
+                            </span>
                             <span>{task.progress}%</span>
                           </div>
                         </div>
@@ -446,6 +378,41 @@ export default function ProcessingPage() {
                         <p className="text-xs text-muted-foreground mt-2">
                           Completed in {Math.round((new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime()) / 60000)} minutes
                         </p>
+                      )}
+                      {task.status === 'failed' && task.type === 'transcription' && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="mt-2"
+                          onClick={async () => {
+                            toast.info("Retrying transcription...")
+                            try {
+                              await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'processing')
+                              const response = await fetch('/api/process-transcription', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  projectId: project.id,
+                                  videoUrl: project.video_url,
+                                  language: 'en'
+                                })
+                              })
+                              
+                              if (!response.ok) {
+                                throw new Error('Failed to retry transcription')
+                              }
+                              
+                              toast.success("Transcription retry started!")
+                              await loadProject()
+                            } catch (error) {
+                              toast.error("Failed to retry transcription")
+                              await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+                            }
+                          }}
+                        >
+                          <IconRefresh className="h-4 w-4 mr-2" />
+                          Retry Transcription
+                        </Button>
                       )}
                     </div>
                     

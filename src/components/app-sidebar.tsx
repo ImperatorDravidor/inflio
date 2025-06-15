@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { ProjectService } from "@/lib/db-migration"
+import { ProjectService } from "@/lib/services"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
@@ -45,7 +45,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   React.useEffect(() => {
     const fetchProjectCount = async () => {
       try {
-        const projects = await ProjectService.getAllProjects(userId || undefined)
+        if (!userId) {
+          setProjectCount(0)
+          return
+        }
+        const projects = await ProjectService.getAllProjects(userId)
         setProjectCount(projects.length)
       } catch (error) {
         console.error('Failed to fetch project count:', error)
@@ -130,20 +134,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <Link href="/dashboard" className="flex items-center justify-center hover:scale-105 transition-transform duration-200">
           <InflioLogo size="xl" />
         </Link>
-        
-        {/* CTA Button */}
-        <div className="mt-8">
-          <Button 
-            size="default" 
-            className="w-full h-12 gradient-premium hover:shadow-premium-lg hover:scale-[1.02] transition-all duration-200 text-white font-medium shadow-premium"
-            asChild
-          >
-            <Link href="/studio/upload">
-              <IconSparkles className="h-5 w-5 mr-3 animate-pulse" />
-              Create New Video
-            </Link>
-          </Button>
-        </div>
       </SidebarHeader>
       
       <SidebarContent className="flex-1 overflow-y-auto scrollbar-none px-4 py-4">

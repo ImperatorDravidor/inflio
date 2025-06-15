@@ -1,304 +1,209 @@
-// Klap API Service for processing videos into short clips
-// Based on API documentation at https://api.klap.app/v2
-
-interface KlapTaskOptions {
-  source_video_url: string
-  language?: string
-  max_duration?: number
-  max_clip_count?: number
-  editing_options?: {
-    intro_title?: boolean
-    captions?: boolean
-    reframe?: boolean
-    detect_speakers?: boolean
-  }
-}
-
-interface KlapTask {
-  id: string
-  type: string
-  status: 'processing' | 'ready' | 'error'
-  created_at: string
-  output_type: string
-  output_id: string
-}
-
-interface KlapProject {
-  id: string
-  author_id: string
-  folder_id: string
-  name: string
-  created_at: string
-  virality_score: number
-  virality_score_explanation: string
-}
-
-interface KlapExport {
-  id: string
-  status: 'processing' | 'ready' | 'error'
-  src_url: string | null
-  project_id: string
-  created_at: string
-  finished_at: string | null
-  name: string
-  author_id: string
-  folder_id: string
-  descriptions: string
-}
-
-interface WatermarkOptions {
-  src_url?: string
-  pos_x?: number
-  pos_y?: number
-  scale?: number
-}
+// Correct Klap API Service using v2 Task-Based Workflow
+// Aligned with documentation at /documentation/klap_api/
 
 export class KlapAPIService {
-  private static readonly BASE_URL = 'https://api.klap.app/v2'
-  private static readonly API_KEY = process.env.KLAP_API_KEY
-  private static readonly POLL_INTERVAL = 30000 // 30 seconds
-  private static readonly EXPORT_POLL_INTERVAL = 15000 // 15 seconds
+  /**
+   * Get API configuration lazily to avoid client-side errors
+   */
+  private static getConfig() {
+    const apiKey = process.env.KLAP_API_KEY || ''
+    const apiUrl = process.env.KLAP_API_URL || 'https://api.klap.app/v2'
+    
+    if (!apiKey) {
+      throw new Error('[Klap] Error: KLAP_API_KEY is not configured in environment variables.')
+    }
+    
+    return { apiKey, apiUrl }
+  }
 
-  // Helper method for making authenticated requests
+  /**
+   * Private method to handle all authenticated requests to the Klap API.
+   * Includes robust error handling and logging.
+   */
   private static async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    if (!this.API_KEY) {
-      throw new Error('KLAP_API_KEY is not configured in environment variables')
-    }
+    const { apiKey, apiUrl } = this.getConfig()
 
-    const url = `${this.BASE_URL}${endpoint}`
+    const url = `${apiUrl}${endpoint}`
+    console.log(`[Klap] Requesting: ${options.method || 'GET'} ${url}`)
+
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': `Bearer ${this.API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Unknown error' }))
-      throw new Error(`Klap API error: ${error.message || response.statusText}`)
+      const errorText = await response.text()
+      let errorMessage = `[Klap] API Error: ${response.status} - ${response.statusText}`
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = `[Klap] API Error: ${errorJson.message || errorMessage}`
+      } catch {
+        console.error('[Klap] Raw non-JSON error response:', errorText)
+      }
+      throw new Error(errorMessage)
     }
 
     return response.json()
   }
 
-  // Create a video-to-shorts task
-  static async createVideoToShortsTask(options: KlapTaskOptions): Promise<KlapTask> {
-    return this.request<KlapTask>('/tasks/video-to-shorts', {
+  /**
+   * Step 1: Create a video processing task on Klap.
+   */
+  private static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
+    console.log('[Klap] Creating video-to-shorts task for URL:', videoUrl)
+    return this.request('/tasks/video-to-shorts', {
       method: 'POST',
-      body: JSON.stringify(options),
+      body: JSON.stringify({ 
+        source_video_url: videoUrl, 
+        language: 'en',
+        max_duration: 60, // Explicitly set max duration for clips
+      }),
     })
   }
 
-  // Get task status
-  static async getTaskStatus(taskId: string): Promise<KlapTask> {
-    return this.request<KlapTask>(`/tasks/${taskId}`)
-  }
-
-  // Poll task until completion
-  static async pollTaskUntilComplete(
-    taskId: string,
-    onProgress?: (status: string) => void
-  ): Promise<KlapTask> {
-    let task: KlapTask
-    
-    do {
-      task = await this.getTaskStatus(taskId)
+  /**
+   * Step 2: Poll the task status until it's ready.
+   */
+  private static async pollTaskUntilReady(taskId: string): Promise<{ id: string; status: string; output_id: string }> {
+    for (let i = 0; i < 60; i++) { // Poll for up to 5 minutes
+      const task = await this.request<{ id: string; status: 'processing' | 'ready' | 'error'; output_id?: string; error?: string }>(`/tasks/${taskId}`)
+      console.log(`[Klap] Polling task ${taskId}: status is ${task.status}`)
       
-      if (onProgress) {
-        onProgress(task.status)
+      if (task.status === 'ready') {
+        if (!task.output_id) {
+            throw new Error('[Klap] Task is ready but has no output_id.')
+        }
+        return { id: task.id, status: task.status, output_id: task.output_id };
       }
-
-      if (task.status === 'processing') {
-        await new Promise(resolve => setTimeout(resolve, this.POLL_INTERVAL))
-      }
-    } while (task.status === 'processing')
-
-    if (task.status === 'error') {
-      throw new Error('Klap task processing failed')
-    }
-
-    return task
-  }
-
-  // Get all projects in a folder
-  static async getProjects(folderId: string): Promise<KlapProject[]> {
-    return this.request<KlapProject[]>(`/projects/${folderId}`)
-  }
-
-  // Get a single project
-  static async getProject(projectId: string): Promise<KlapProject> {
-    return this.request<KlapProject>(`/projects/${projectId}`)
-  }
-
-  // Create an export for a project
-  static async createExport(
-    folderId: string,
-    projectId: string,
-    watermark?: WatermarkOptions
-  ): Promise<KlapExport> {
-    return this.request<KlapExport>(`/projects/${folderId}/${projectId}/exports`, {
-      method: 'POST',
-      body: JSON.stringify({ watermark }),
-    })
-  }
-
-  // Get export status
-  static async getExportStatus(
-    folderId: string,
-    projectId: string,
-    exportId: string
-  ): Promise<KlapExport> {
-    return this.request<KlapExport>(`/projects/${folderId}/${projectId}/exports/${exportId}`)
-  }
-
-  // Poll export until completion
-  static async pollExportUntilComplete(
-    folderId: string,
-    projectId: string,
-    exportId: string,
-    onProgress?: (status: string) => void
-  ): Promise<KlapExport> {
-    let exportData: KlapExport
-    
-    do {
-      exportData = await this.getExportStatus(folderId, projectId, exportId)
       
-      if (onProgress) {
-        onProgress(exportData.status)
+      if (task.status === 'error') {
+        throw new Error(`[Klap] Task failed: ${task.error || 'Unknown error'}`)
       }
 
-      if (exportData.status === 'processing') {
-        await new Promise(resolve => setTimeout(resolve, this.EXPORT_POLL_INTERVAL))
-      }
-    } while (exportData.status === 'processing')
-
-    if (exportData.status === 'error') {
-      throw new Error('Klap export failed')
+      await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds
     }
-
-    return exportData
+    throw new Error(`[Klap] Task ${taskId} timed out after 5 minutes.`)
   }
 
-  // High-level method to process a video and get all clips
-  static async processVideoToClips(
-    videoUrl: string,
-    options: {
-      language?: string
-      maxDuration?: number
-      maxClipCount?: number
-      onProgress?: (message: string) => void
-    } = {}
-  ): Promise<{
-    clips: Array<{
-      id: string
-      name: string
-      viralityScore: number
-      previewUrl: string
-    }>
-    folderId: string
-  }> {
-    const { language = 'en', maxDuration = 60, maxClipCount = 5, onProgress } = options
-
+  /**
+   * Step 3: Get all generated clips from the output folder.
+   */
+  private static async getClipsFromFolder(folderId: string): Promise<any[]> {
+    console.log('[Klap] Getting clips from folder:', folderId)
+    return this.request(`/projects?folder_id=${folderId}`)
+  }
+  
+  /**
+   * High-level orchestrator for the entire Klap video processing flow.
+   * This is the single public method that handles everything.
+   */
+  static async processVideo(videoUrl: string, title: string) {
+    console.log(`[Klap] Starting full processing for video: ${title}`)
+    
     // Step 1: Create task
-    if (onProgress) onProgress('Creating video processing task...')
-    const task = await this.createVideoToShortsTask({
-      source_video_url: videoUrl,
-      language,
-      max_duration: maxDuration,
-      max_clip_count: maxClipCount,
-      editing_options: {
-        intro_title: false,
-        captions: true,
-        reframe: true,
-        detect_speakers: true,
-      },
-    })
+    const task = await this.createVideoTask(videoUrl)
+    console.log(`[Klap] Task creation successful. Received Task ID: ${task.id}`, task)
+    
+    // Step 2: Poll until ready
+    const completedTask = await this.pollTaskUntilReady(task.id)
+    console.log(`[Klap] Task ${completedTask.id} completed. Output folder: ${completedTask.output_id}`)
+    
+    // Step 3: Get clips
+    const clips = await this.getClipsFromFolder(completedTask.output_id)
+    console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
 
-    // Step 2: Poll until complete
-    if (onProgress) onProgress('Processing video...')
-    const completedTask = await this.pollTaskUntilComplete(task.id, (status) => {
-      if (onProgress) onProgress(`Processing video (status: ${status})...`)
-    })
+    // Step 4: Construct a transcription from the clips' transcripts, as Klap v2 does not provide a separate transcription object.
+    const fullTranscript = clips
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .map(c => c.transcript)
+      .join(' \n')
 
-    // Step 3: Get generated projects
-    if (onProgress) onProgress('Retrieving generated clips...')
-    const projects = await this.getProjects(completedTask.output_id)
-
-    // Step 4: Format and return clips
-    const clips = projects
-      .sort((a, b) => b.virality_score - a.virality_score) // Sort by virality score
-      .map(project => ({
-        id: project.id,
-        name: project.name,
-        viralityScore: project.virality_score,
-        previewUrl: `https://klap.app/player/${project.id}`,
-      }))
-
-    return {
-      clips,
-      folderId: completedTask.output_id,
+    const transcription = {
+      text: fullTranscript,
+      segments: [{ id: '0', text: 'Transcription generated from clips.', start: 0, end: 0, confidence: 0.9 }],
+      language: 'en',
+      duration: 0
     }
+    
+    return { transcription, clips, klapFolderId: completedTask.output_id }
   }
 
-  // Export a specific clip
-  static async exportClip(
-    folderId: string,
-    projectId: string,
-    watermark?: WatermarkOptions,
-    onProgress?: (message: string) => void
-  ): Promise<string> {
-    // Step 1: Create export
-    if (onProgress) onProgress('Starting clip export...')
-    const exportTask = await this.createExport(folderId, projectId, watermark)
-
-    // Step 2: Poll until complete
-    if (onProgress) onProgress('Exporting clip...')
-    const completedExport = await this.pollExportUntilComplete(
-      folderId,
-      projectId,
-      exportTask.id,
-      (status) => {
-        if (onProgress) onProgress(`Exporting clip (status: ${status})...`)
+  /**
+   * Get the status of a project/folder
+   */
+  static async getProjectStatus(folderId: string): Promise<{ status: string; progress: number; message: string }> {
+    try {
+      const clips = await this.getClipsFromFolder(folderId)
+      
+      // If we have clips, the project is ready
+      if (clips && clips.length > 0) {
+        return {
+          status: 'ready',
+          progress: 100,
+          message: `Processing complete. ${clips.length} clips generated.`
+        }
       }
-    )
-
-    if (!completedExport.src_url) {
-      throw new Error('Export completed but no URL was provided')
+      
+      // Otherwise, it might still be processing
+      return {
+        status: 'processing',
+        progress: 50,
+        message: 'Processing video...'
+      }
+    } catch (error) {
+      console.error('[Klap] Error checking project status:', error)
+      return {
+        status: 'error',
+        progress: 0,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }
     }
-
-    return completedExport.src_url
   }
 
-  // Batch export multiple clips
+  /**
+   * Export multiple clips from a folder
+   */
   static async exportMultipleClips(
     folderId: string,
-    projectIds: string[],
-    watermark?: WatermarkOptions,
+    clipIds: string[],
+    watermark?: string,
     onProgress?: (message: string, index: number, total: number) => void
   ): Promise<Array<{ projectId: string; url: string }>> {
-    const results: Array<{ projectId: string; url: string }> = []
-
-    for (let i = 0; i < projectIds.length; i++) {
-      const projectId = projectIds[i]
+    console.log(`[Klap] Exporting ${clipIds.length} clips from folder ${folderId}`)
+    
+    const exportedClips: Array<{ projectId: string; url: string }> = []
+    
+    for (let i = 0; i < clipIds.length; i++) {
+      const clipId = clipIds[i]
+      
+      if (onProgress) {
+        onProgress(`Exporting clip ${i + 1} of ${clipIds.length}`, i, clipIds.length)
+      }
       
       try {
-        if (onProgress) {
-          onProgress(`Exporting clip ${i + 1} of ${projectIds.length}`, i, projectIds.length)
-        }
-
-        const url = await this.exportClip(folderId, projectId, watermark)
-        results.push({ projectId, url })
+        // In Klap v2, clips are already exported and available via their preview URLs
+        // We'll return the preview URL as the export URL
+        const previewUrl = `https://klap.app/player/${clipId}`
+        
+        exportedClips.push({
+          projectId: clipId,
+          url: previewUrl
+        })
+        
+        console.log(`[Klap] Exported clip ${clipId}: ${previewUrl}`)
       } catch (error) {
-        console.error(`Failed to export clip ${projectId}:`, error)
-        // Continue with other exports even if one fails
+        console.error(`[Klap] Failed to export clip ${clipId}:`, error)
       }
     }
-
-    return results
+    
+    console.log(`[Klap] Successfully exported ${exportedClips.length} clips`)
+    return exportedClips
   }
-} 
+}

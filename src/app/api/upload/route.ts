@@ -1,4 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { v4 as uuidv4 } from 'uuid'
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,32 +38,44 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Generate a unique file name
+    const fileName = `${uuidv4()}-${file.name}`
+
+    // Upload file to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('videos')
+      .upload(fileName, file)
+
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError)
+      throw new Error(`Supabase Storage error: ${uploadError.message}`)
+    }
+
+    // Get the public URL of the uploaded file
+    const { data: publicUrlData } = supabase.storage
+      .from('videos')
+      .getPublicUrl(fileName)
+
+    const publicUrl = publicUrlData.publicUrl
+
     // Extract basic file metadata
     const metadata = {
       fileName: file.name,
       fileSize: formatFileSize(file.size),
       format: file.type.split('/')[1].toUpperCase(),
-      resolution: 'Unknown', // Will be extracted on client side
-      duration: '0:00', // Will be extracted on client side
     }
 
-    // In a real implementation, you would:
-    // 1. Save the file to cloud storage (S3, Cloudinary, etc.)
-    // 2. Extract actual video metadata (duration, resolution, codec, etc.)
-    // 3. Store the metadata in your preferred database
-
-    // For demo purposes, we return the metadata
-    // The actual video file will be handled on the client side
     return NextResponse.json({
-      id: `video_${Date.now()}`, // Generate a temporary ID
+      id: `video_${Date.now()}`,
       ...metadata,
+      url: publicUrl,
       message: 'Video uploaded successfully',
-      // In production, this would include a cloud storage URL
     })
   } catch (error) {
     console.error('Upload error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Failed to upload video'
     return NextResponse.json(
-      { error: 'Failed to upload video' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

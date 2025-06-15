@@ -1,114 +1,103 @@
-# 🎬 Inflio - AI-Powered Video Content Platform
+# Inflio - AI-Powered Video Content Platform
 
-Transform your videos into amazing content with AI - transcriptions, clips, blog posts, social media content, and more.
+Transform your videos into engaging content with AI. Generate clips, transcriptions, blog posts, and social media content automatically.
 
-## 🎯 Product Overview
+## Features
 
-Inflio is a comprehensive video content transformation platform that leverages cutting-edge AI to help creators and businesses maximize the value of their video content. Upload once, generate multiple content formats automatically.
+- 🎥 **Video Processing** - Upload and process videos up to 2GB
+- ✂️ **Smart Clips** - AI-powered clip generation with virality scores
+- 📝 **AI Transcription** - Automatic speech-to-text conversion with high accuracy
+- 📰 **Blog Generation** - Convert videos into SEO-optimized blog posts
+- 📱 **Social Media** - Create platform-specific social content
+- 🎙️ **Podcast Tools** - Generate chapters and show notes
+- 📊 **Analytics** - Track content performance across platforms
 
-### 🌟 Key Features
+## Tech Stack
 
-- **🎙️ AI Transcription** - Convert videos to text using OpenAI Whisper with 95%+ accuracy
-- **✂️ Smart Clip Generation** - AI identifies viral moments and creates short-form content via Klap API
-- **📝 Blog Post Creation** - Transform video transcripts into SEO-optimized articles
-- **📱 Social Media Content** - Generate platform-specific posts for Twitter, LinkedIn, Instagram, TikTok
-- **🎯 Personalized AI** - System learns your brand voice and style over time
-- **📊 Analytics Dashboard** - Track performance and content metrics
-- **🔄 Batch Processing** - Process multiple videos with workflow automation
-- **💾 Cloud Storage** - Secure video storage with Supabase
+- **Frontend**: Next.js 14, React, TypeScript
+- **Styling**: Tailwind CSS, Shadcn/ui
+- **Backend**: Next.js API Routes
+- **Database**: Supabase
+- **Authentication**: Clerk
+- **AI Services**: Advanced AI APIs for content processing
+- **Storage**: Supabase Storage
 
-### 🎬 How It Works
-
-1. **Upload** - Drag and drop your video (MP4, MOV, AVI, WebM up to 2GB)
-2. **Select Workflows** - Choose AI processing options (transcription, clips, blog, social)
-3. **AI Processing** - Watch real-time progress as AI transforms your content
-4. **Export & Share** - Download in multiple formats or share directly
-
-### 🤖 AI Personalization
-
-Inflio builds a personalized profile for each user:
-- **Brand Voice** - Professional, casual, friendly, playful, or inspirational
-- **Visual Style** - Colors, fonts, and design preferences
-- **Content Goals** - Engagement, sales, education, or brand awareness
-- **Learning System** - AI improves based on your feedback and edits
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+
-- Supabase account
-- Clerk account
-- OpenAI API key
-- Klap API key (optional)
-
-### Installation
-
-1. **Clone and install:**
-```bash
-git clone https://github.com/yourusername/inflio.git
-cd inflio
-npm install
-```
-
-2. **Set up environment variables:**
-Copy `.env.example` to `.env.local` and fill in your keys.
-
-3. **Set up database:**
-- Create a Supabase project
-- Run migrations in `migrations/` folder in order
-- Create "videos" storage bucket (make it public)
-
-4. **Configure Clerk webhook:**
-- In Clerk Dashboard → Webhooks → Add Endpoint
-- URL: `https://your-domain/api/webhooks/clerk`
-- Events: user.created, user.updated, user.deleted
-
-5. **Run development server:**
-```bash
-npm run dev
-```
-
-## 📁 Project Structure
+## Project Structure
 
 ```
-inflio/
-├── src/
-│   ├── app/              # Next.js app router
-│   ├── components/       # React components
-│   ├── lib/             # Utilities and services
-│   └── hooks/           # Custom React hooks
-├── migrations/          # Database migrations
-├── docs/               # Documentation
-└── public/             # Static assets
+src/
+├── app/                    # Next.js app directory
+│   ├── (dashboard)/       # Protected dashboard routes
+│   ├── api/               # API endpoints
+│   └── ...                # Public routes
+├── components/            # Reusable React components
+├── hooks/                 # Custom React hooks
+└── lib/                   # Utilities and services
+    ├── services/          # Service layer
+    ├── constants.ts       # App-wide constants
+    └── ...                # Other utilities
 ```
 
-## 🎯 Features
+## Getting Started
 
-- **AI Video Transcription** - OpenAI Whisper integration
-- **Smart Clip Generation** - Klap AI for viral moments
-- **Blog Post Creation** - Convert videos to articles
-- **User Personalization** - AI learns your style
-- **Real-time Processing** - Live progress tracking
-- **Multi-format Export** - Download in various formats
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/inflio.git
+   cd inflio
+   ```
 
-## 🚀 Deployment
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-See [docs/README_DEPLOYMENT.md](docs/README_DEPLOYMENT.md) for detailed deployment instructions.
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env.local
+   ```
+   
+   Required environment variables:
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   - `CLERK_SECRET_KEY`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - API keys for AI services (see `.env.example`)
 
-### Quick Deploy to Vercel
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyourusername%2Finflio)
+5. **Open [http://localhost:3000](http://localhost:3000)**
 
-## 🛠️ Tech Stack
+## Key Features Implementation
 
-- **Next.js 14** - React framework
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Supabase** - Database & storage
-- **Clerk** - Authentication
-- **OpenAI** - AI transcription
-- **Klap** - Video clips
+### Video Upload Flow
+1. User uploads video through `/studio/upload`
+2. Video is stored in Supabase Storage
+3. Project is created with selected workflows
+4. User is redirected to processing page
 
-## 📄 License
+### Processing Pipeline
+1. Video is processed using AI for transcription
+2. Smart algorithms generate clips from the video
+3. Results are stored in the database
+4. User can view and export content
 
-MIT License - see LICENSE file for details.
+### Smart Navigation
+- Processing projects automatically redirect to processing page
+- Loading overlay prevents interaction with incomplete projects
+- Consistent navigation patterns throughout the app
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
