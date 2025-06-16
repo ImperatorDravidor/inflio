@@ -4,10 +4,12 @@ import { handleError } from "@/lib/error-handler";
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const projectId = params.id;
+    
     if (!projectId) {
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 });
     }

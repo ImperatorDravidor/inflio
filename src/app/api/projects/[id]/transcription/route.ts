@@ -4,7 +4,7 @@ import { ProjectService } from '@/lib/services'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -15,6 +15,7 @@ export async function PATCH(
       )
     }
 
+    const params = await context.params;
     const projectId = params.id
     const body = await request.json()
     const { text, segments } = body
