@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KE,
 })
 
 export async function POST(request: NextRequest) {
@@ -50,28 +50,48 @@ export async function POST(request: NextRequest) {
     const prompt = `
       You are an expert content creator and SEO specialist. Your task is to convert the following video transcript into a well-structured, engaging, and SEO-friendly blog post.
       **Instructions:**
-      1. Create a compelling title.
-      2. Write a brief, engaging introduction.
-      3. Structure the content with clear markdown headings (H2, H3).
-      4. Rewrite the transcript into a narrative article. Do not just copy segments.
-      5. Maintain a ${blogStyle || 'professional'} tone.
-      6. Identify key takeaways and list them at the end.
-      7. Suggest 5-7 relevant SEO tags.
-      8. Write a meta description (150-160 characters).
+      1. Create a compelling title that captures the essence of the content.
+      2. Write an engaging introduction that hooks the reader.
+      3. Structure the content with clear markdown headings (## for H2, ### for H3).
+      4. Transform the transcript into a well-written article with proper flow and narrative structure.
+      5. Use a ${blogStyle || 'professional'} tone throughout.
+      6. Include relevant examples, explanations, and context where appropriate.
+      7. Create natural transitions between sections.
+      8. End with a strong conclusion that summarizes key points.
+      9. Identify 5-7 relevant SEO tags/keywords.
+      10. Write a meta description (150-160 characters) for SEO.
+      
+      **Important:** 
+      - Do not just copy transcript segments verbatim
+      - Create a cohesive narrative that reads like a professional blog post
+      - Use proper markdown formatting for emphasis, lists, and structure
+      - Make the content engaging and valuable for readers
+      
       **Transcript:**
       ---
       ${transcriptText}
       ---
+      
       **Output Format (JSON):**
-      Return a valid JSON object: { "title": "...", "content": "...", "excerpt": "...", "tags": [...], "seoTitle": "...", "seoDescription": "..." }
+      Return a valid JSON object with the following structure:
+      {
+        "title": "Engaging blog title",
+        "content": "Full blog content in markdown format",
+        "excerpt": "Brief 2-3 sentence summary of the blog post",
+        "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+        "seoTitle": "SEO optimized title (60 chars max)",
+        "seoDescription": "SEO meta description (150-160 chars)"
+      }
     `
 
     await updateTaskProgress(30, 'processing');
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-4o-2024-11-20',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 4000,
     })
 
     await updateTaskProgress(80, 'processing');

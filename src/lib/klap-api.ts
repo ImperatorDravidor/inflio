@@ -97,7 +97,7 @@ export class KlapAPIService {
    */
   private static async getClipsFromFolder(folderId: string): Promise<any[]> {
     console.log('[Klap] Getting clips from folder:', folderId)
-    return this.request(`/projects?folder_id=${folderId}`)
+    return this.request(`/projects/${folderId}`)
   }
   
   /**
@@ -118,21 +118,9 @@ export class KlapAPIService {
     // Step 3: Get clips
     const clips = await this.getClipsFromFolder(completedTask.output_id)
     console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
-
-    // Step 4: Construct a transcription from the clips' transcripts, as Klap v2 does not provide a separate transcription object.
-    const fullTranscript = clips
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      .map(c => c.transcript)
-      .join(' \n')
-
-    const transcription = {
-      text: fullTranscript,
-      segments: [{ id: '0', text: 'Transcription generated from clips.', start: 0, end: 0, confidence: 0.9 }],
-      language: 'en',
-      duration: 0
-    }
+    console.log(`[Klap] Raw clips data:`, JSON.stringify(clips, null, 2))
     
-    return { transcription, clips, klapFolderId: completedTask.output_id }
+    return { clips, klapFolderId: completedTask.output_id }
   }
 
   /**
@@ -188,22 +176,77 @@ export class KlapAPIService {
       }
       
       try {
-        // In Klap v2, clips are already exported and available via their preview URLs
-        // We'll return the preview URL as the export URL
-        const previewUrl = `https://klap.app/player/${clipId}`
+        // Create export task for this clip
+        console.log(`[Klap] Creating export for clip ${clipId}`)
         
+        const exportPayload: any = {}
+        if (watermark) {
+          exportPayload.watermark = { src_url: watermark }
+        }
+        
+        // Create export task
+        const exportTask = await this.request<{ id: string; status: string }>(
+          `/projects/${folderId}/${clipId}/exports`,
+          {
+            method: 'POST',
+            body: JSON.stringify(exportPayload)
+          }
+        )
+        
+        console.log(`[Klap] Export task created: ${exportTask.id}`)
+        
+        // Poll for export completion
+        let exportResult: any
+        for (let j = 0; j < 60; j++) { // Poll for up to 5 minutes
+          exportResult = await this.request<{ id: string; status: string; src_url?: string }>(
+            `/projects/${folderId}/${clipId}/exports/${exportTask.id}`
+          )
+          
+          console.log(`[Klap] Export status for ${clipId}: ${exportResult.status}`)
+          
+          if (exportResult.status === 'ready' && exportResult.src_url) {
+            break // Success
+          }
+          
+          if (exportResult.status === 'error') {
+            throw new Error(`Export failed for clip ${clipId}. Reason: ${exportResult.error || 'Unknown'}`)
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds
+        }
+        
+        if (exportResult && exportResult.src_url) {
         exportedClips.push({
           projectId: clipId,
-          url: previewUrl
+            url: exportResult.src_url
         })
+          console.log(`[Klap] Successfully exported clip ${clipId}: ${exportResult.src_url}`)
+        } else {
+          throw new Error(`Export timed out for clip ${clipId}. Final status: ${exportResult?.status}`)
+        }
         
-        console.log(`[Klap] Exported clip ${clipId}: ${previewUrl}`)
       } catch (error) {
-        console.error(`[Klap] Failed to export clip ${clipId}:`, error)
+        console.error(`[Klap] Failed to process export for clip ${clipId}:`, error)
+        // Re-throw the error to be handled by the caller
+        throw error;
       }
     }
     
-    console.log(`[Klap] Successfully exported ${exportedClips.length} clips`)
+    console.log(`[Klap] Export complete. Successfully exported ${exportedClips.length} clips`)
     return exportedClips
   }
-}
+  
+  /**
+   * Get a single clip's details
+   */
+  static async getClipDetails(folderId: string, clipId: string): Promise<any> {
+    console.log(`[Klap] Getting details for clip ${clipId} in folder ${folderId}`)
+    try {
+      return await this.request(`/projects/${folderId}/${clipId}`)
+    } catch (error) {
+      console.error(`[Klap] Failed to get clip details:`, error)
+      // Try without folder ID as fallback
+      return await this.request(`/projects/${clipId}`)
+    }
+  }
+} 

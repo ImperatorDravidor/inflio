@@ -50,6 +50,11 @@ export interface ClipData {
   previewUrl?: string
   exportUrl?: string
   exported?: boolean
+  // New fields for enhanced clip data
+  rawKlapData?: any // Store the raw response from Klap for future reference
+  createdAt?: string
+  viralityExplanation?: string
+  transcript?: string // Store the clip's transcript if available
 }
 
 export interface BlogPost {
@@ -135,6 +140,7 @@ export interface Project {
   tags: string[]
   user_id?: string
   klap_project_id?: string // Klap API project ID for tracking
+  klap_folder_id?: string // Klap API folder ID for exports
 }
 
 export interface ProjectSettings {

@@ -175,6 +175,13 @@ export class ProjectService {
     return updatedProject
   }
 
+  // Start processing for a project
+  static async startProcessing(projectId: string): Promise<void> {
+    await fetch(`/api/projects/${projectId}/process`, {
+      method: 'POST'
+    });
+  }
+
   // Update task progress
   static async updateTaskProgress(
     projectId: string,

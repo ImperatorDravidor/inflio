@@ -28,7 +28,8 @@ import {
   IconPlus,
   IconLayoutGrid,
   IconList,
-  IconX
+  IconX,
+  IconSparkles
 } from "@tabler/icons-react"
 import {
   DropdownMenu,
@@ -48,7 +49,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useRouter } from "next/navigation"
-import { ProjectService } from "@/lib/services"
+import { ProjectService, UsageService } from "@/lib/services"
 import { Project } from "@/lib/project-types"
 import { formatDuration, formatFileSize } from "@/lib/video-utils"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -56,6 +57,7 @@ import { toast } from "sonner"
 import { useAuth } from "@clerk/nextjs"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import type { UsageData } from "@/lib/usage-service"
 
 type ViewMode = 'grid' | 'list'
 type SortOption = 'recent' | 'name' | 'duration' | 'status'
@@ -366,6 +368,12 @@ export default function ProjectsPage() {
   const [sortOption, setSortOption] = useState<SortOption>('recent')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [usageData, setUsageData] = useState<UsageData>({
+    used: 0,
+    limit: 25,
+    plan: 'basic',
+    resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
+  })
 
   const loadProjects = async () => {
     if (!userId) return
@@ -384,6 +392,21 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     loadProjects()
+    
+    // Load usage data
+    const usage = UsageService.getUsage()
+    setUsageData(usage)
+    
+    // Listen for usage updates
+    const handleUsageUpdate = (e: CustomEvent<UsageData>) => {
+      setUsageData(e.detail)
+    }
+    
+    window.addEventListener('usageUpdate', handleUsageUpdate as EventListener)
+    
+    return () => {
+      window.removeEventListener('usageUpdate', handleUsageUpdate as EventListener)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
@@ -469,6 +492,7 @@ export default function ProjectsPage() {
           size="lg"
           className="gradient-premium hover:opacity-90 shadow-lg"
           onClick={() => router.push('/studio/upload')}
+          disabled={UsageService.getRemainingVideos() === 0}
         >
           <IconPlus className="h-5 w-5 mr-2" />
           New Project
@@ -504,13 +528,32 @@ export default function ProjectsPage() {
             <p className="text-xs text-muted-foreground mt-1">Completed</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Published</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <IconSparkles className="h-4 w-4 text-primary" />
+              Monthly Limit
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.published}</div>
-            <p className="text-xs text-muted-foreground mt-1">Live content</p>
+            <div className="text-2xl font-bold gradient-text">{UsageService.getRemainingVideos()}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              of {usageData.limit} remaining
+            </p>
+            <Progress 
+              value={UsageService.getUsagePercentage()} 
+              className="h-1.5 mt-2" 
+            />
+            {UsageService.getRemainingVideos() === 0 && (
+              <Button 
+                variant="link" 
+                size="sm" 
+                className="p-0 h-auto mt-2 text-xs"
+                onClick={() => router.push('/settings#upgrade')}
+              >
+                Upgrade plan →
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>

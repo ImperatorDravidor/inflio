@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { 
   IconUser,
   IconBell,
@@ -25,13 +26,23 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
+import { UsageService } from "@/lib/services"
+import type { UsageData } from "@/lib/usage-service"
+import { useUser } from "@clerk/nextjs"
 
 export default function SettingsPage() {
+  const { user } = useUser()
   const [loading, setLoading] = useState(false)
+  const [usageData, setUsageData] = useState<UsageData>({
+    used: 0,
+    limit: 25,
+    plan: 'basic',
+    resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
+  })
   const [settings, setSettings] = useState({
     // Account
-    email: "john@example.com",
-    username: "johndoe",
+    email: user?.primaryEmailAddress?.emailAddress || "",
+    username: user?.username || user?.firstName || "",
     language: "en",
     timezone: "UTC-5",
     
@@ -52,10 +63,39 @@ export default function SettingsPage() {
     sessionTimeout: 30,
     
     // Billing
-    plan: "pro",
-    billingEmail: "john@example.com",
+    plan: "basic",
+    billingEmail: user?.primaryEmailAddress?.emailAddress || "",
     autoRenew: true
   })
+
+  useEffect(() => {
+    // Load usage data
+    const usage = UsageService.getUsage()
+    setUsageData(usage)
+    
+    // Update settings with user data
+    if (user) {
+      setSettings(prev => ({ 
+        ...prev, 
+        plan: usage.plan,
+        email: user.primaryEmailAddress?.emailAddress || "",
+        username: user.username || user.firstName || "",
+        billingEmail: user.primaryEmailAddress?.emailAddress || ""
+      }))
+    }
+    
+    // Listen for usage updates
+    const handleUsageUpdate = (e: CustomEvent<UsageData>) => {
+      setUsageData(e.detail)
+      setSettings(prev => ({ ...prev, plan: e.detail.plan }))
+    }
+    
+    window.addEventListener('usageUpdate', handleUsageUpdate as EventListener)
+    
+    return () => {
+      window.removeEventListener('usageUpdate', handleUsageUpdate as EventListener)
+    }
+  }, [user])
 
   const handleSave = async (section: string) => {
     setLoading(true)
@@ -494,7 +534,7 @@ export default function SettingsPage() {
           </TabsContent>
 
           {/* Billing */}
-          <TabsContent value="billing" className="space-y-6">
+          <TabsContent value="billing" className="space-y-6" id="upgrade">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -506,20 +546,161 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Current Plan */}
                 <div className="p-4 rounded-lg border bg-gradient-to-r from-primary/10 to-accent/10">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-semibold flex items-center gap-2">
                       <IconSparkles className="h-5 w-5 text-primary" />
-                      Pro Plan
+                      {usageData.plan.charAt(0).toUpperCase() + usageData.plan.slice(1)} Plan
                     </h4>
                     <Badge>Active</Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    $29/month • Renews on March 1, 2024
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {usageData.plan === 'basic' ? 'Free' : usageData.plan === 'pro' ? '$49/month' : 'Custom pricing'} • Resets {new Date(usageData.resetDate).toLocaleDateString()}
                   </p>
+                  
+                  {/* Usage Stats */}
+                  <div className="space-y-3 mb-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Monthly Video Usage</span>
+                      <span className="font-medium">{usageData.used} / {usageData.limit}</span>
+                    </div>
+                    <Progress value={UsageService.getUsagePercentage()} className="h-2" />
+                    <p className="text-xs text-muted-foreground">
+                      {UsageService.getRemainingVideos()} videos remaining this month
+                    </p>
+                  </div>
+                  
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">Change Plan</Button>
-                    <Button variant="outline" size="sm">Cancel Subscription</Button>
+                    {usageData.plan === 'basic' && (
+                      <Button className="gradient-premium" onClick={() => {
+                        toast.info("Upgrade feature coming soon!")
+                      }}>
+                        Upgrade to Pro
+                      </Button>
+                    )}
+                    {usageData.plan !== 'basic' && (
+                      <>
+                        <Button variant="outline" size="sm">Change Plan</Button>
+                        <Button variant="outline" size="sm">Cancel Subscription</Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Available Plans */}
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Available Plans</h4>
+                  <div className="grid gap-4">
+                    {/* Basic Plan */}
+                    <div className={`p-4 rounded-lg border ${usageData.plan === 'basic' ? 'border-primary bg-primary/5' : ''}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h5 className="font-semibold">Basic Plan</h5>
+                          <p className="text-sm text-muted-foreground">Perfect for getting started</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold">Free</p>
+                        </div>
+                      </div>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          25 videos per month
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Basic AI features
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Standard support
+                        </li>
+                      </ul>
+                      {usageData.plan === 'basic' && (
+                        <Badge className="mt-3" variant="secondary">Current Plan</Badge>
+                      )}
+                    </div>
+                    
+                    {/* Pro Plan */}
+                    <div className={`p-4 rounded-lg border ${usageData.plan === 'pro' ? 'border-primary bg-primary/5' : ''}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h5 className="font-semibold">Pro Plan</h5>
+                          <p className="text-sm text-muted-foreground">For content creators</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold">$49<span className="text-sm font-normal">/mo</span></p>
+                        </div>
+                      </div>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          100 videos per month
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Advanced AI features
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Priority support
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Custom branding
+                        </li>
+                      </ul>
+                      {usageData.plan === 'pro' ? (
+                        <Badge className="mt-3" variant="secondary">Current Plan</Badge>
+                      ) : (
+                        <Button className="mt-3 w-full" variant="outline">
+                          Upgrade to Pro
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {/* Enterprise Plan */}
+                    <div className={`p-4 rounded-lg border ${usageData.plan === 'enterprise' ? 'border-primary bg-primary/5' : ''}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h5 className="font-semibold">Enterprise Plan</h5>
+                          <p className="text-sm text-muted-foreground">For teams and businesses</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold">Custom</p>
+                        </div>
+                      </div>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Unlimited videos
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          All AI features
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Dedicated support
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          API access
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <IconCheck className="h-4 w-4 text-green-500" />
+                          Team collaboration
+                        </li>
+                      </ul>
+                      {usageData.plan === 'enterprise' ? (
+                        <Badge className="mt-3" variant="secondary">Current Plan</Badge>
+                      ) : (
+                        <Button className="mt-3 w-full" variant="outline">
+                          Contact Sales
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 

@@ -34,14 +34,21 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { ProjectService } from "@/lib/services"
+import { ProjectService, UsageService } from "@/lib/services"
+import type { UsageData } from "@/lib/usage-service"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { userId } = useAuth()
   const [projectCount, setProjectCount] = React.useState<number>(0)
+  const [usageData, setUsageData] = React.useState<UsageData>({
+    used: 0,
+    limit: 25,
+    plan: 'basic',
+    resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
+  })
   
-  // Fetch project count on mount
+  // Fetch project count and usage data on mount
   React.useEffect(() => {
     const fetchProjectCount = async () => {
       try {
@@ -57,7 +64,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     }
     
+    const updateUsageData = () => {
+      const usage = UsageService.getUsage()
+      setUsageData(usage)
+    }
+    
     fetchProjectCount()
+    updateUsageData()
     
     // Listen for project updates
     const handleStorageChange = (e: StorageEvent) => {
@@ -75,9 +88,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     
     window.addEventListener('projectUpdate', handleProjectUpdate)
     
+    // Listen for usage updates
+    const handleUsageUpdate = (e: CustomEvent<UsageData>) => {
+      setUsageData(e.detail)
+    }
+    
+    window.addEventListener('usageUpdate', handleUsageUpdate as EventListener)
+    
     return () => {
       window.removeEventListener('storage', handleStorageChange)
       window.removeEventListener('projectUpdate', handleProjectUpdate)
+      window.removeEventListener('usageUpdate', handleUsageUpdate as EventListener)
     }
   }, [userId])
   
@@ -126,6 +147,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       description: "App preferences"
     },
   ]
+  
+  const usagePercentage = UsageService.getUsagePercentage()
+  const remainingVideos = UsageService.getRemainingVideos()
   
   return (
     <Sidebar variant="inset" className="flex flex-col h-screen overflow-hidden border-r border-sidebar-border/60 bg-gradient-to-b from-sidebar/98 to-sidebar backdrop-blur-xl" {...props}>
@@ -212,15 +236,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-sidebar-foreground">Monthly Usage</p>
-                <p className="text-xs text-sidebar-foreground/70">Video processing</p>
+                <p className="text-xs text-sidebar-foreground/70 capitalize">{usageData.plan} plan</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-sidebar-primary">75</p>
-                <p className="text-xs text-sidebar-foreground/60">of 100</p>
+                <p className="text-lg font-bold text-sidebar-primary">{usageData.used}</p>
+                <p className="text-xs text-sidebar-foreground/60">of {usageData.limit}</p>
               </div>
             </div>
-            <Progress value={75} className="h-2 bg-sidebar-accent/60" />
-            <p className="text-xs text-sidebar-foreground/70 text-center">25 videos remaining this month</p>
+            <Progress value={usagePercentage} className="h-2 bg-sidebar-accent/60" />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-sidebar-foreground/70">
+                {remainingVideos} videos remaining
+              </p>
+              {remainingVideos === 0 && (
+                <Link href="/settings#upgrade" className="text-xs text-sidebar-primary hover:underline">
+                  Upgrade
+                </Link>
+              )}
+            </div>
           </div>
         </div>
         

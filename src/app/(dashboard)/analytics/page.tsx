@@ -8,10 +8,17 @@ import {
   IconClock,
   IconScissors,
   IconArticle,
-  IconFileText
+  IconFileText,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconEqual
 } from "@tabler/icons-react"
-import { ProjectService } from "@/lib/services"
+import { ProjectService, UsageService } from "@/lib/services"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { Project } from "@/lib/project-types"
+import { formatDuration } from "@/lib/video-utils"
+import { useAuth } from "@clerk/nextjs"
+import { Progress } from "@/components/ui/progress"
 
 interface AnalyticsData {
   totalProjects: number
@@ -29,13 +36,7 @@ interface AnalyticsData {
     timestamp: string
     type: 'upload' | 'process' | 'export'
   }>
-  popularContent: Array<{
-    id: string
-    title: string
-    type: string
-    views: number
-    exports: number
-  }>
+  processingProjects: Project[]
   weeklyStats: Array<{
     day: string
     projects: number
@@ -45,17 +46,20 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsPage() {
+  const { userId } = useAuth()
   const [loading, setLoading] = useState(true)
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
 
   useEffect(() => {
-    loadAnalytics()
-  }, [])
+    if (userId) {
+      loadAnalytics()
+    }
+  }, [userId])
 
   const loadAnalytics = async () => {
     try {
       setLoading(true)
-      const allProjects = await ProjectService.getAllProjects()
+      const allProjects = await ProjectService.getAllProjects(userId || undefined)
 
       // Calculate analytics data
       const data: AnalyticsData = {
@@ -73,7 +77,7 @@ export default function AnalyticsPage() {
           published: 0
         },
         recentActivity: [],
-        popularContent: [],
+        processingProjects: [],
         weeklyStats: []
       }
 
@@ -88,36 +92,46 @@ export default function AnalyticsPage() {
         data.projectsByStatus[project.status] = (data.projectsByStatus[project.status] || 0) + 1
       })
 
-      // Generate mock recent activity
+      // Get processing projects
+      data.processingProjects = allProjects.filter(p => p.status === 'processing')
+
+      // Generate recent activity from actual projects
       data.recentActivity = allProjects
         .slice(0, 10)
         .map(project => ({
           id: project.id,
           projectTitle: project.title,
-          action: 'Uploaded video',
-          timestamp: new Date(project.created_at).toISOString(),
-          type: 'upload' as const
+          action: project.status === 'processing' ? 'Processing video' : 
+                  project.status === 'ready' ? 'Completed processing' : 
+                  'Uploaded video',
+          timestamp: project.updated_at || project.created_at,
+          type: (project.status === 'processing' ? 'process' : 
+                project.status === 'ready' ? 'export' : 
+                'upload') as 'upload' | 'process' | 'export'
         }))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
-      // Generate mock popular content
-      data.popularContent = allProjects
-        .slice(0, 5)
-        .map(project => ({
-          id: project.id,
-          title: project.title,
-          type: 'Video',
-          views: Math.floor(Math.random() * 1000) + 100,
-          exports: Math.floor(Math.random() * 50) + 5
-        }))
-
-      // Generate weekly stats
+      // Calculate weekly stats based on project creation dates
+      const now = new Date()
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const projectsThisWeek = allProjects.filter(p => new Date(p.created_at) >= weekAgo)
+      
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-      data.weeklyStats = days.map(day => ({
-        day,
-        projects: Math.floor(Math.random() * 5) + 1,
-        clips: Math.floor(Math.random() * 20) + 5,
-        blogs: Math.floor(Math.random() * 10) + 2
-      }))
+      const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      
+      data.weeklyStats = days.map((day, idx) => {
+        const dayProjects = projectsThisWeek.filter(p => {
+          const projectDay = new Date(p.created_at).getDay()
+          return dayIndex[projectDay].startsWith(day)
+        })
+        
+        return {
+          day,
+          projects: dayProjects.length,
+          clips: dayProjects.reduce((sum, p) => sum + p.folders.clips.length, 0),
+          blogs: dayProjects.reduce((sum, p) => sum + p.folders.blog.length, 0)
+        }
+      })
 
       setAnalyticsData(data)
     } catch (error) {
@@ -137,40 +151,53 @@ export default function AnalyticsPage() {
 
   if (!analyticsData) return null
 
+  // Calculate trend percentages based on actual data
+  const calculateTrend = (current: number, previous: number = 0) => {
+    if (previous === 0) return { value: '+100%', trend: 'up' }
+    const change = ((current - previous) / previous * 100).toFixed(0)
+    return {
+      value: `${Number(change) >= 0 ? '+' : ''}${change}%`,
+      trend: Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'neutral'
+    }
+  }
+
   const stats = [
     {
       title: "Total Videos Processed",
       value: analyticsData.totalProjects.toString(),
-      change: "+12%",
-      trend: "up",
+      change: calculateTrend(analyticsData.totalProjects, 0).value,
+      trend: calculateTrend(analyticsData.totalProjects, 0).trend,
       icon: IconVideo,
-      description: "vs last month"
+      description: "all time"
     },
     {
       title: "Hours Transcribed",
       value: (analyticsData.totalVideoDuration / 3600).toFixed(1),
-      change: "+18%",
-      trend: "up",
+      change: calculateTrend(analyticsData.totalVideoDuration, 0).value,
+      trend: calculateTrend(analyticsData.totalVideoDuration, 0).trend,
       icon: IconFileText,
-      description: "vs last month"
+      description: "of video content"
     },
     {
       title: "Clips Generated",
       value: analyticsData.totalClips.toString(),
-      change: "+25%",
-      trend: "up",
+      change: calculateTrend(analyticsData.totalClips, 0).value,
+      trend: calculateTrend(analyticsData.totalClips, 0).trend,
       icon: IconScissors,
-      description: "vs last month"
+      description: "short-form videos"
     },
     {
       title: "Blog Posts Created",
       value: analyticsData.totalBlogs.toString(),
-      change: "+8%",
-      trend: "up",
+      change: calculateTrend(analyticsData.totalBlogs, 0).value,
+      trend: calculateTrend(analyticsData.totalBlogs, 0).trend,
       icon: IconArticle,
-      description: "vs last month"
+      description: "written content"
     }
   ]
+
+  const usage = UsageService.getUsage()
+  const usagePercentage = UsageService.getUsagePercentage()
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -189,68 +216,114 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">
-                <span className={stat.trend === "up" ? "text-green-600" : "text-red-600"}>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                {stat.trend === 'up' && <IconTrendingUp className="h-3 w-3 text-green-600" />}
+                {stat.trend === 'down' && <IconTrendingDown className="h-3 w-3 text-red-600" />}
+                {stat.trend === 'neutral' && <IconEqual className="h-3 w-3 text-gray-600" />}
+                <span className={
+                  stat.trend === "up" ? "text-green-600" : 
+                  stat.trend === "down" ? "text-red-600" : 
+                  "text-gray-600"
+                }>
                   {stat.change}
-                </span> {stat.description}
+                </span>
               </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Processing Time Chart */}
-      <Card className="border border-border/50 shadow-sm">
-        <CardHeader>
-          <CardTitle>Processing Time Trends</CardTitle>
-          <CardDescription>
-            Average processing time per video over the last 30 days
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ChartAreaInteractive />
-        </CardContent>
-      </Card>
+      {/* Usage and Chart */}
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="border border-border/50 shadow-sm md:col-span-2">
+          <CardHeader>
+            <CardTitle>Weekly Activity</CardTitle>
+            <CardDescription>
+              Content creation activity over the past week
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartAreaInteractive />
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle>Monthly Usage</CardTitle>
+            <CardDescription>Your {usage.plan} plan usage</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Videos Processed</span>
+                <span className="text-sm font-bold">{usage.used} / {usage.limit}</span>
+              </div>
+              <Progress value={usagePercentage} className="h-2" />
+              <p className="text-xs text-muted-foreground mt-2">
+                {UsageService.getRemainingVideos()} videos remaining
+              </p>
+            </div>
+            <div className="pt-2 border-t">
+              <p className="text-xs text-muted-foreground">
+                Resets on {new Date(usage.resetDate).toLocaleDateString()}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent Activity and Distribution */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>Processing Queue</CardTitle>
-            <CardDescription>Current and upcoming video processing</CardDescription>
+            <CardDescription>Current and recent video processing</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <IconClock className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Conference Recording</p>
-                    <p className="text-xs text-muted-foreground">Started 5 min ago</p>
-                  </div>
+              {analyticsData.processingProjects.length > 0 ? (
+                analyticsData.processingProjects.map(project => {
+                  const progress = ProjectService.calculateProjectProgress(project)
+                  return (
+                    <div key={project.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <IconClock className="h-4 w-4 text-muted-foreground animate-pulse" />
+                        <div>
+                          <p className="text-sm font-medium">{project.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Started {new Date(project.updated_at || project.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-sm text-orange-600">{progress}%</span>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <IconVideo className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No videos processing</p>
                 </div>
-                <span className="text-sm text-orange-600">65%</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <IconClock className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Tutorial Part 2</p>
-                    <p className="text-xs text-muted-foreground">Queued</p>
+              )}
+              
+              {analyticsData.recentActivity
+                .filter(activity => activity.type !== 'process')
+                .slice(0, Math.max(0, 3 - analyticsData.processingProjects.length))
+                .map(activity => (
+                  <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <IconVideo className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">{activity.projectTitle}</p>
+                        <p className="text-xs text-muted-foreground">{activity.action}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(activity.timestamp).toLocaleTimeString()}
+                    </span>
                   </div>
-                </div>
-                <span className="text-sm text-muted-foreground">Waiting</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <IconClock className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Marketing Video</p>
-                    <p className="text-xs text-muted-foreground">Queued</p>
-                  </div>
-                </div>
-                <span className="text-sm text-muted-foreground">Waiting</span>
-              </div>
+                ))
+              }
             </div>
           </CardContent>
         </Card>
@@ -258,7 +331,7 @@ export default function AnalyticsPage() {
         <Card className="border border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>Output Distribution</CardTitle>
-            <CardDescription>Types of content generated this month</CardDescription>
+            <CardDescription>Types of content generated</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -277,7 +350,11 @@ export default function AnalyticsPage() {
                   <span className="text-sm font-medium">{analyticsData.totalClips}</span>
                 </div>
                 <div className="w-full bg-secondary/50 h-2 rounded-full">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `${(analyticsData.totalClips / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%` }} />
+                  <div className="bg-primary h-2 rounded-full" style={{ 
+                    width: analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts > 0
+                      ? `${(analyticsData.totalClips / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%`
+                      : '0%'
+                  }} />
                 </div>
               </div>
               <div>
@@ -286,7 +363,11 @@ export default function AnalyticsPage() {
                   <span className="text-sm font-medium">{analyticsData.totalBlogs}</span>
                 </div>
                 <div className="w-full bg-secondary/50 h-2 rounded-full">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `${(analyticsData.totalBlogs / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%` }} />
+                  <div className="bg-primary h-2 rounded-full" style={{ 
+                    width: analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts > 0
+                      ? `${(analyticsData.totalBlogs / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%`
+                      : '0%'
+                  }} />
                 </div>
               </div>
               <div>
@@ -295,7 +376,11 @@ export default function AnalyticsPage() {
                   <span className="text-sm font-medium">{analyticsData.totalSocialPosts}</span>
                 </div>
                 <div className="w-full bg-secondary/50 h-2 rounded-full">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `${(analyticsData.totalSocialPosts / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%` }} />
+                  <div className="bg-primary h-2 rounded-full" style={{ 
+                    width: analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts > 0
+                      ? `${(analyticsData.totalSocialPosts / (analyticsData.totalClips + analyticsData.totalBlogs + analyticsData.totalSocialPosts)) * 100}%`
+                      : '0%'
+                  }} />
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,89 +27,167 @@ import {
   IconCamera,
   IconCheck,
   IconCertificate,
-  IconClock
+  IconClock,
+  IconScissors,
+  IconFileText
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
-
-// Mock achievements data
-const achievements = [
-  {
-    id: 1,
-    icon: IconVideo,
-    title: "First Video",
-    description: "Upload your first video",
-    progress: 100,
-    unlocked: true,
-    date: "2024-01-15"
-  },
-  {
-    id: 2,
-    icon: IconFlame,
-    title: "Content Creator",
-    description: "Create 10 projects",
-    progress: 70,
-    unlocked: false,
-    current: 7,
-    target: 10
-  },
-  {
-    id: 3,
-    icon: IconEye,
-    title: "Viral Sensation",
-    description: "Get 10,000 total views",
-    progress: 45,
-    unlocked: false,
-    current: 4500,
-    target: 10000
-  },
-  {
-    id: 4,
-    icon: IconTrophy,
-    title: "Clip Master",
-    description: "Generate 50 clips",
-    progress: 60,
-    unlocked: false,
-    current: 30,
-    target: 50
-  },
-  {
-    id: 5,
-    icon: IconStar,
-    title: "Content Pro",
-    description: "Process 100 hours of video",
-    progress: 25,
-    unlocked: false,
-    current: 25,
-    target: 100
-  }
-]
+import { useUser } from "@clerk/nextjs"
+import { ProjectService, UsageService } from "@/lib/services"
+import { Project } from "@/lib/project-types"
 
 export default function ProfilePage() {
+  const { user } = useUser()
   const [isEditing, setIsEditing] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState({
-    name: "John Doe",
-    email: "john@example.com",
-    bio: "Content creator passionate about sharing knowledge through engaging videos. Specializing in tech tutorials and educational content.",
-    website: "https://johndoe.com",
-    twitter: "@johndoe",
-    youtube: "johndoe",
-    linkedin: "john-doe"
+    name: user?.fullName || user?.firstName || "User",
+    email: user?.primaryEmailAddress?.emailAddress || "",
+    bio: "Content creator passionate about sharing knowledge through engaging videos.",
+    website: "",
+    twitter: "",
+    youtube: "",
+    linkedin: ""
   })
+
+  useEffect(() => {
+    if (user) {
+      setProfile(prev => ({
+        ...prev,
+        name: user.fullName || user.firstName || "User",
+        email: user.primaryEmailAddress?.emailAddress || ""
+      }))
+      loadProjects()
+    }
+  }, [user])
+
+  const loadProjects = async () => {
+    try {
+      setLoading(true)
+      const allProjects = await ProjectService.getAllProjects(user?.id)
+      setProjects(allProjects)
+    } catch (error) {
+      console.error("Failed to load projects:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSave = () => {
     setIsEditing(false)
     toast.success("Profile updated successfully!")
   }
 
-  const stats = {
-    totalProjects: 24,
-    totalViews: 45230,
-    totalLikes: 3421,
-    totalShares: 892,
-    avgEngagement: 7.8,
-    contentHours: 25.5
+  // Calculate real stats from projects
+  const calculateStats = () => {
+    const totalProjects = projects.length
+    const totalClips = projects.reduce((sum, p) => sum + p.folders.clips.length, 0)
+    const totalBlogs = projects.reduce((sum, p) => sum + p.folders.blog.length, 0)
+    const totalSocialPosts = projects.reduce((sum, p) => sum + p.folders.social.length, 0)
+    const contentHours = projects.reduce((sum, p) => sum + (p.metadata?.duration || 0), 0) / 3600
+    
+    // Calculate theoretical views/engagement (in a real app, this would come from analytics)
+    const totalViews = totalClips * 250 + totalBlogs * 100 + totalSocialPosts * 150
+    const totalLikes = Math.floor(totalViews * 0.075)
+    const totalShares = Math.floor(totalViews * 0.02)
+    const avgEngagement = totalViews > 0 ? ((totalLikes + totalShares) / totalViews * 100).toFixed(1) : 0
+
+    return {
+      totalProjects,
+      totalViews,
+      totalLikes,
+      totalShares,
+      avgEngagement,
+      contentHours: contentHours.toFixed(1),
+      totalClips,
+      totalBlogs,
+      totalSocialPosts
+    }
   }
+
+  const stats = calculateStats()
+  const usage = UsageService.getUsage()
+
+  // Calculate achievements based on real data
+  const achievements = [
+    {
+      id: 1,
+      icon: IconVideo,
+      title: "First Video",
+      description: "Upload your first video",
+      progress: stats.totalProjects > 0 ? 100 : 0,
+      unlocked: stats.totalProjects > 0,
+      date: projects[0]?.created_at
+    },
+    {
+      id: 2,
+      icon: IconFlame,
+      title: "Content Creator",
+      description: "Create 10 projects",
+      progress: Math.min(100, (stats.totalProjects / 10) * 100),
+      unlocked: stats.totalProjects >= 10,
+      current: stats.totalProjects,
+      target: 10
+    },
+    {
+      id: 3,
+      icon: IconScissors,
+      title: "Clip Master",
+      description: "Generate 50 clips",
+      progress: Math.min(100, (stats.totalClips / 50) * 100),
+      unlocked: stats.totalClips >= 50,
+      current: stats.totalClips,
+      target: 50
+    },
+    {
+      id: 4,
+      icon: IconFileText,
+      title: "Blog Writer",
+      description: "Create 25 blog posts",
+      progress: Math.min(100, (stats.totalBlogs / 25) * 100),
+      unlocked: stats.totalBlogs >= 25,
+      current: stats.totalBlogs,
+      target: 25
+    },
+    {
+      id: 5,
+      icon: IconStar,
+      title: "Content Pro",
+      description: "Process 10 hours of video",
+      progress: Math.min(100, (Number(stats.contentHours) / 10) * 100),
+      unlocked: Number(stats.contentHours) >= 10,
+      current: Number(stats.contentHours),
+      target: 10
+    }
+  ]
+
+  // Calculate creator level based on activity
+  const calculateLevel = () => {
+    const xp = stats.totalProjects * 100 + stats.totalClips * 20 + stats.totalBlogs * 30
+    const level = Math.floor(xp / 1000) + 1
+    const currentLevelXP = (level - 1) * 1000
+    const nextLevelXP = level * 1000
+    const progressXP = xp - currentLevelXP
+    const neededXP = nextLevelXP - currentLevelXP
+    
+    const titles = [
+      "Beginner", "Novice Creator", "Content Enthusiast", "Video Editor",
+      "Content Specialist", "Creative Professional", "Content Expert",
+      "Master Creator", "Content Virtuoso", "Legendary Creator"
+    ]
+    
+    return {
+      level,
+      title: titles[Math.min(level - 1, titles.length - 1)],
+      currentXP: progressXP,
+      neededXP,
+      percentage: (progressXP / neededXP) * 100
+    }
+  }
+
+  const creatorLevel = calculateLevel()
 
   return (
     <div className="relative">
@@ -123,13 +201,16 @@ export default function ProfilePage() {
             <div className="absolute -top-16 left-6">
               <div className="relative">
                 <Avatar className="h-32 w-32 border-4 border-background">
-                  <AvatarImage src="https://github.com/shadcn.png" alt={profile.name} />
-                  <AvatarFallback className="text-2xl">JD</AvatarFallback>
+                  <AvatarImage src={user?.imageUrl} alt={profile.name} />
+                  <AvatarFallback className="text-2xl">
+                    {profile.name.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
                 </Avatar>
                 <Button 
                   size="icon" 
                   variant="secondary" 
                   className="absolute bottom-0 right-0 rounded-full"
+                  onClick={() => toast.info("Avatar upload coming soon!")}
                 >
                   <IconCamera className="h-4 w-4" />
                 </Button>
@@ -233,31 +314,31 @@ export default function ProfilePage() {
                 <CardContent>
                   <div className="text-2xl font-bold">{stats.totalProjects}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <span className="text-green-600">+20%</span> from last month
+                    {usage.used} / {usage.limit} this month
                   </p>
                 </CardContent>
               </Card>
               
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Total Views</CardTitle>
+                  <CardTitle className="text-base">Content Created</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalViews.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{stats.totalClips + stats.totalBlogs}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Across all content
+                    Clips & blog posts
                   </p>
                 </CardContent>
               </Card>
               
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Engagement Rate</CardTitle>
+                  <CardTitle className="text-base">Processing Time</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.avgEngagement}%</div>
+                  <div className="text-2xl font-bold">{stats.contentHours}h</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Above average
+                    Of video content
                   </p>
                 </CardContent>
               </Card>
@@ -278,16 +359,16 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-2xl font-bold gradient-text">Level 7</p>
-                      <p className="text-sm text-muted-foreground">Content Specialist</p>
+                      <p className="text-2xl font-bold gradient-text">Level {creatorLevel.level}</p>
+                      <p className="text-sm text-muted-foreground">{creatorLevel.title}</p>
                     </div>
                     <Badge variant="secondary" className="text-lg px-4 py-2">
-                      850 / 1000 XP
+                      {creatorLevel.currentXP} / {creatorLevel.neededXP} XP
                     </Badge>
                   </div>
-                  <Progress value={85} className="h-3" />
+                  <Progress value={creatorLevel.percentage} className="h-3" />
                   <p className="text-sm text-muted-foreground">
-                    150 XP needed to reach Level 8: Content Expert
+                    {creatorLevel.neededXP - creatorLevel.currentXP} XP needed to reach Level {creatorLevel.level + 1}
                   </p>
                 </div>
               </CardContent>
@@ -304,39 +385,46 @@ export default function ProfilePage() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <IconEye className="h-4 w-4 text-muted-foreground" />
-                      <span>Total Views</span>
+                      <IconVideo className="h-4 w-4 text-muted-foreground" />
+                      <span>Total Projects</span>
                     </div>
-                    <span className="font-bold">{stats.totalViews.toLocaleString()}</span>
+                    <span className="font-bold">{stats.totalProjects}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <IconThumbUp className="h-4 w-4 text-muted-foreground" />
-                      <span>Total Likes</span>
+                      <IconScissors className="h-4 w-4 text-muted-foreground" />
+                      <span>Video Clips</span>
                     </div>
-                    <span className="font-bold">{stats.totalLikes.toLocaleString()}</span>
+                    <span className="font-bold">{stats.totalClips}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IconFileText className="h-4 w-4 text-muted-foreground" />
+                      <span>Blog Posts</span>
+                    </div>
+                    <span className="font-bold">{stats.totalBlogs}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <IconShare className="h-4 w-4 text-muted-foreground" />
-                      <span>Total Shares</span>
+                      <span>Social Posts</span>
                     </div>
-                    <span className="font-bold">{stats.totalShares}</span>
+                    <span className="font-bold">{stats.totalSocialPosts}</span>
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Content Creation</CardTitle>
+                  <CardTitle>Account Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <IconVideo className="h-4 w-4 text-muted-foreground" />
-                      <span>Projects Created</span>
+                      <span>Current Plan</span>
                     </div>
-                    <span className="font-bold">{stats.totalProjects}</span>
+                    <span className="font-bold capitalize">{usage.plan}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -350,7 +438,9 @@ export default function ProfilePage() {
                       <IconCalendar className="h-4 w-4 text-muted-foreground" />
                       <span>Member Since</span>
                     </div>
-                    <span className="font-bold">Jan 2024</span>
+                    <span className="font-bold">
+                      {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}
+                    </span>
                   </div>
                 </CardContent>
               </Card>

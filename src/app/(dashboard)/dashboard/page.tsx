@@ -20,7 +20,8 @@ import {
   IconPlayerPlay,
   IconBrandTwitter,
   IconBrandLinkedin,
-  IconBrandInstagram
+  IconBrandInstagram,
+  IconScissors
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { ProjectService } from "@/lib/services"
@@ -60,6 +61,40 @@ export default function DashboardPage() {
   })
   const [loading, setLoading] = useState(true)
   const [selectedTimeRange] = useState("week")
+
+  // Dynamic tips that rotate
+  const tips = [
+    {
+      title: "Optimize Video Length",
+      description: "Videos under 60 seconds get 2x more engagement"
+    },
+    {
+      title: "Add Captions",
+      description: "85% of videos are watched without sound"
+    },
+    {
+      title: "Best Upload Times",
+      description: "Tuesday-Thursday, 9AM-12PM see highest views"
+    },
+    {
+      title: "Use Templates",
+      description: "Save time with pre-built content templates"
+    },
+    {
+      title: "Batch Processing",
+      description: "Upload multiple videos to maximize efficiency"
+    },
+    {
+      title: "SEO Optimization",
+      description: "Add keywords to your titles and descriptions"
+    }
+  ]
+
+  // Select random tips
+  const [currentTips] = useState(() => {
+    const shuffled = [...tips].sort(() => 0.5 - Math.random())
+    return shuffled.slice(0, 2)
+  })
 
   useEffect(() => {
     const fetchData = async () => {
@@ -106,7 +141,6 @@ export default function DashboardPage() {
     {
       title: "Total Projects",
       value: stats.totalProjects,
-      change: "+12%",
       icon: IconFolder,
       color: "text-blue-600",
       bgColor: "bg-blue-50 dark:bg-blue-950/20"
@@ -114,7 +148,6 @@ export default function DashboardPage() {
     {
       title: "Video Clips",
       value: stats.totalClips,
-      change: "+23%",
       icon: IconVideo,
       color: "text-purple-600",
       bgColor: "bg-purple-50 dark:bg-purple-950/20"
@@ -122,7 +155,6 @@ export default function DashboardPage() {
     {
       title: "Blog Posts",
       value: stats.totalBlogPosts,
-      change: "+18%",
       icon: IconFileText,
       color: "text-green-600",
       bgColor: "bg-green-50 dark:bg-green-950/20"
@@ -130,7 +162,6 @@ export default function DashboardPage() {
     {
       title: "Social Posts",
       value: stats.totalSocialPosts,
-      change: "+45%",
       icon: IconShare,
       color: "text-orange-600",
       bgColor: "bg-orange-50 dark:bg-orange-950/20"
@@ -228,13 +259,6 @@ export default function DashboardPage() {
                   <div className={`p-3 rounded-xl ${stat.bgColor}`}>
                     <stat.icon className={`h-6 w-6 ${stat.color}`} />
                   </div>
-                </div>
-                <div className="flex items-center gap-2 mt-4">
-                  <Badge variant="secondary" className="text-xs">
-                    <IconTrendingUp className="h-3 w-3 mr-1" />
-                    {stat.change}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">vs last {selectedTimeRange}</span>
                 </div>
               </CardHeader>
             </MotionCard>
@@ -416,19 +440,15 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="text-sm">
-                <p className="font-medium mb-1">Boost Engagement</p>
-                <p className="text-muted-foreground">
-                  Videos under 60 seconds get 2x more views
-                </p>
-              </div>
-              <div className="text-sm">
-                <p className="font-medium mb-1">Best Time to Post</p>
-                <p className="text-muted-foreground">
-                  Tuesday-Thursday, 9AM-12PM
-                </p>
-              </div>
-              <Button className="w-full" size="sm" variant="ghost">
+              {currentTips.map((tip, index) => (
+                <div key={index} className="text-sm">
+                  <p className="font-medium mb-1">{tip.title}</p>
+                  <p className="text-muted-foreground">
+                    {tip.description}
+                  </p>
+                </div>
+              ))}
+              <Button className="w-full" size="sm" variant="ghost" onClick={() => router.push('/templates')}>
                 View All Tips
                 <IconArrowRight className="h-4 w-4 ml-2" />
               </Button>
@@ -445,29 +465,44 @@ export default function DashboardPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Platform Performance</CardTitle>
-            <CardDescription>Content performance across different platforms</CardDescription>
+            <CardTitle>Content Distribution</CardTitle>
+            <CardDescription>Your content across different formats</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { platform: "Twitter", icon: IconBrandTwitter, posts: 24, engagement: "3.2K", color: "text-blue-500" },
-                { platform: "LinkedIn", icon: IconBrandLinkedin, posts: 18, engagement: "1.8K", color: "text-blue-700" },
-                { platform: "Instagram", icon: IconBrandInstagram, posts: 32, engagement: "5.4K", color: "text-pink-500" }
-              ].map((platform) => (
-                <div key={platform.platform} className="flex items-center gap-4 p-4 rounded-lg border">
-                  <div className={`p-3 rounded-lg bg-muted ${platform.color}`}>
-                    <platform.icon className="h-6 w-6" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium">{platform.platform}</h4>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                      <span>{platform.posts} posts</span>
-                      <span>{platform.engagement} reach</span>
-                    </div>
+              <div className="flex items-center gap-4 p-4 rounded-lg border">
+                <div className="p-3 rounded-lg bg-muted text-purple-500">
+                  <IconScissors className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">Video Clips</h4>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                    <span>{stats.totalClips} generated</span>
                   </div>
                 </div>
-              ))}
+              </div>
+              <div className="flex items-center gap-4 p-4 rounded-lg border">
+                <div className="p-3 rounded-lg bg-muted text-green-500">
+                  <IconFileText className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">Blog Posts</h4>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                    <span>{stats.totalBlogPosts} written</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 p-4 rounded-lg border">
+                <div className="p-3 rounded-lg bg-muted text-orange-500">
+                  <IconShare className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">Social Posts</h4>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                    <span>{stats.totalSocialPosts} created</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

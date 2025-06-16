@@ -106,28 +106,91 @@ export default function ProcessingPage() {
     toast.info("Starting AI processing...")
     
     await ProjectService.updateProject(projectId, { status: 'processing' })
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing')
-    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 10, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
 
     try {
-      const response = await fetch('/api/process-klap', {
+      // Start Klap processing
+      const klapPromise = fetch('/api/process-klap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url
         })
+      }).then(async (response) => {
+        if (response.ok) {
+          // Start polling for Klap progress
+          const pollKlapProgress = async () => {
+            try {
+              const updatedProject = await ProjectService.getProject(projectId)
+              const clipsTask = updatedProject?.tasks.find(t => t.type === 'clips')
+              if (clipsTask && clipsTask.status === 'processing') {
+                // Estimate progress based on time elapsed (Klap usually takes 5-7 minutes)
+                const elapsed = Date.now() - new Date(clipsTask.startedAt!).getTime()
+                const estimatedDuration = 6 * 60 * 1000 // 6 minutes
+                const progress = Math.min(90, Math.floor((elapsed / estimatedDuration) * 90))
+                await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
+              }
+            } catch (error) {
+              console.error('Error polling Klap progress:', error)
+            }
+          }
+          
+          // Poll every 5 seconds
+          const klapInterval = setInterval(pollKlapProgress, 5000)
+          
+          const result = await response.json()
+          clearInterval(klapInterval)
+          
+          // Update to 100% when complete
+          await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
+          return { success: true, result }
+        } else {
+          await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
+          throw new Error('Klap processing failed')
+        }
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to process with Klap")
+      // Start transcription processing
+      const transcriptionPromise = fetch('/api/process-transcription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.id,
+          videoUrl: project.video_url,
+          language: 'en'
+        })
+      }).then(async (response) => {
+        if (response.ok) {
+          // Transcription is usually faster, update progress more quickly
+          await ProjectService.updateTaskProgress(projectId, 'transcription', 50, 'processing')
+          const result = await response.json()
+          await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+          return { success: true, result }
+        } else {
+          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+          throw new Error('Transcription failed')
+        }
+      })
+
+      // Wait for both to complete
+      const [klapResult, transcriptionResult] = await Promise.allSettled([klapPromise, transcriptionPromise])
+
+      // Handle results
+      if (klapResult.status === 'fulfilled') {
+        toast.success("Clips generated successfully!")
+      } else {
+        console.error("Klap processing failed:", klapResult)
+        toast.error("Failed to generate clips")
       }
 
-      const result = await response.json()
-      
-      console.log("Klap processing result:", result)
-      toast.success("AI processing complete! Your content is ready.")
+      if (transcriptionResult.status === 'fulfilled') {
+        toast.success("Transcription completed!")
+      } else {
+        console.error("Transcription failed:", transcriptionResult)
+        toast.warning("Transcription failed, but clips were generated")
+      }
 
       // Refresh the project data to show the new content
       await loadProject()
@@ -141,7 +204,7 @@ export default function ProcessingPage() {
       }, 2000)
 
     } catch (error) {
-      console.error("Klap processing failed:", error)
+      console.error("Processing failed:", error)
       toast.error(error instanceof Error ? error.message : "An unknown error occurred during processing.")
       await ProjectService.updateProject(projectId, { status: 'draft' }) // Revert status
       setProcessingStarted(false)

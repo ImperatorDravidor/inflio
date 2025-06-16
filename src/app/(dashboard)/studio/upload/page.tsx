@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconCloud, IconEdit, IconArrowRight } from "@tabler/icons-react"
-import { ProjectService } from "@/lib/services"
+import { ProjectService, UsageService } from "@/lib/services"
 import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -24,6 +24,7 @@ import { useProjectNavigation } from "@/hooks/use-project-navigation"
 import { handleError } from "@/lib/error-handler"
 
 export default function UploadPage() {
+  const router = useRouter()
   const { navigateToProject } = useProjectNavigation()
   const { userId } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -180,6 +181,14 @@ export default function UploadPage() {
       return;
     }
 
+    // Check usage limits before processing
+    if (!UsageService.canProcessVideo()) {
+      const usage = UsageService.getUsage();
+      toast.error(`You've reached your monthly limit of ${usage.limit} videos. Please upgrade your plan to continue.`);
+      router.push('/settings#upgrade');
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
     const toastId = toast.loading("Uploading video... Please wait.");
@@ -229,61 +238,24 @@ export default function UploadPage() {
 
       toast.success('Project created successfully!');
       
-      // Step 3a: If transcription workflow is selected, trigger transcription processing
-      if (workflowOptions.transcription) {
-        toast.info('Starting AI transcription...');
-        
-        const transcriptionResponse = await fetch('/api/process-transcription', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId: project.id,
-            videoUrl: supabaseVideoUrl,
-            language: 'en' // Could be made configurable
-          })
-        });
-
-        const transcriptionResult = await transcriptionResponse.json();
-
-        if (!transcriptionResponse.ok) {
-          console.error('Transcription failed:', transcriptionResult.error);
-          toast.warning('Transcription processing failed, but project was created');
-        } else {
-          toast.success('Transcription started successfully!');
-        }
+      // Increment usage after successful project creation
+      const incrementSuccess = UsageService.incrementUsage();
+      if (!incrementSuccess) {
+        // This shouldn't happen as we checked earlier, but just in case
+        toast.warning("Usage limit reached. This may be your last video for this month.");
       }
       
-      // Step 3b: If clips workflow is selected, trigger AI clip generation
-      if (workflowOptions.clips) {
-        toast.info('Starting AI clip generation...');
-        
-        // No need to import dynamically, just call the API route
-        const klapResponse = await fetch('/api/process-klap', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                projectId: project.id,
-                videoUrl: supabaseVideoUrl
-            })
-        });
-
-        const klapResult = await klapResponse.json();
-
-        if (!klapResponse.ok) {
-            throw new Error(klapResult.error || "Failed to start Klap processing.");
-        }
-        
-        toast.success('AI processing started successfully!');
-      }
+      // Step 3: Start the main processing workflows
+      toast.info('Starting AI processing workflows...');
+      await ProjectService.startProcessing(project.id);
       
-      // Redirect to the processing page to see progress
-      navigateToProject({ id: project.id, status: 'processing' });
+      toast.success("Processing started! Redirecting to your project dashboard.");
+      router.push(`/studio/processing/${project.id}`);
 
-    } catch (error) {
-      console.error('Upload process error:', error);
-      toast.error(error instanceof Error ? error.message : 'An unknown error occurred.', { id: toastId });
-      setUploading(false);
-      setUploadProgress(0);
+    } catch (err) {
+      handleError(err, "Failed to upload and create project.")
+      setUploading(false)
+      setUploadProgress(0)
     }
   };
 
@@ -425,20 +397,22 @@ export default function UploadPage() {
                         
                         {/* Thumbnail Preview */}
                         {thumbnail && (
-                          <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl border border-primary/20">
-                            <Image 
-                              src={thumbnail} 
-                              alt="Generated thumbnail" 
-                              width={80}
-                              height={56}
-                              className="w-20 h-14 object-cover rounded-lg shadow-md"
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium flex items-center gap-2">
-                                <IconCheck className="h-4 w-4 text-green-600" />
+                          <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-white/80 dark:bg-background rounded-2xl border border-primary/10 shadow-lg">
+                            <div className="flex-shrink-0">
+                              <Image 
+                                src={thumbnail} 
+                                alt="Generated thumbnail" 
+                                width={120}
+                                height={80}
+                                className="w-28 h-20 object-cover rounded-xl border border-border shadow-md"
+                              />
+                            </div>
+                            <div className="flex flex-col items-center sm:items-start text-center sm:text-left mt-2 sm:mt-0">
+                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm font-semibold mb-2 shadow-sm">
+                                <IconCheck className="h-4 w-4" />
                                 Thumbnail generated
-                              </p>
-                              <p className="text-sm text-muted-foreground">This will be used as your project thumbnail</p>
+                              </span>
+                              <span className="text-base text-muted-foreground font-medium">This will be used as your project thumbnail</span>
                             </div>
                           </div>
                         )}

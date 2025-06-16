@@ -389,4 +389,11 @@ export class SupabaseProjectService {
       overallProgress: this.calculateProjectProgress(project)
     }
   }
+
+  // Start processing for a project
+  static async startProcessing(projectId: string): Promise<void> {
+    await fetch(`/api/projects/${projectId}/process`, {
+      method: 'POST'
+    });
+  }
 } 
