@@ -198,9 +198,9 @@ export default function ProcessingPage() {
       // Update the main project status
       await ProjectService.updateProject(projectId, { status: 'ready' })
 
-      // Redirect to the project page after a short delay
+      // Redirect to the recap page instead of project page
       setTimeout(() => {
-        router.push(`/projects/${projectId}`)
+        router.push(`/projects/${projectId}/recap`)
       }, 2000)
 
     } catch (error) {

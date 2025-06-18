@@ -41,6 +41,7 @@ import {
   IconFileDownload,
   IconMaximize,
   IconX,
+  IconRocket,
 } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
@@ -430,6 +431,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <IconShare2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
+              {project.status === 'ready' && (
+                <Button 
+                  size="sm" 
+                  className="gradient-premium"
+                  onClick={() => router.push(`/projects/${projectId}/publish`)}
+                >
+                  <IconRocket className="h-4 w-4 mr-2" />
+                  Publish Project
+                </Button>
+              )}
               <Button variant="destructive" size="sm" onClick={handleDelete}>
                 <IconTrash className="h-4 w-4" />
               </Button>
