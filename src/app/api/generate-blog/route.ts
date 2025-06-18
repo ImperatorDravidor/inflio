@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import OpenAI from 'openai'
-import { BlogPost, Project } from '@/lib/project-types'
+import { BlogPost } from '@/lib/project-types'
 import { v4 as uuidv4 } from 'uuid'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     // (Helper function to update task progress)
     const updateTaskProgress = async (progress: number, status: string) => {
-        const taskIndex = project.tasks.findIndex((t: any) => t.type === 'blog');
+        const taskIndex = project.tasks.findIndex((t: { type: string }) => t.type === 'blog');
         if (taskIndex === -1) return;
         project.tasks[taskIndex].progress = progress;
         project.tasks[taskIndex].status = status;

@@ -17,10 +17,7 @@ import {
   IconWorld,
   IconCalendar,
   IconVideo,
-  IconEye,
-  IconThumbUp,
   IconShare,
-  IconTrophy,
   IconFlame,
   IconStar,
   IconEdit,
@@ -41,7 +38,6 @@ export default function ProfilePage() {
   const { user } = useUser()
   const [isEditing, setIsEditing] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState({
     name: user?.fullName || user?.firstName || "User",
     email: user?.primaryEmailAddress?.emailAddress || "",
@@ -61,17 +57,15 @@ export default function ProfilePage() {
       }))
       loadProjects()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const loadProjects = async () => {
     try {
-      setLoading(true)
       const allProjects = await ProjectService.getAllProjects(user?.id)
       setProjects(allProjects)
     } catch (error) {
       console.error("Failed to load projects:", error)
-    } finally {
-      setLoading(false)
     }
   }
 

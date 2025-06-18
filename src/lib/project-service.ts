@@ -1,4 +1,4 @@
-import { Project, VideoMetadata, ProcessingTask, ContentFolders } from './project-types'
+import { Project, VideoMetadata, ProcessingTask, ContentFolders, SocialPost } from './project-types'
 import { v4 as uuidv4 } from 'uuid'
 import { WorkflowOptions } from '@/components/workflow-selection'
 
@@ -309,6 +309,19 @@ export class ProjectService {
   static async getProjectsByStatus(status: Project['status']): Promise<Project[]> {
     const projects = await this.getAllProjects()
     return projects.filter(p => p.status === status)
+  }
+
+  // Link social post to project
+  static async addSocialPostToProject(projectId: string, socialPost: SocialPost): Promise<void> {
+    const project = await this.getProject(projectId)
+    if (!project) return
+
+    const updatedFolders = {
+      ...project.folders,
+      social: [...project.folders.social, socialPost]
+    }
+
+    await this.updateProject(projectId, { folders: updatedFolders })
   }
 
   // Calculate project progress

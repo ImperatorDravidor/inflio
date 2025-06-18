@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { motion } from "framer-motion"
 import { 
   IconVideoPlus,
@@ -16,11 +17,7 @@ import {
   IconVideo,
   IconFileText,
   IconShare,
-  IconTrendingUp,
   IconPlayerPlay,
-  IconBrandTwitter,
-  IconBrandLinkedin,
-  IconBrandInstagram,
   IconScissors
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
@@ -31,6 +28,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from "next/image"
+import { RecapWizard } from "@/components/social/recap-wizard"
 
 const MotionCard = motion(Card)
 
@@ -60,7 +58,8 @@ export default function DashboardPage() {
     completedProjects: 0
   })
   const [loading, setLoading] = useState(true)
-  const [selectedTimeRange] = useState("week")
+  const [showRecap, setShowRecap] = useState(false)
+  const [hasSeenRecap, setHasSeenRecap] = useState(false)
 
   // Dynamic tips that rotate
   const tips = [
@@ -95,6 +94,20 @@ export default function DashboardPage() {
     const shuffled = [...tips].sort(() => 0.5 - Math.random())
     return shuffled.slice(0, 2)
   })
+
+  useEffect(() => {
+    // Check if user has seen recap today
+    const lastRecapDate = localStorage.getItem(`recap_shown_${userId}`)
+    const today = new Date().toDateString()
+    
+    if (!lastRecapDate || lastRecapDate !== today) {
+      setTimeout(() => {
+        setShowRecap(true)
+        localStorage.setItem(`recap_shown_${userId}`, today)
+      }, 1000) // Show after 1 second
+    }
+    setHasSeenRecap(true)
+  }, [userId])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -191,6 +204,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {/* Recap Dialog */}
+      {userId && hasSeenRecap && (
+        <Dialog open={showRecap} onOpenChange={setShowRecap}>
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+            <RecapWizard 
+              userId={userId} 
+              isReturningUser={stats.totalProjects > 0}
+              onClose={() => setShowRecap(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Welcome Header */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
@@ -218,6 +244,14 @@ export default function DashboardPage() {
             >
               View All Projects
               <IconArrowRight className="h-5 w-5 ml-2" />
+            </Button>
+            <Button 
+              size="lg" 
+              variant="ghost"
+              onClick={() => setShowRecap(true)}
+            >
+              <IconChartBar className="h-5 w-5 mr-2" />
+              View Recap
             </Button>
           </div>
         </div>

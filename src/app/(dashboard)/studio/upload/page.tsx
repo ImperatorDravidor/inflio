@@ -4,28 +4,25 @@ import { useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
-import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconCloud, IconEdit, IconArrowRight } from "@tabler/icons-react"
+import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
 import { ProjectService, UsageService } from "@/lib/services"
 import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { VideoMetadata } from "@/lib/project-types"
 import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-selection"
-import { v4 as uuidv4 } from 'uuid'
 import Image from "next/image"
-import { APP_CONFIG, ROUTES } from "@/lib/constants"
-import { useProjectNavigation } from "@/hooks/use-project-navigation"
+import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
 
 export default function UploadPage() {
   const router = useRouter()
-  const { navigateToProject } = useProjectNavigation()
   const { userId } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -38,7 +35,6 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState("")
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnail, setThumbnail] = useState<string>("")
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -63,7 +59,7 @@ export default function UploadPage() {
   }, [])
 
   const validateFile = (file: File) => {
-    if (!APP_CONFIG.SUPPORTED_VIDEO_TYPES.includes(file.type as any)) {
+    if (!APP_CONFIG.SUPPORTED_VIDEO_TYPES.includes(file.type as typeof APP_CONFIG.SUPPORTED_VIDEO_TYPES[number])) {
       throw new Error('Invalid file type. Please upload MP4, MOV, AVI, or WebM files.')
     }
 
@@ -86,7 +82,6 @@ export default function UploadPage() {
       // Create preview URL
       const url = URL.createObjectURL(file)
       setVideoPreview(url)
-      setVideoUrl(url)
       
       // Extract video metadata
       toast.info("Extracting video metadata...")
@@ -144,7 +139,6 @@ export default function UploadPage() {
     setFile(null)
     setVideoPreview("")
     setError("")
-    setVideoUrl(null)
     setThumbnail("")
     setVideoMetadata(null)
     setProcessing(false)

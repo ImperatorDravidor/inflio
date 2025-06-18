@@ -13,19 +13,12 @@ const isPublicRoute = createRouteMatcher([
   '/examples/transcription-demo'
 ])
 
-const ignoredRoutes = createRouteMatcher([
-  '/api/webhooks(.*)',
-  '/api/upload',
-  '/examples/transcription-demo',
-  '/api/onboarding'
-])
-
 const isOnboardingRoute = createRouteMatcher([
   '/onboarding(.*)'
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims, orgId } = await auth()
+  const { userId } = await auth()
 
   const onboardingUrl = new URL('/onboarding', req.url)
 

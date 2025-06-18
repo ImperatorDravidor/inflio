@@ -6,6 +6,8 @@ import {
 import { Toaster } from "sonner"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { OnboardingCheck } from "@/components/onboarding-check"
+import { AnimatedBackground } from "@/components/animated-background"
+import { WorkflowIndicator } from "@/components/workflow-indicator"
 
 export default function DashboardLayout({
   children,
@@ -29,6 +31,7 @@ export default function DashboardLayout({
           <div className="flex flex-1 flex-col">
             <main className="flex-1 bg-gradient-to-br from-background/95 via-background to-muted/20 dark:from-background dark:via-muted/10 dark:to-muted/5">
               <div className="@container/main flex flex-1 flex-col p-6">
+                <AnimatedBackground />
                 {children}
               </div>
             </main>
@@ -36,6 +39,9 @@ export default function DashboardLayout({
         </SidebarInset>
         <Toaster position="bottom-right" />
       </SidebarProvider>
+      
+      {/* Workflow Indicator - shows processing projects */}
+      <WorkflowIndicator />
     </>
   )
 } 

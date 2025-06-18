@@ -4,30 +4,28 @@ import Link from "next/link"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { motion } from "framer-motion"
 import { useState } from "react"
 import { 
-  ArrowRight, 
   Video, 
-  Sparkles, 
   FileText, 
-  Share2, 
-  Zap, 
-  CheckCircle,
+  Scissors, 
+  Sparkles,
+  TrendingUp,
+  Play,
+  Upload,
+  ArrowRight,
   Menu,
   X,
-  Upload,
   Bot,
   Type,
   Layers,
   BarChart3,
-  Clock,
-  Globe,
-  Users,
   Star,
-  ChevronRight,
 } from "lucide-react"
+import Image from "next/image"
+import { SiteHeader } from "@/components/site-header"
+import { LoginForm } from "@/components/login-form"
 
 const features = [
   {
@@ -39,11 +37,6 @@ const features = [
     icon: <Type className="h-5 w-5" />,
     title: "Smart Transcription",
     description: "Get accurate, timestamped transcriptions powered by OpenAI Whisper for perfect subtitles.",
-  },
-  {
-    icon: <Share2 className="h-5 w-5" />,
-    title: "Social Media Ready",
-    description: "Generate platform-optimized content for TikTok, Instagram, YouTube Shorts, and more.",
   },
   {
     icon: <FileText className="h-5 w-5" />,
@@ -324,7 +317,7 @@ export default function LandingPage() {
                   step: "3",
                   title: "Download & Share",
                   description: "Get your content ready for all social media platforms instantly",
-                  icon: <Share2 className="h-6 w-6" />,
+                  icon: <FileText className="h-6 w-6" />,
                 },
               ].map((item) => (
                 <motion.div

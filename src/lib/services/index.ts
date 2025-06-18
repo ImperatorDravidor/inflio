@@ -24,5 +24,8 @@ export { extractAudioWithFFmpeg, createAudioExtractionEndpoint } from '../audio-
 // Usage tracking
 export { UsageService } from '../usage-service'
 
+// Social Media
+export { SocialMediaService } from '../social/social-service'
+
 // Re-export types
 export type * from '../project-types' 

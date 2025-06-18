@@ -38,7 +38,12 @@ export const ROUTES = {
   PROFILE: '/profile',
   SIGN_IN: '/sign-in',
   SIGN_UP: '/sign-up',
-  ONBOARDING: '/onboarding'
+  ONBOARDING: '/onboarding',
+  // Social Media routes
+  SOCIAL: '/social',
+  SOCIAL_COMPOSE: '/social/compose',
+  SOCIAL_CALENDAR: '/social/calendar',
+  SOCIAL_ANALYTICS: '/social/analytics'
 } as const
 
 // Task types

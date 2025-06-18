@@ -16,7 +16,6 @@ import {
 import { ProjectService, UsageService } from "@/lib/services"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Project } from "@/lib/project-types"
-import { formatDuration } from "@/lib/video-utils"
 import { useAuth } from "@clerk/nextjs"
 import { Progress } from "@/components/ui/progress"
 
@@ -54,6 +53,7 @@ export default function AnalyticsPage() {
     if (userId) {
       loadAnalytics()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
   const loadAnalytics = async () => {
@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
       const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
       
-      data.weeklyStats = days.map((day, idx) => {
+      data.weeklyStats = days.map((day) => {
         const dayProjects = projectsThisWeek.filter(p => {
           const projectDay = new Date(p.created_at).getDay()
           return dayIndex[projectDay].startsWith(day)

@@ -1,30 +1,16 @@
 "use client"
 
 import { SignUp } from "@clerk/nextjs";
-import { motion, useScroll, useTransform } from "framer-motion";
-import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { 
-  Video, 
-  Zap, 
-  Star, 
-  CheckCircle, 
-  Sparkles,
-  TrendingUp,
-  Users,
-  Trophy,
-  Rocket,
-  ArrowRight,
-  Gift,
-  Shield,
-  Globe,
   Layers
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import type { LucideIcon } from "lucide-react";
 
 // Floating icons animation
 function FloatingIcon({ icon: Icon, delay, duration, x, y }: { 
-  icon: any, 
+  icon: LucideIcon, 
   delay: number, 
   duration: number,
   x: number,
@@ -56,7 +42,7 @@ function FloatingIcon({ icon: Icon, delay, duration, x, y }: {
 
 // Benefit card component
 function BenefitCard({ icon: Icon, title, description, delay }: {
-  icon: any,
+  icon: LucideIcon,
   title: string,
   description: string,
   delay: number

@@ -299,6 +299,42 @@
     }
   }
   
+  @keyframes gradient-x {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+  
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  @keyframes float-delayed {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+  
+  @keyframes loading-bar {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  
   /* Enhanced content area styling */
   .content-area {
     @apply bg-gradient-to-br from-background via-background/98 to-muted/10;
@@ -336,5 +372,29 @@
   
   .social-twitch {
     @apply text-purple-600 hover:text-purple-700 dark:text-purple-500 dark:hover:text-purple-400;
+  }
+  
+  .animate-gradient-x {
+    animation: gradient-x 3s ease infinite;
+  }
+  
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+  }
+  
+  .animate-float-delayed {
+    animation: float-delayed 6s ease-in-out 2s infinite;
+  }
+  
+  .animate-loading-bar {
+    animation: loading-bar 2s ease-in-out infinite;
+  }
+  
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-400 {
+    animation-delay: 400ms;
   }
 }

@@ -4,15 +4,13 @@ import * as React from "react"
 import { useAuth } from "@clerk/nextjs"
 import {
   IconVideoPlus,
-  IconFolder,
-  IconChartBar,
   IconSettings,
   IconUser,
   IconHome,
-  IconSparkles,
   IconHelpCircle,
   IconVideo,
   IconTrendingUp,
+  IconShare2
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -30,7 +28,6 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { InflioLogo } from "@/components/inflio-logo"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
@@ -123,6 +120,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       icon: IconVideo,
       badge: projectCount > 0 ? projectCount.toString() : null,
       description: "Your video library"
+    },
+    {
+      title: "Social Media",
+      url: "/social",
+      icon: IconShare2,
+      badge: null,
+      description: "Manage social accounts"
     },
     {
       title: "Analytics",
