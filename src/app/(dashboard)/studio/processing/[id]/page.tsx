@@ -27,6 +27,7 @@ import { Project, ProcessingTask } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { WorkflowLoading } from "@/components/workflow-loading"
+import { motion } from "framer-motion"
 
 const taskDetails = {
   transcription: {
@@ -309,13 +310,20 @@ export default function ProcessingPage() {
   }
 
   if (loading) {
-    return <WorkflowLoading title="Loading Project" description="Fetching project details..." />
+    return (
+      <WorkflowLoading 
+        title="Loading Project" 
+        description="Fetching project details and workflow status..."
+        showSteps={false}
+      />
+    )
   }
 
   if (!project) return null
 
   const overallProgress = calculateOverallProgress()
   const stats = ProjectService.getProjectStats(project)
+  const activeTask = project.tasks.find(t => t.status === 'processing')
 
   const formatTimeRemaining = () => {
     if (!startTime || !estimatedEndTime) return null
@@ -339,10 +347,14 @@ export default function ProcessingPage() {
       <div className="relative mx-auto max-w-6xl animate-in">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4 animate-float">
+          <motion.div 
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4"
+            animate={{ y: [0, -5, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
             <IconSparkles className="h-4 w-4" />
             AI Processing in Progress
-          </div>
+          </motion.div>
           <h1 className="text-4xl font-bold mb-3">
             Processing <span className="gradient-text">{project.title}</span>
           </h1>
@@ -352,32 +364,46 @@ export default function ProcessingPage() {
           {startTime && (
             <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <IconClock className="h-4 w-4" />
-              {formatTimeRemaining() || "Processing..."}
+              <span className="font-medium">{formatTimeRemaining() || "Processing..."}</span>
             </div>
           )}
         </div>
 
         {/* Overall Progress */}
-        <Card className="mb-8 overflow-hidden">
-          <div className="h-1 gradient-premium" />
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Overall Progress</CardTitle>
-                <CardDescription>
-                  {stats.completedTasks} of {stats.totalTasks} tasks completed
-                </CardDescription>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="mb-8 overflow-hidden">
+            <div className="h-2 gradient-premium animate-gradient-x" />
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Overall Progress</CardTitle>
+                  <CardDescription>
+                    {stats.completedTasks} of {stats.totalTasks} tasks completed
+                  </CardDescription>
+                </div>
+                <div className="text-right">
+                  <motion.div 
+                    className="text-3xl font-bold gradient-text"
+                    key={overallProgress}
+                    initial={{ scale: 1.2 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 300 }}
+                  >
+                    {overallProgress}%
+                  </motion.div>
+                  <div className="text-sm text-muted-foreground">Complete</div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold gradient-text">{overallProgress}%</div>
-                <div className="text-sm text-muted-foreground">Complete</div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Progress value={overallProgress} className="h-3" />
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <Progress value={overallProgress} className="h-3" />
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Processing Tasks */}
         <div className="grid gap-6 mb-8">

@@ -380,7 +380,19 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
   // Show workflow loading immediately if project is processing
   if (project.status === 'processing') {
-    return <WorkflowLoading title={`Processing ${project.title}`} />
+    const progress = ProjectService.calculateProjectProgress(project)
+    const activeTask = project.tasks.find(t => t.status === 'processing')
+    
+    return (
+      <WorkflowLoading 
+        title={`Processing ${project.title}`}
+        description="Your content is being transformed by AI magic ✨"
+        progress={progress}
+        showSteps={true}
+        activeStep={activeTask?.type}
+        estimatedTime={360} // 6 minutes average
+      />
+    )
   }
 
   const stats = ProjectService.getProjectStats(project)
