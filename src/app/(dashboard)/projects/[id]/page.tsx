@@ -741,7 +741,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                 {project.folders.clips.length} AI-Generated Clips
                               </h2>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Optimized for viral potential • Ready to publish
+                                Ranked by viral potential • Best to worst
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -766,168 +766,263 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             </div>
                           </div>
                           
-                          {/* Virality Score Legend */}
+                          {/* Virality Score Legend - Compact */}
                           <Card className="bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <IconSparkles className="h-5 w-5 text-primary" />
-                                <h3 className="font-semibold">Virality Score Guide</h3>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            <CardContent className="p-3">
+                              <div className="flex items-center gap-6 text-sm">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-red-500" />
-                                  <span><strong>90-100:</strong> Viral Potential</span>
+                                  <IconSparkles className="h-4 w-4 text-primary" />
+                                  <span className="font-medium">Score Guide:</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-orange-500" />
-                                  <span><strong>70-89:</strong> High Engagement</span>
+                                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                                  <span><strong>90+</strong> Viral</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                                  <span><strong>50-69:</strong> Good Content</span>
+                                  <div className="w-2 h-2 rounded-full bg-orange-500" />
+                                  <span><strong>70-89</strong> High</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-gray-500" />
-                                  <span><strong>0-49:</strong> Needs Work</span>
+                                  <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                                  <span><strong>50-69</strong> Good</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-gray-500" />
+                                  <span><strong>&lt;50</strong> Low</span>
                                 </div>
                               </div>
                             </CardContent>
                           </Card>
 
-                          {/* Top Performing Clips Section */}
-                          {[...project.folders.clips].filter(c => (c.score || 0) >= 0.7).length > 0 && (
-                            <div>
-                              <div className="flex items-center gap-2 mb-4">
-                                <div className="p-1.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500">
-                                  <IconSparkles className="h-5 w-5 text-white" />
-                                </div>
-                                <h3 className="text-lg font-semibold">Top Performing Clips</h3>
-                                <Badge variant="secondary" className="ml-2">
-                                  {[...project.folders.clips].filter(c => (c.score || 0) >= 0.7).length} clips
-                                </Badge>
-                              </div>
-                              
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                                {[...project.folders.clips]
-                                  .filter(c => (c.score || 0) >= 0.7)
-                                  .sort((a, b) => (b.score || 0) - (a.score || 0))
-                                  .slice(0, 3)
-                                  .map((clip: ClipData, index: number) => (
-                                    <motion.div
-                                      key={clip.id}
-                                      initial={{ opacity: 0, y: 20 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      transition={{ delay: index * 0.1 }}
-                                    >
-                                      <Card className="overflow-hidden border-primary/20 hover:border-primary/40 transition-colors">
-                                        <div className="relative">
-                                          {/* Video Preview */}
-                                          <div 
-                                            className="aspect-[9/16] relative bg-black cursor-pointer overflow-hidden"
+                          {/* Clips List - Large Format */}
+                          <div className="space-y-6 max-w-5xl mx-auto">
+                            {[...project.folders.clips]
+                              .sort((a, b) => (b.score || 0) - (a.score || 0))
+                              .map((clip: ClipData, index: number) => (
+                              <motion.div
+                                key={clip.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.05 }}
+                              >
+                                <Card className={cn(
+                                  "overflow-hidden border-2 transition-all hover:shadow-xl",
+                                  (clip.score || 0) >= 0.9 ? "border-red-500/30 hover:border-red-500/50" :
+                                  (clip.score || 0) >= 0.7 ? "border-orange-500/30 hover:border-orange-500/50" :
+                                  (clip.score || 0) >= 0.5 ? "border-yellow-500/30 hover:border-yellow-500/50" :
+                                  "border-gray-500/30 hover:border-gray-500/50"
+                                )}>
+                                  <div className="flex flex-col lg:flex-row">
+                                    {/* Left: Video Player */}
+                                    <div className="lg:w-[300px] bg-black flex items-center justify-center p-4">
+                                      <div className="relative w-full max-w-[200px]">
+                                        <div 
+                                          className="aspect-[9/16] relative bg-black rounded-lg overflow-hidden cursor-pointer group"
+                                          onClick={() => {
+                                            setSelectedClip(clip)
+                                            setShowVideoModal(true)
+                                          }}
+                                        >
+                                          {clip.exportUrl ? (
+                                            <>
+                                              <video
+                                                src={clip.exportUrl}
+                                                className="w-full h-full object-cover"
+                                                poster={clip.thumbnail || `${clip.exportUrl}#t=0.1`}
+                                                muted
+                                                loop
+                                                playsInline
+                                                preload="metadata"
+                                                controls={false}
+                                                onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+                                                onMouseLeave={(e) => {
+                                                  e.currentTarget.pause()
+                                                  e.currentTarget.currentTime = 0
+                                                }}
+                                              />
+                                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                  <div className="bg-white/90 backdrop-blur-sm rounded-full p-3">
+                                                    <IconPlayerPlay className="h-8 w-8 text-black" />
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <div className="flex items-center justify-center h-full bg-gradient-to-b from-gray-900 to-gray-800">
+                                              <div className="text-center">
+                                                <IconVideoOff className="h-12 w-12 mx-auto mb-2 text-gray-600" />
+                                                <p className="text-xs text-gray-500">Processing...</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {/* Rank Badge */}
+                                          <div className="absolute top-3 left-3">
+                                            <Badge className={cn(
+                                              "font-bold text-sm px-3 py-1.5",
+                                              index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
+                                              index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
+                                              index === 2 ? "bg-gradient-to-r from-orange-400 to-orange-600 text-white" :
+                                              "bg-black/70 text-white"
+                                            )}>
+                                              #{index + 1}
+                                            </Badge>
+                                          </div>
+                                          
+                                          {/* Duration */}
+                                          <div className="absolute bottom-3 right-3">
+                                            <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
+                                              {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Right: Clip Details */}
+                                    <div className="flex-1 p-6 space-y-4">
+                                      {/* Header with Title and Actions */}
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                          <h3 className="text-xl font-bold mb-1">
+                                            {clip.title || `Clip ${index + 1}`}
+                                          </h3>
+                                          {clip.description && (
+                                            <p className="text-sm text-muted-foreground">{clip.description}</p>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2 shrink-0">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
                                             onClick={() => {
                                               setSelectedClip(clip)
                                               setShowVideoModal(true)
                                             }}
                                           >
-                                            {clip.exportUrl ? (
-                                              <>
-                                                <video
-                                                  src={clip.exportUrl}
-                                                  className="w-full h-full object-cover"
-                                                  poster={clip.thumbnail || `${clip.exportUrl}#t=0.1`}
-                                                  muted
-                                                  loop
-                                                  playsInline
-                                                  preload="metadata"
-                                                  controls={false}
-                                                  onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
-                                                  onMouseLeave={(e) => {
-                                                    e.currentTarget.pause()
-                                                    e.currentTarget.currentTime = 0
-                                                  }}
-                                                />
-                                                <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center">
-                                                  <div className="opacity-0 hover:opacity-100 transition-opacity">
-                                                    <div className="bg-white/90 backdrop-blur-sm rounded-full p-3">
-                                                      <IconPlayerPlay className="h-6 w-6 text-black" />
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              </>
-                                            ) : (
-                                              <div className="flex items-center justify-center h-full bg-gradient-to-b from-gray-900 to-gray-800">
-                                                <IconVideoOff className="h-10 w-10 text-gray-600" />
+                                            <IconMaximize className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            disabled={!clip.exportUrl}
+                                            onClick={() => {
+                                              if (clip.exportUrl) {
+                                                const link = document.createElement('a')
+                                                link.href = clip.exportUrl
+                                                link.download = `${clip.title || 'clip'}.mp4`
+                                                document.body.appendChild(link)
+                                                link.click()
+                                                document.body.removeChild(link)
+                                                toast.success('Download started')
+                                              }
+                                            }}
+                                          >
+                                            <IconDownload className="h-4 w-4 mr-1" />
+                                            Download
+                                          </Button>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Virality Score Section */}
+                                      <div className={cn(
+                                        "p-4 rounded-lg border",
+                                        (clip.score || 0) >= 0.9 ? "bg-red-500/10 border-red-500/30" :
+                                        (clip.score || 0) >= 0.7 ? "bg-orange-500/10 border-orange-500/30" :
+                                        (clip.score || 0) >= 0.5 ? "bg-yellow-500/10 border-yellow-500/30" :
+                                        "bg-gray-500/10 border-gray-500/30"
+                                      )}>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="flex items-center gap-3">
+                                            <div className={cn(
+                                              "p-2 rounded-lg",
+                                              (clip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500 to-pink-500" :
+                                              (clip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500 to-yellow-500" :
+                                              (clip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500 to-green-500" :
+                                              "bg-gradient-to-br from-gray-500 to-gray-600"
+                                            )}>
+                                              <IconSparkles className="h-5 w-5 text-white" />
+                                            </div>
+                                            <div>
+                                              <p className="text-sm font-medium text-muted-foreground">Virality Score</p>
+                                              <div className="flex items-baseline gap-2">
+                                                <span className="text-3xl font-bold">{Math.round((clip.score || 0) * 100)}</span>
+                                                <span className="text-lg text-muted-foreground">/100</span>
                                               </div>
-                                            )}
-                                            
-                                            {/* Rank Badge */}
-                                            <div className="absolute top-2 left-2">
-                                              <Badge className={cn(
-                                                "font-bold text-sm px-3 py-1",
-                                                index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
-                                                index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
-                                                "bg-gradient-to-r from-orange-400 to-orange-600 text-white"
-                                              )}>
-                                                Top #{index + 1}
-                                              </Badge>
                                             </div>
                                           </div>
+                                          <Badge className={cn(
+                                            "text-sm px-3 py-1",
+                                            (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white" :
+                                            (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white" :
+                                            (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black" :
+                                            "bg-gradient-to-r from-gray-500 to-gray-600 text-white"
+                                          )}>
+                                            {(clip.score || 0) >= 0.9 ? "🔥 Viral Potential" :
+                                             (clip.score || 0) >= 0.7 ? "⚡ High Engagement" :
+                                             (clip.score || 0) >= 0.5 ? "✨ Good Content" :
+                                             "💡 Needs Improvement"}
+                                          </Badge>
                                         </div>
                                         
-                                        <CardContent className="p-4">
-                                          {/* Virality Score with Visual Indicator */}
-                                          <div className="mb-3">
-                                            <div className="flex items-center justify-between mb-2">
-                                              <span className="text-sm font-medium">Virality Score</span>
-                                              <span className="text-2xl font-bold">{Math.round((clip.score || 0) * 100)}</span>
+                                        {/* Score Bar */}
+                                        <div className="relative h-2 bg-black/20 rounded-full overflow-hidden mb-3">
+                                          <motion.div
+                                            className={cn(
+                                              "absolute left-0 top-0 h-full rounded-full",
+                                              (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
+                                              (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
+                                              (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
+                                              "bg-gray-400"
+                                            )}
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${(clip.score || 0) * 100}%` }}
+                                            transition={{ duration: 0.8, delay: index * 0.05 }}
+                                          />
+                                        </div>
+                                        
+                                        {/* Virality Explanation */}
+                                        <div className="space-y-2">
+                                          <p className="text-sm font-medium">Why this score?</p>
+                                          {clip.viralityExplanation ? (
+                                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                              {clip.viralityExplanation}
+                                            </p>
+                                          ) : (
+                                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                              <div>
+                                                <p className="font-medium mb-1">✅ Strengths:</p>
+                                                <ul className="text-muted-foreground space-y-0.5 text-xs">
+                                                  <li>• Strong visual appeal</li>
+                                                  <li>• Optimal {formatDuration(clip.duration || (clip.endTime - clip.startTime))} duration</li>
+                                                  <li>• Engaging content hook</li>
+                                                </ul>
+                                              </div>
+                                              <div>
+                                                <p className="font-medium mb-1">💡 To improve:</p>
+                                                <ul className="text-muted-foreground space-y-0.5 text-xs">
+                                                  <li>• Add trending audio</li>
+                                                  <li>• Include captions/text</li>
+                                                  <li>• Use hashtags wisely</li>
+                                                </ul>
+                                              </div>
                                             </div>
-                                            <div className="relative h-3 bg-gray-200 rounded-full overflow-hidden">
-                                              <motion.div
-                                                className={cn(
-                                                  "absolute left-0 top-0 h-full rounded-full",
-                                                  (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
-                                                  (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
-                                                  (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
-                                                  "bg-gray-400"
-                                                )}
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${(clip.score || 0) * 100}%` }}
-                                                transition={{ duration: 1, delay: 0.5 }}
-                                              />
-                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Additional Info */}
+                                      <div className="flex items-center gap-4 text-sm">
+                                        {clip.type && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-muted-foreground">Type:</span>
+                                            <Badge variant="outline" className="capitalize">{clip.type}</Badge>
                                           </div>
-                                          
-                                          {/* Virality Explanation */}
-                                          {clip.viralityExplanation && (
-                                            <div className="mb-3 p-3 bg-primary/5 rounded-lg">
-                                              <p className="text-sm text-muted-foreground">
-                                                <span className="font-medium text-foreground">Why this score?</span><br />
-                                                {clip.viralityExplanation}
-                                              </p>
-                                            </div>
-                                          )}
-                                          
-                                          {/* If no explanation, show generic factors */}
-                                          {!clip.viralityExplanation && (
-                                            <div className="mb-3 p-3 bg-primary/5 rounded-lg">
-                                              <p className="text-sm text-muted-foreground">
-                                                <span className="font-medium text-foreground">Scoring factors:</span><br />
-                                                • Engaging opening hook<br />
-                                                • Optimal duration ({formatDuration(clip.duration || (clip.endTime - clip.startTime))})<br />
-                                                • High-energy content<br />
-                                                • Clear visual focus
-                                              </p>
-                                            </div>
-                                          )}
-                                          
-                                          {/* Clip Title and Info */}
-                                          <h4 className="font-semibold text-lg mb-2">
-                                            {clip.title || `Clip ${index + 1}`}
-                                          </h4>
-                                          
-                                          {/* Tags */}
-                                          {clip.tags && clip.tags.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 mb-3">
+                                        )}
+                                        {clip.tags && clip.tags.length > 0 && (
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-muted-foreground">Tags:</span>
+                                            <div className="flex gap-1">
                                               {clip.tags.slice(0, 3).map(tag => (
                                                 <Badge key={tag} variant="secondary" className="text-xs">
                                                   {tag}
@@ -939,171 +1034,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                                 </Badge>
                                               )}
                                             </div>
-                                          )}
-                                          
-                                          {/* Actions */}
-                                          <div className="flex gap-2 mt-4">
-                                            <Button
-                                              size="sm"
-                                              className="flex-1"
-                                              disabled={!clip.exportUrl}
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                if (clip.exportUrl) {
-                                                  const link = document.createElement('a')
-                                                  link.href = clip.exportUrl
-                                                  link.download = `${clip.title || 'clip'}.mp4`
-                                                  document.body.appendChild(link)
-                                                  link.click()
-                                                  document.body.removeChild(link)
-                                                  toast.success('Download started')
-                                                }
-                                              }}
-                                            >
-                                              <IconDownload className="h-4 w-4 mr-1" />
-                                              Download
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => {
-                                                setSelectedClip(clip)
-                                                setShowVideoModal(true)
-                                              }}
-                                            >
-                                              <IconEye className="h-4 w-4" />
-                                            </Button>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-                                    </motion.div>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* All Clips Section */}
-                          <div>
-                            <h3 className="text-lg font-semibold mb-4">All Clips</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                              {[...project.folders.clips]
-                                .sort((a, b) => (b.score || 0) - (a.score || 0))
-                                .map((clip: ClipData, index: number) => (
-                                <motion.div
-                                  key={clip.id}
-                                  initial={{ opacity: 0, scale: 0.9 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  transition={{ delay: index * 0.03 }}
-                                >
-                                  <div className="relative group">
-                                    {/* Compact Card View */}
-                                    <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-                                      <div 
-                                        className="aspect-[9/16] relative bg-black cursor-pointer"
-                                        onClick={() => {
-                                          setSelectedClip(clip)
-                                          setShowVideoModal(true)
-                                        }}
-                                      >
-                                        {clip.exportUrl ? (
-                                          <>
-                                            <video
-                                              src={clip.exportUrl}
-                                              className="w-full h-full object-cover"
-                                              poster={clip.thumbnail || `${clip.exportUrl}#t=0.1`}
-                                              muted
-                                              loop
-                                              playsInline
-                                              preload="metadata"
-                                              controls={false}
-                                              onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
-                                              onMouseLeave={(e) => {
-                                                e.currentTarget.pause()
-                                                e.currentTarget.currentTime = 0
-                                              }}
-                                            />
-                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <div className="bg-white/90 backdrop-blur-sm rounded-full p-3">
-                                                  <IconPlayerPlay className="h-6 w-6 text-black" />
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </>
-                                        ) : (
-                                          <div className="flex items-center justify-center h-full bg-gradient-to-b from-gray-900 to-gray-800">
-                                            <IconVideoOff className="h-8 w-8 text-gray-600" />
                                           </div>
                                         )}
-                                        
-                                        {/* Virality Score Badge with Color Coding */}
-                                        <div className="absolute top-2 right-2">
-                                          <div className={cn(
-                                            "px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1",
-                                            (clip.score || 0) >= 0.9 ? "bg-red-500 text-white" :
-                                            (clip.score || 0) >= 0.7 ? "bg-orange-500 text-white" :
-                                            (clip.score || 0) >= 0.5 ? "bg-yellow-500 text-black" :
-                                            "bg-gray-500 text-white"
-                                          )}>
-                                            <IconSparkles className="h-3 w-3" />
-                                            {Math.round((clip.score || 0) * 100)}
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Duration Badge */}
-                                        <div className="absolute bottom-2 left-2">
-                                          <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-0.5 rounded text-xs font-medium">
-                                            {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
-                                          </div>
-                                        </div>
                                       </div>
-                                      
-                                      <CardContent className="p-3">
-                                        <h4 className="font-medium text-sm line-clamp-1 mb-2">
-                                          {clip.title || `Clip ${index + 1}`}
-                                        </h4>
-                                        
-                                        {/* Mini Virality Indicator */}
-                                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
-                                          <div
-                                            className={cn(
-                                              "h-full rounded-full transition-all",
-                                              (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
-                                              (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
-                                              (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
-                                              "bg-gray-400"
-                                            )}
-                                            style={{ width: `${(clip.score || 0) * 100}%` }}
-                                          />
-                                        </div>
-                                        
-                                        <Button 
-                                          size="sm" 
-                                          variant="secondary"
-                                          className="w-full h-7 text-xs"
-                                          disabled={!clip.exportUrl}
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            if (clip.exportUrl) {
-                                              const link = document.createElement('a')
-                                              link.href = clip.exportUrl
-                                              link.download = `${clip.title || 'clip'}.mp4`
-                                              document.body.appendChild(link)
-                                              link.click()
-                                              document.body.removeChild(link)
-                                              toast.success('Download started')
-                                            }
-                                          }}
-                                        >
-                                          <IconDownload className="h-3 w-3 mr-1" />
-                                          Download
-                                        </Button>
-                                      </CardContent>
-                                    </Card>
+                                    </div>
                                   </div>
-                                </motion.div>
-                              ))}
-                            </div>
+                                </Card>
+                              </motion.div>
+                            ))}
                           </div>
                           
                         </div>
@@ -1677,11 +1615,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
                               (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
                               (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
-                              "bg-gradient-to-r from-gray-500 to-gray-600"
+                              "bg-gray-400"
                             )}
                             initial={{ width: 0 }}
                             animate={{ width: `${(selectedClip.score || 0) * 100}%` }}
-                            transition={{ duration: 1, delay: 0.2 }}
+                            transition={{ duration: 1, delay: 0.5 }}
                           />
                         </div>
                         <div className="flex justify-between text-xs text-muted-foreground">
@@ -1712,60 +1650,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     
                     {/* Detailed Explanation */}
                     <div className="space-y-3">
+                      <p className="text-sm font-medium">Why this score?</p>
                       {selectedClip.viralityExplanation ? (
-                        <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                          <h4 className="font-medium mb-2 flex items-center gap-2">
-                            <IconChartBar className="h-4 w-4 text-primary" />
-                            AI Analysis
-                          </h4>
-                          <p className="text-sm leading-relaxed text-muted-foreground">
-                            {selectedClip.viralityExplanation}
-                          </p>
-                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {selectedClip.viralityExplanation}
+                        </p>
                       ) : (
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 rounded-lg bg-muted/50 border">
-                            <h5 className="font-medium text-sm mb-1">✅ Strengths</h5>
-                            <ul className="text-xs text-muted-foreground space-y-1">
-                              <li>• Engaging visual content</li>
-                              <li>• Optimal clip duration</li>
-                              <li>• Strong opening hook</li>
+                          <div>
+                            <p className="font-medium mb-1">✅ Strengths:</p>
+                            <ul className="text-muted-foreground space-y-0.5 text-xs">
+                              <li>• Strong visual appeal</li>
+                              <li>• Optimal {formatDuration(selectedClip.duration || selectedClip.endTime - selectedClip.startTime)} duration</li>
+                              <li>• Engaging content hook</li>
                             </ul>
                           </div>
-                          <div className="p-3 rounded-lg bg-muted/50 border">
-                            <h5 className="font-medium text-sm mb-1">💡 Tips</h5>
-                            <ul className="text-xs text-muted-foreground space-y-1">
-                              <li>• Add trending music</li>
-                              <li>• Include captions</li>
-                              <li>• Post at peak hours</li>
+                          <div>
+                            <p className="font-medium mb-1">💡 To improve:</p>
+                            <ul className="text-muted-foreground space-y-0.5 text-xs">
+                              <li>• Add trending audio</li>
+                              <li>• Include captions/text</li>
+                              <li>• Use hashtags wisely</li>
                             </ul>
                           </div>
                         </div>
                       )}
-                      
-                      {/* Key Metrics */}
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="text-center p-3 rounded-lg bg-muted/30 border">
-                          <p className="text-2xl font-bold">
-                            {formatDuration(selectedClip.duration || selectedClip.endTime - selectedClip.startTime)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Duration</p>
-                        </div>
-                        <div className="text-center p-3 rounded-lg bg-muted/30 border">
-                          <p className="text-2xl font-bold">
-                            {selectedClip.type === 'highlight' ? '🎯' : 
-                             selectedClip.type === 'intro' ? '🎬' :
-                             selectedClip.type === 'outro' ? '🎭' : '✨'}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">{selectedClip.type || 'Clip'}</p>
-                        </div>
-                        <div className="text-center p-3 rounded-lg bg-muted/30 border">
-                          <p className="text-2xl font-bold">
-                            {selectedClip.tags?.length || 0}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Tags</p>
-                        </div>
-                      </div>
                     </div>
                   </div>
                   
