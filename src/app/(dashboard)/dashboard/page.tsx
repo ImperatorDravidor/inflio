@@ -31,6 +31,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from "next/image"
+import WorldMap from "@/components/ui/world-map"
 
 const MotionCard = motion(Card)
 
@@ -197,6 +198,45 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 p-8"
       >
+        {/* World Map Background */}
+        <div className="absolute inset-0 opacity-20 dark:opacity-10">
+          <WorldMap
+            dots={[
+              // North America to Europe
+              {
+                start: { lat: 40.7128, lng: -74.0060 }, // New York
+                end: { lat: 51.5074, lng: -0.1278 }, // London
+              },
+              // Europe to Asia
+              {
+                start: { lat: 51.5074, lng: -0.1278 }, // London
+                end: { lat: 35.6762, lng: 139.6503 }, // Tokyo
+              },
+              // Asia to Australia
+              {
+                start: { lat: 35.6762, lng: 139.6503 }, // Tokyo
+                end: { lat: -33.8688, lng: 151.2093 }, // Sydney
+              },
+              // North America to South America
+              {
+                start: { lat: 37.7749, lng: -122.4194 }, // San Francisco
+                end: { lat: -23.5505, lng: -46.6333 }, // São Paulo
+              },
+              // Europe to Africa
+              {
+                start: { lat: 48.8566, lng: 2.3522 }, // Paris
+                end: { lat: -1.2921, lng: 36.8219 }, // Nairobi
+              },
+              // Asia to Middle East
+              {
+                start: { lat: 28.6139, lng: 77.2090 }, // New Delhi
+                end: { lat: 25.2048, lng: 55.2708 }, // Dubai
+              }
+            ]}
+            lineColor="#8b5cf6"
+          />
+        </div>
+        
         <div className="relative z-10">
           <h1 className="text-4xl font-bold mb-2">Welcome back! 👋</h1>
           <p className="text-lg text-muted-foreground mb-6">
@@ -500,6 +540,92 @@ export default function DashboardPage() {
                   <h4 className="font-medium">Social Posts</h4>
                   <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                     <span>{stats.totalSocialPosts} created</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Global Reach Visualization */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <IconTrendingUp className="h-5 w-5 text-primary" />
+                  Global Content Reach
+                </CardTitle>
+                <CardDescription>
+                  Your content is reaching audiences worldwide across multiple platforms
+                </CardDescription>
+              </div>
+              <Badge variant="secondary" className="animate-pulse">
+                Live
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="relative h-[400px] bg-gradient-to-b from-background to-muted/20">
+              <WorldMap
+                dots={[
+                  // Major content distribution routes
+                  {
+                    start: { lat: 40.7128, lng: -74.0060 }, // New York (Creator)
+                    end: { lat: 51.5074, lng: -0.1278 }, // London (Viewers)
+                  },
+                  {
+                    start: { lat: 40.7128, lng: -74.0060 }, // New York
+                    end: { lat: 35.6762, lng: 139.6503 }, // Tokyo
+                  },
+                  {
+                    start: { lat: 40.7128, lng: -74.0060 }, // New York
+                    end: { lat: -23.5505, lng: -46.6333 }, // São Paulo
+                  },
+                  {
+                    start: { lat: 51.5074, lng: -0.1278 }, // London
+                    end: { lat: 48.8566, lng: 2.3522 }, // Paris
+                  },
+                  {
+                    start: { lat: 51.5074, lng: -0.1278 }, // London
+                    end: { lat: 52.5200, lng: 13.4050 }, // Berlin
+                  },
+                  {
+                    start: { lat: 35.6762, lng: 139.6503 }, // Tokyo
+                    end: { lat: -33.8688, lng: 151.2093 }, // Sydney
+                  },
+                  {
+                    start: { lat: 35.6762, lng: 139.6503 }, // Tokyo
+                    end: { lat: 37.5665, lng: 126.9780 }, // Seoul
+                  },
+                  {
+                    start: { lat: 28.6139, lng: 77.2090 }, // New Delhi
+                    end: { lat: 1.3521, lng: 103.8198 }, // Singapore
+                  }
+                ]}
+                lineColor="#6366f1"
+              />
+              
+              {/* Overlay Stats */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background to-transparent p-6">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-bold text-primary">47</p>
+                    <p className="text-sm text-muted-foreground">Countries Reached</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-primary">12.3K</p>
+                    <p className="text-sm text-muted-foreground">Global Views</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-primary">5</p>
+                    <p className="text-sm text-muted-foreground">Active Platforms</p>
                   </div>
                 </div>
               </div>
