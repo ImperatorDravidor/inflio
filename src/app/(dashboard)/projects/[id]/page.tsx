@@ -56,6 +56,7 @@ import { Input } from "@/components/ui/input"
 import { TranscriptionService } from "@/lib/transcription-service"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { WorkflowLoading } from "@/components/workflow-loading"
 
 const platformIcons = {
   twitter: IconBrandTwitter,
@@ -101,11 +102,8 @@ export default function ProjectDetailPage() {
   // Auto-redirect if processing
   useEffect(() => {
     if (project && project.status === 'processing') {
-      const timer = setTimeout(() => {
-        router.push(`/studio/processing/${projectId}`)
-      }, 1500)
-      
-      return () => clearTimeout(timer)
+      // Immediate redirect without delay
+      router.push(`/studio/processing/${projectId}`)
     }
   }, [project, projectId, router])
 
@@ -380,6 +378,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
   if (!project) return null
 
+  // Show workflow loading immediately if project is processing
+  if (project.status === 'processing') {
+    return <WorkflowLoading title={`Processing ${project.title}`} />
+  }
+
   const stats = ProjectService.getProjectStats(project)
   const searchResults = searchQuery && project.transcription
     ? TranscriptionService.searchTranscription(project.transcription.segments, searchQuery)
@@ -389,23 +392,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   return (
     <div className="relative min-h-screen">
       <AnimatedBackground variant="subtle" />
-      
-      {/* Processing Overlay */}
-      {project.status === 'processing' && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-          <Card className="max-w-md w-full mx-4 shadow-2xl border-primary/20">
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10 w-fit">
-                <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
-              </div>
-              <CardTitle className="text-2xl">Project Loading</CardTitle>
-              <CardDescription className="text-base">
-                Your video is being processed. Redirecting to processing view...
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
-      )}
       
       <div className="relative mx-auto max-[1600px] px-4 animate-in">
         {/* Streamlined Header */}

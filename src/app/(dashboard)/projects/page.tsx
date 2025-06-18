@@ -29,7 +29,8 @@ import {
   IconLayoutGrid,
   IconList,
   IconX,
-  IconSparkles
+  IconSparkles,
+  IconLoader2
 } from "@tabler/icons-react"
 import {
   DropdownMenu,
@@ -98,6 +99,7 @@ function ProjectCard({
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
   const progress = ProjectService.calculateProjectProgress(project)
+  const isProcessing = project.status === 'processing'
 
   // Helper function to handle project navigation
   const handleProjectClick = () => {
@@ -112,7 +114,10 @@ function ProjectCard({
     return (
       <MotionCard
         variants={itemVariants}
-        className="overflow-hidden hover:shadow-lg transition-all"
+        className={cn(
+          "overflow-hidden hover:shadow-lg transition-all",
+          isProcessing && "border-primary/30 bg-primary/5"
+        )}
         whileHover={{ scale: 1.01 }}
       >
         <div className="flex items-center p-4 gap-4">
@@ -135,7 +140,14 @@ function ProjectCard({
               </div>
             )}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-              <IconPlayerPlay className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              {isProcessing ? (
+                <div className="flex items-center gap-2 bg-black/60 px-3 py-1 rounded-full">
+                  <IconLoader2 className="h-4 w-4 text-white animate-spin" />
+                  <span className="text-xs text-white">Processing</span>
+                </div>
+              ) : (
+                <IconPlayerPlay className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
             </div>
           </div>
 
@@ -148,12 +160,16 @@ function ProjectCard({
               >
                 {project.title}
               </h3>
-              <Badge variant={
-                project.status === 'ready' ? 'default' :
-                project.status === 'processing' ? 'secondary' :
-                project.status === 'published' ? 'default' :
-                'outline'
-              }>
+              <Badge 
+                variant={
+                  project.status === 'ready' ? 'default' :
+                  project.status === 'processing' ? 'secondary' :
+                  project.status === 'published' ? 'default' :
+                  'outline'
+                }
+                className={isProcessing ? "animate-pulse" : ""}
+              >
+                {isProcessing && <IconLoader2 className="h-3 w-3 mr-1 animate-spin" />}
                 {project.status}
               </Badge>
             </div>
@@ -231,7 +247,10 @@ function ProjectCard({
   return (
     <MotionCard
       variants={itemVariants}
-      className="overflow-hidden hover:shadow-lg transition-all group"
+      className={cn(
+        "overflow-hidden hover:shadow-lg transition-all group",
+        isProcessing && "border-primary/30 bg-primary/5"
+      )}
       whileHover={{ scale: 1.02 }}
     >
       {/* Thumbnail */}
@@ -258,10 +277,20 @@ function ProjectCard({
           </div>
         </div>
         <div className="absolute inset-0 flex items-center justify-center">
-          <IconPlayerPlay className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          {isProcessing ? (
+            <div className="flex flex-col items-center gap-2 bg-black/60 p-4 rounded-lg">
+              <IconLoader2 className="h-10 w-10 text-white animate-spin" />
+              <span className="text-sm text-white font-medium">Processing</span>
+            </div>
+          ) : (
+            <IconPlayerPlay className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          )}
         </div>
         <Badge 
-          className="absolute top-4 right-4"
+          className={cn(
+            "absolute top-4 right-4",
+            isProcessing && "animate-pulse"
+          )}
           variant={
             project.status === 'ready' ? 'default' :
             project.status === 'processing' ? 'secondary' :
@@ -269,6 +298,7 @@ function ProjectCard({
             'outline'
           }
         >
+          {isProcessing && <IconLoader2 className="h-3 w-3 mr-1 animate-spin" />}
           {project.status}
         </Badge>
       </div>

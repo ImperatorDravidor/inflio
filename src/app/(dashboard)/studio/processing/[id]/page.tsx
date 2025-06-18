@@ -26,6 +26,7 @@ import { ProjectService } from "@/lib/services"
 import { Project, ProcessingTask } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
+import { WorkflowLoading } from "@/components/workflow-loading"
 
 const taskDetails = {
   transcription: {
@@ -308,11 +309,7 @@ export default function ProcessingPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[600px]">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <WorkflowLoading title="Loading Project" description="Fetching project details..." />
   }
 
   if (!project) return null
