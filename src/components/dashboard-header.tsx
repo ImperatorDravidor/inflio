@@ -48,6 +48,10 @@ import { cn } from "@/lib/utils"
 // Context-specific action configurations
 const pageActions: Record<string, React.ReactNode[]> = {
   '/dashboard': [
+    <Button key="new-project" className="gap-2" size="sm" onClick={() => window.location.href = '/studio/upload'}>
+      <IconPlus className="h-4 w-4" />
+      <span className="hidden sm:inline">New Project</span>
+    </Button>,
     <Button key="refresh" variant="ghost" size="sm" className="gap-2">
       <IconRefresh className="h-4 w-4" />
       <span className="hidden lg:inline">Refresh</span>

@@ -86,6 +86,7 @@ export interface SocialPost {
     shares: number
     comments: number
   }
+  createdAt?: string
 }
 
 export interface PodcastData {
@@ -104,11 +105,27 @@ export interface PodcastData {
   topics: string[]
 }
 
+export interface GeneratedImage {
+  id: string
+  prompt: string
+  originalPrompt?: string
+  style?: string
+  quality?: string
+  size?: string
+  format?: string
+  background?: string
+  imageData?: string
+  url?: string
+  createdAt: string
+  type: string
+}
+
 export interface ContentFolders {
   clips: ClipData[]
   blog: BlogPost[]
   social: SocialPost[]
   podcast: PodcastData[]
+  images?: GeneratedImage[]
 }
 
 export interface Project {
@@ -120,6 +137,22 @@ export interface Project {
   thumbnail_url: string
   metadata: VideoMetadata
   transcription?: TranscriptionData
+  content_analysis?: {
+    keywords: string[]
+    topics: string[]
+    summary: string
+    sentiment: 'positive' | 'neutral' | 'negative'
+    keyMoments: Array<{
+      timestamp: number
+      description: string
+    }>
+    contentSuggestions: {
+      blogPostIdeas: string[]
+      socialMediaHooks: string[]
+      shortFormContent: string[]
+    }
+    analyzedAt: string
+  }
   folders: ContentFolders
   tasks: ProcessingTask[]
   settings: {

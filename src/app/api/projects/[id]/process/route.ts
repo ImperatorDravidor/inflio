@@ -24,7 +24,7 @@ export async function POST(
 
     const hasTranscriptionTask = project.tasks.some(task => task.type === 'transcription' && task.status === 'pending');
     if (hasTranscriptionTask) {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/process-transcription`, {
+      await fetch(`http://localhost:3000/api/process-transcription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -37,7 +37,7 @@ export async function POST(
 
     const hasClipsTask = project.tasks.some(task => task.type === 'clips' && task.status === 'pending');
     if (hasClipsTask) {
-        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/process-klap`, {
+        await fetch(`http://localhost:3000/api/process-klap`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

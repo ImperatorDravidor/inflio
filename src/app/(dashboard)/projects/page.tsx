@@ -99,11 +99,12 @@ function ProjectCard({
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
   const progress = ProjectService.calculateProjectProgress(project)
-  const isProcessing = project.status === 'processing'
+  const isProcessing = project.status === 'processing' && progress < 100
 
   // Helper function to handle project navigation
   const handleProjectClick = () => {
-    if (project.status === 'processing') {
+    // Check both status and progress to determine if still processing
+    if (project.status === 'processing' && progress < 100) {
       router.push(`/studio/processing/${project.id}`)
     } else {
       router.push(`/projects/${project.id}`)

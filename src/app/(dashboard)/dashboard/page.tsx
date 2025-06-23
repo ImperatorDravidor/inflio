@@ -5,8 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { motion } from "framer-motion"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { motion, AnimatePresence } from "framer-motion"
 import { 
   IconVideoPlus,
   IconFolder,
@@ -18,7 +20,30 @@ import {
   IconFileText,
   IconShare,
   IconPlayerPlay,
-  IconScissors
+  IconScissors,
+  IconUsers,
+  IconEye,
+  IconHeart,
+  IconTrendingUp,
+  IconBrandYoutube,
+  IconBrandInstagram,
+  IconBrandTiktok,
+  IconTarget,
+  IconBolt,
+  IconTrophy,
+  IconFlame,
+  IconMedal,
+  IconCalendar,
+  IconBrandLinkedin,
+  IconBrandX,
+  IconBrandFacebook,
+  IconPlus,
+  IconCheck,
+  IconDots,
+  IconArrowUp,
+  IconGift,
+  IconRocket,
+  IconEdit
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { ProjectService } from "@/lib/services"
@@ -29,6 +54,24 @@ import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from "next/image"
 import { RecapWizard } from "@/components/social/recap-wizard"
+import { 
+  AnimatedStatCard,
+  AchievementBadge,
+  CelebrationOverlay
+} from "@/components/dashboard-enhancements"
+import { format, startOfWeek, addDays, isToday, isSameDay } from "date-fns"
+import { cn } from "@/lib/utils"
+import { 
+  LineChart, 
+  Line, 
+  AreaChart, 
+  Area, 
+  ResponsiveContainer, 
+  Tooltip, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid
+} from 'recharts'
 
 const MotionCard = motion(Card)
 
@@ -41,6 +84,35 @@ interface DashboardStats {
   totalProcessingTime: number
   activeProjects: number
   completedProjects: number
+}
+
+interface ScheduledPost {
+  id: string
+  date: Date
+  time: string
+  platform: string
+  content: string
+  status: 'scheduled' | 'published' | 'draft'
+  type: 'video' | 'image' | 'blog' | 'story'
+  projectId?: string
+}
+
+const platformIcons = {
+  youtube: IconBrandYoutube,
+  instagram: IconBrandInstagram,
+  tiktok: IconBrandTiktok,
+  linkedin: IconBrandLinkedin,
+  x: IconBrandX,
+  facebook: IconBrandFacebook
+}
+
+const platformColors = {
+  youtube: 'bg-red-600',
+  instagram: 'bg-gradient-to-br from-purple-600 to-pink-600',
+  tiktok: 'bg-black',
+  linkedin: 'bg-blue-700',
+  x: 'bg-black',
+  facebook: 'bg-blue-600'
 }
 
 export default function DashboardPage() {
@@ -60,40 +132,105 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [showRecap, setShowRecap] = useState(false)
   const [hasSeenRecap, setHasSeenRecap] = useState(false)
-
-  // Dynamic tips that rotate
-  const tips = [
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [viewMode, setViewMode] = useState<'overview' | 'calendar' | 'analytics'>('overview')
+  
+  // Mock scheduled posts - in production, fetch from backend
+  const [scheduledPosts] = useState<ScheduledPost[]>([
     {
-      title: "Optimize Video Length",
-      description: "Videos under 60 seconds get 2x more engagement"
+      id: '1',
+      date: new Date(),
+      time: '10:00 AM',
+      platform: 'instagram',
+      content: 'New product launch video',
+      status: 'scheduled',
+      type: 'video'
     },
     {
-      title: "Add Captions",
-      description: "85% of videos are watched without sound"
+      id: '2',
+      date: new Date(),
+      time: '2:00 PM',
+      platform: 'tiktok',
+      content: 'Behind the scenes clip',
+      status: 'scheduled',
+      type: 'video'
     },
     {
-      title: "Best Upload Times",
-      description: "Tuesday-Thursday, 9AM-12PM see highest views"
+      id: '3',
+      date: addDays(new Date(), 1),
+      time: '9:00 AM',
+      platform: 'youtube',
+      content: 'Tutorial: How to Create Viral Shorts',
+      status: 'scheduled',
+      type: 'video'
     },
     {
-      title: "Use Templates",
-      description: "Save time with pre-built content templates"
-    },
-    {
-      title: "Batch Processing",
-      description: "Upload multiple videos to maximize efficiency"
-    },
-    {
-      title: "SEO Optimization",
-      description: "Add keywords to your titles and descriptions"
+      id: '4',
+      date: addDays(new Date(), 2),
+      time: '6:00 PM',
+      platform: 'linkedin',
+      content: 'Industry insights blog post',
+      status: 'draft',
+      type: 'blog'
     }
-  ]
+  ])
 
-  // Select random tips
-  const [currentTips] = useState(() => {
-    const shuffled = [...tips].sort(() => 0.5 - Math.random())
-    return shuffled.slice(0, 2)
+  // Performance data
+  const performanceData = Array.from({ length: 7 }, (_, i) => {
+    const date = addDays(startOfWeek(new Date()), i)
+    return {
+      day: format(date, 'EEE'),
+      views: 2000 + (i * 500), // Consistent values instead of random
+      engagement: 40 + (i * 10), // Consistent values instead of random
+      posts: scheduledPosts.filter(p => isSameDay(p.date, date)).length
+    }
   })
+
+  // Current streak calculation
+  const currentStreak = 7 // Fixed value instead of random
+
+  // Mock achievements
+  const [achievements] = useState([
+    {
+      id: '1',
+      title: 'Content Creator',
+      description: 'Create 10 video clips',
+      icon: IconScissors,
+      color: 'bg-purple-500',
+      progress: stats.totalClips,
+      maxProgress: 10,
+      reward: '250 credits',
+      claimed: false,
+      rarity: 'rare' as const
+    },
+    {
+      id: '2',
+      title: 'Consistency King',
+      description: 'Post daily for 7 days',
+      icon: IconFlame,
+      color: 'bg-orange-500',
+      progress: Math.min(currentStreak, 7),
+      maxProgress: 7,
+      reward: '500 credits',
+      claimed: false,
+      rarity: 'epic' as const
+    },
+    {
+      id: '3',
+      title: 'Multi-Platform Master',
+      description: 'Post on 4+ platforms',
+      icon: IconRocket,
+      color: 'bg-gradient-to-br from-blue-500 to-purple-500',
+      progress: 3,
+      maxProgress: 4,
+      reward: 'Pro Badge',
+      claimed: false,
+      rarity: 'legendary' as const
+    }
+  ])
+
+  const generateSparkline = () => [45, 52, 48, 62, 58, 71, 65] // Fixed values for consistent rendering
 
   useEffect(() => {
     // Check if user has seen recap today
@@ -104,7 +241,7 @@ export default function DashboardPage() {
       setTimeout(() => {
         setShowRecap(true)
         localStorage.setItem(`recap_shown_${userId}`, today)
-      }, 1000) // Show after 1 second
+      }, 1000)
     }
     setHasSeenRecap(true)
   }, [userId])
@@ -148,111 +285,258 @@ export default function DashboardPage() {
     fetchData()
   }, [userId])
 
-  const recentProjects = projects.slice(0, 5)
-
-  const statsCards = [
-    {
-      title: "Total Projects",
-      value: stats.totalProjects,
-      icon: IconFolder,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50 dark:bg-blue-950/20"
-    },
-    {
-      title: "Video Clips",
-      value: stats.totalClips,
-      icon: IconVideo,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50 dark:bg-purple-950/20"
-    },
-    {
-      title: "Blog Posts",
-      value: stats.totalBlogPosts,
-      icon: IconFileText,
-      color: "text-green-600",
-      bgColor: "bg-green-50 dark:bg-green-950/20"
-    },
-    {
-      title: "Social Posts",
-      value: stats.totalSocialPosts,
-      icon: IconShare,
-      color: "text-orange-600",
-      bgColor: "bg-orange-50 dark:bg-orange-950/20"
-    }
-  ]
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
-    }
+  const getPostsForDate = (date: Date) => {
+    return scheduledPosts.filter(post => isSameDay(post.date, date))
   }
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.5
-      }
-    }
+  const renderContentCalendar = () => {
+    const weekStart = startOfWeek(new Date())
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+
+    return (
+      <Card className="col-span-2">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <IconCalendar className="h-5 w-5" />
+                Content Calendar
+              </CardTitle>
+              <CardDescription>Your posting schedule for this week</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => router.push('/social/calendar')}>
+                <IconCalendar className="h-4 w-4 mr-2" />
+                Full Calendar
+              </Button>
+              <Button size="sm" onClick={() => router.push('/social/compose')}>
+                <IconPlus className="h-4 w-4 mr-2" />
+                Create Post
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map((date, index) => {
+              const posts = getPostsForDate(date)
+              const isCurrentDay = isToday(date)
+              
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className={cn(
+                    "min-h-[120px] p-3 rounded-lg border",
+                    isCurrentDay && "border-primary bg-primary/5",
+                    "hover:shadow-md transition-all cursor-pointer"
+                  )}
+                  onClick={() => setSelectedDate(date)}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {format(date, 'EEE')}
+                      </p>
+                      <p className={cn(
+                        "text-lg font-bold",
+                        isCurrentDay && "text-primary"
+                      )}>
+                        {format(date, 'd')}
+                      </p>
+                    </div>
+                    {posts.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {posts.length}
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    {posts.slice(0, 2).map((post) => {
+                      const Icon = platformIcons[post.platform as keyof typeof platformIcons]
+                      return (
+                        <div key={post.id} className="flex items-center gap-1">
+                          <div className={cn(
+                            "p-1 rounded",
+                            platformColors[post.platform as keyof typeof platformColors]
+                          )}>
+                            <Icon className="h-3 w-3 text-white" />
+                          </div>
+                          <span className="text-xs truncate flex-1">
+                            {post.time}
+                          </span>
+                        </div>
+                      )
+                    })}
+                    {posts.length > 2 && (
+                      <p className="text-xs text-muted-foreground">
+                        +{posts.length - 2} more
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+
+          {/* Selected Date Posts */}
+          {selectedDate && (
+            <div className="mt-6 pt-6 border-t">
+              <h4 className="font-medium mb-3">
+                {format(selectedDate, 'EEEE, MMMM d')} Schedule
+              </h4>
+              <div className="space-y-2">
+                {getPostsForDate(selectedDate).length > 0 ? (
+                  getPostsForDate(selectedDate).map((post) => {
+                    const Icon = platformIcons[post.platform as keyof typeof platformIcons]
+                    return (
+                      <div key={post.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                        <div className={cn(
+                          "p-2 rounded-lg text-white",
+                          platformColors[post.platform as keyof typeof platformColors]
+                        )}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{post.content}</p>
+                          <p className="text-xs text-muted-foreground">{post.time}</p>
+                        </div>
+                        <Badge variant={
+                          post.status === 'published' ? 'default' :
+                          post.status === 'scheduled' ? 'secondary' :
+                          'outline'
+                        }>
+                          {post.status}
+                        </Badge>
+                        <Button variant="ghost" size="icon">
+                          <IconDots className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <IconCalendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No posts scheduled for this day</p>
+                    <Button variant="outline" size="sm" className="mt-2">
+                      <IconPlus className="h-3 w-3 mr-1" />
+                      Schedule Post
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
+
+  const recentProjects = projects.slice(0, 3)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-8">
+      {/* Celebration Overlay */}
+      <CelebrationOverlay show={showCelebration} />
+
       {/* Recap Dialog */}
       {userId && hasSeenRecap && (
         <Dialog open={showRecap} onOpenChange={setShowRecap}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+            <DialogTitle className="sr-only">Content Performance Report</DialogTitle>
             <RecapWizard 
               userId={userId} 
-              isReturningUser={stats.totalProjects > 0}
               onClose={() => setShowRecap(false)}
             />
           </DialogContent>
         </Dialog>
       )}
 
-      {/* Welcome Header */}
+      {/* Enhanced Header with Streak */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 p-8"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 p-6"
       >
         <div className="relative z-10">
-          <h1 className="text-4xl font-bold mb-2">Welcome back! 👋</h1>
-          <p className="text-lg text-muted-foreground mb-6">
-            Your content creation hub is ready. What will you create today?
-          </p>
-          <div className="flex gap-4">
-            <Button 
-              size="lg" 
-              className="gradient-premium hover:opacity-90 shadow-lg"
-              onClick={() => router.push('/studio/upload')}
-            >
-              <IconVideoPlus className="h-5 w-5 mr-2" />
-              Upload New Video
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline"
-              onClick={() => router.push('/projects')}
-            >
-              View All Projects
-              <IconArrowRight className="h-5 w-5 ml-2" />
-            </Button>
-            <Button 
-              size="lg" 
-              variant="ghost"
-              onClick={() => setShowRecap(true)}
-            >
-              <IconChartBar className="h-5 w-5 mr-2" />
-              View Recap
-            </Button>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl font-bold">Welcome back!</h1>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20">
+                  <IconFlame className="h-5 w-5 text-orange-500" />
+                  <span className="text-sm font-medium">{currentStreak} day streak</span>
+                </div>
+              </div>
+              <p className="text-muted-foreground">
+                You have {scheduledPosts.filter(p => isToday(p.date) && p.status === 'scheduled').length} posts scheduled for today
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                onClick={() => setShowRecap(true)}
+              >
+                <IconChartBar className="h-4 w-4 mr-2" />
+                View Recap
+              </Button>
+              <Button 
+                className="gradient-premium shadow-lg"
+                onClick={() => router.push('/studio/upload')}
+              >
+                <IconVideoPlus className="h-4 w-4 mr-2" />
+                Create Content
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Stats Bar */}
+          <div className="grid grid-cols-4 gap-4">
+            <div className="bg-background/50 backdrop-blur-sm rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <IconEye className="h-4 w-4 text-blue-500" />
+                <div>
+                  <p className="text-2xl font-bold">
+                    {(stats.totalVideos * 487).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Total Views</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-background/50 backdrop-blur-sm rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <IconUsers className="h-4 w-4 text-purple-500" />
+                <div>
+                  <p className="text-2xl font-bold">
+                    {(4664).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Followers</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-background/50 backdrop-blur-sm rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <IconVideo className="h-4 w-4 text-green-500" />
+                <div>
+                  <p className="text-2xl font-bold">
+                    {stats.totalClips}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Clips Created</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-background/50 backdrop-blur-sm rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <IconTrendingUp className="h-4 w-4 text-orange-500" />
+                <div>
+                  <p className="text-2xl font-bold">+23%</p>
+                  <p className="text-xs text-muted-foreground">Growth Rate</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div className="absolute -right-20 -bottom-20 opacity-10">
@@ -260,287 +544,257 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* Stats Grid */}
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-      >
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-8 w-16 mt-2" />
-              </CardHeader>
-            </Card>
-          ))
-        ) : (
-          statsCards.map((stat) => (
-            <MotionCard
-              key={stat.title}
-              variants={itemVariants}
-              whileHover={{ scale: 1.02 }}
-              className="relative overflow-hidden"
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.title}</p>
-                    <h3 className="text-3xl font-bold mt-1">{stat.value}</h3>
-                  </div>
-                  <div className={`p-3 rounded-xl ${stat.bgColor}`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                </div>
-              </CardHeader>
-            </MotionCard>
-          ))
-        )}
-      </motion.div>
+      {/* Achievements Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {achievements.map((achievement) => (
+          <AchievementBadge
+            key={achievement.id}
+            achievement={achievement}
+            onClaim={() => {
+              setShowCelebration(true)
+              setTimeout(() => setShowCelebration(false), 3000)
+            }}
+          />
+        ))}
+      </div>
 
-      {/* Content Analytics */}
+      {/* Main Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Activity */}
-        <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="lg:col-span-2"
-        >
-          <Card className="h-full">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Recent Projects</CardTitle>
-                  <CardDescription>Your latest video projects and their status</CardDescription>
-                </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/projects">View All</Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <Skeleton className="h-16 w-24 rounded-lg" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-40" />
-                        <Skeleton className="h-3 w-60" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : recentProjects.length > 0 ? (
-                <div className="space-y-4">
-                  {recentProjects.map((project) => {
-                    const projectStats = ProjectService.getProjectStats(project)
-                    const progress = ProjectService.calculateProjectProgress(project)
-                    
-                    return (
-                      <motion.div
-                        key={project.id}
-                        whileHover={{ x: 4 }}
-                        className="group cursor-pointer"
-                        onClick={() => {
-                          if (project.status === 'processing') {
-                            router.push(`/studio/processing/${project.id}`)
-                          } else {
-                            router.push(`/projects/${project.id}`)
-                          }
-                        }}
-                      >
-                        <div className="flex items-center gap-4 p-4 rounded-xl border hover:border-primary/50 transition-all">
-                          <div className="relative h-16 w-24 rounded-lg overflow-hidden bg-muted">
-                            {project.thumbnail_url ? (
-                              <Image
-                                src={project.thumbnail_url}
-                                alt={project.title}
-                                fill
-                                className="object-cover"
-                              />
-                            ) : (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <IconVideo className="h-8 w-8 text-muted-foreground/50" />
-                              </div>
-                            )}
-                            {project.status === 'processing' && (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                <IconPlayerPlay className="h-6 w-6 text-white animate-pulse" />
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex-1">
-                            <h4 className="font-semibold group-hover:text-primary transition-colors">
-                              {project.title}
-                            </h4>
-                            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <IconClock className="h-4 w-4" />
-                                {formatDuration(project.metadata.duration)}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <IconVideo className="h-4 w-4" />
-                                {projectStats.totalClips} clips
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <IconFileText className="h-4 w-4" />
-                                {projectStats.totalBlogs} posts
-                              </span>
-                            </div>
-                            <Progress value={progress} className="h-1.5 mt-2" />
-                          </div>
-                          
-                          <div className="text-right">
-                            <Badge variant={
-                              project.status === 'ready' ? 'default' :
-                              project.status === 'processing' ? 'secondary' :
-                              project.status === 'published' ? 'default' :
-                              'outline'
-                            }>
-                              {project.status}
-                            </Badge>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(project.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <IconFolder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-medium mb-2">No projects yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Upload your first video to get started
-                  </p>
-                  <Button 
-                    size="sm"
-                    onClick={() => router.push('/studio/upload')}
-                  >
-                    <IconVideoPlus className="h-4 w-4 mr-2" />
-                    Upload Video
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+        {/* Content Calendar - Takes up 2 columns */}
+        {renderContentCalendar()}
 
-        {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
-          className="space-y-6"
-        >
-          {/* Processing Stats */}
+        {/* Right Sidebar */}
+        <div className="space-y-6">
+          {/* Today's Focus */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Processing Overview</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Active Tasks</span>
-                <span className="font-semibold">{stats.activeProjects}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Completed</span>
-                <span className="font-semibold">{stats.completedProjects}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total Time</span>
-                <span className="font-semibold">{formatDuration(stats.totalProcessingTime)}</span>
-              </div>
-              <Button className="w-full" variant="outline" size="sm">
-                <IconChartBar className="h-4 w-4 mr-2" />
-                View Analytics
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Quick Tips */}
-          <Card className="bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
-            <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <IconSparkles className="h-5 w-5 text-primary" />
-                Pro Tips
+                <IconTarget className="h-5 w-5 text-primary" />
+                Today's Focus
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {currentTips.map((tip, index) => (
-                <div key={index} className="text-sm">
-                  <p className="font-medium mb-1">{tip.title}</p>
-                  <p className="text-muted-foreground">
-                    {tip.description}
-                  </p>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10">
+                <IconVideo className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">Complete video editing</p>
+                  <p className="text-xs text-muted-foreground">Due in 2 hours</p>
                 </div>
-              ))}
-              <Button className="w-full" size="sm" variant="ghost" onClick={() => router.push('/templates')}>
-                View All Tips
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                <IconEdit className="h-5 w-5 text-muted-foreground" />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">Write blog post</p>
+                  <p className="text-xs text-muted-foreground">Due today</p>
+                </div>
+              </div>
+              <Button className="w-full" variant="outline" size="sm">
+                View All Tasks
                 <IconArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </CardContent>
           </Card>
-        </motion.div>
+
+          {/* Performance Mini Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">This Week's Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-32">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={performanceData}>
+                    <defs>
+                      <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="day" tick={{ fontSize: 10 }} />
+                    <Tooltip />
+                    <Area
+                      type="monotone"
+                      dataKey="views"
+                      stroke="#8b5cf6"
+                      fillOpacity={1}
+                      fill="url(#colorViews)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-500">
+                    {(23541).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Views</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-500">
+                    {(1243).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Likes</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-purple-500">
+                    {(342).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Comments</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => router.push('/studio/upload')}>
+                <IconVideoPlus className="h-4 w-4" />
+                Upload
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push('/templates')}>
+                <IconSparkles className="h-4 w-4" />
+                Templates
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push('/social/compose')}>
+                <IconEdit className="h-4 w-4" />
+                Compose
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push('/analytics')}>
+                <IconChartBar className="h-4 w-4" />
+                Analytics
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Platform Performance */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>Content Distribution</CardTitle>
-            <CardDescription>Your content across different formats</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="flex items-center gap-4 p-4 rounded-lg border">
-                <div className="p-3 rounded-lg bg-muted text-purple-500">
-                  <IconScissors className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">Video Clips</h4>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                    <span>{stats.totalClips} generated</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 p-4 rounded-lg border">
-                <div className="p-3 rounded-lg bg-muted text-green-500">
-                  <IconFileText className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">Blog Posts</h4>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                    <span>{stats.totalBlogPosts} written</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 p-4 rounded-lg border">
-                <div className="p-3 rounded-lg bg-muted text-orange-500">
-                  <IconShare className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">Social Posts</h4>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                    <span>{stats.totalSocialPosts} created</span>
-                  </div>
-                </div>
-              </div>
+      {/* Recent Projects Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Recent Projects</CardTitle>
+              <CardDescription>Your latest video projects and their progress</CardDescription>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/projects">View All</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-16 w-24 rounded-lg" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-60" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : recentProjects.length > 0 ? (
+            <div className="space-y-4">
+              {recentProjects.map((project) => {
+                const projectStats = ProjectService.getProjectStats(project)
+                const progress = ProjectService.calculateProjectProgress(project)
+                
+                return (
+                  <motion.div
+                    key={project.id}
+                    whileHover={{ x: 4 }}
+                    className="group cursor-pointer"
+                    onClick={() => {
+                      if (project.status === 'processing') {
+                        router.push(`/studio/processing/${project.id}`)
+                      } else {
+                        router.push(`/projects/${project.id}`)
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-4 p-4 rounded-xl border hover:border-primary/50 transition-all">
+                      <div className="relative h-16 w-24 rounded-lg overflow-hidden bg-muted">
+                        {project.thumbnail_url ? (
+                          <Image
+                            src={project.thumbnail_url}
+                            alt={project.title}
+                            fill
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <IconVideo className="h-8 w-8 text-muted-foreground/50" />
+                          </div>
+                        )}
+                        {project.status === 'processing' && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <IconPlayerPlay className="h-6 w-6 text-white animate-pulse" />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1">
+                        <h4 className="font-semibold group-hover:text-primary transition-colors">
+                          {project.title}
+                        </h4>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <IconClock className="h-4 w-4" />
+                            {formatDuration(project.metadata.duration)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <IconVideo className="h-4 w-4" />
+                            {projectStats.totalClips} clips
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <IconFileText className="h-4 w-4" />
+                            {projectStats.totalBlogs} posts
+                          </span>
+                        </div>
+                        <Progress value={progress} className="h-1.5 mt-2" />
+                      </div>
+                      
+                      <div className="text-right">
+                        <Badge variant={
+                          project.status === 'ready' ? 'default' :
+                          project.status === 'processing' ? 'secondary' :
+                          project.status === 'published' ? 'default' :
+                          'outline'
+                        }>
+                          {project.status}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(project.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <IconFolder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="font-medium mb-2">No projects yet</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Upload your first video to get started
+              </p>
+              <Button 
+                size="sm"
+                onClick={() => router.push('/studio/upload')}
+              >
+                <IconVideoPlus className="h-4 w-4 mr-2" />
+                Upload Video
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 } 

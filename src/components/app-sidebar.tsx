@@ -10,7 +10,8 @@ import {
   IconHelpCircle,
   IconVideo,
   IconTrendingUp,
-  IconShare2
+  IconShare2,
+  IconFileText
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -106,13 +107,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       icon: IconHome,
       badge: null,
       description: "Overview & insights"
-    },
-    {
-      title: "Create Video",
-      url: "/studio/upload",
-      icon: IconVideoPlus,
-      badge: null,
-      description: "Upload & process content"
     },
     {
       title: "My Videos",

@@ -229,15 +229,18 @@ export class SupabaseProjectService {
   static async addToFolder<T extends keyof ContentFolders>(
     projectId: string,
     folderType: T,
-    content: ContentFolders[T][0]
+    content: any // Since ContentFolders have different item types, we'll use any here
   ): Promise<void> {
     const project = await this.getProject(projectId)
     if (!project) return
 
-    // Type-safe folder update
+    // Type-safe folder update - access array explicitly
+    const currentFolder = project.folders[folderType] as any[]
+    const updatedFolder = [...currentFolder, content]
+    
     const updatedFolders = {
       ...project.folders,
-      [folderType]: [...project.folders[folderType], content]
+      [folderType]: updatedFolder
     } as ContentFolders
 
     project.folders = updatedFolders

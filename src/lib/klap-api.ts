@@ -70,16 +70,28 @@ export class KlapAPIService {
 
   /**
    * Step 2: Poll the task status until it's ready.
+   * Klap processing typically takes 15-20 minutes for video analysis.
    */
   private static async pollTaskUntilReady(taskId: string): Promise<{ id: string; status: string; output_id: string }> {
-    for (let i = 0; i < 60; i++) { // Poll for up to 5 minutes
+    const startTime = Date.now();
+    const maxDuration = 25 * 60 * 1000; // 25 minutes in milliseconds
+    const baseDelay = 15000; // 15 seconds base polling interval
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+    
+    while (Date.now() - startTime < maxDuration) {
+      try {
       const task = await this.request<{ id: string; status: 'processing' | 'ready' | 'error'; output_id?: string; error?: string }>(`/tasks/${taskId}`)
-      console.log(`[Klap] Polling task ${taskId}: status is ${task.status}`)
+        
+        // Calculate elapsed time
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+        console.log(`[Klap] Polling task ${taskId}: status is ${task.status} (${elapsedMinutes} minutes elapsed)`)
       
       if (task.status === 'ready') {
         if (!task.output_id) {
             throw new Error('[Klap] Task is ready but has no output_id.')
         }
+          console.log(`[Klap] Task completed successfully after ${elapsedMinutes} minutes`)
         return { id: task.id, status: task.status, output_id: task.output_id };
       }
       
@@ -87,9 +99,32 @@ export class KlapAPIService {
         throw new Error(`[Klap] Task failed: ${task.error || 'Unknown error'}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds
+        // Reset consecutive errors on successful poll
+        consecutiveErrors = 0;
+        
+        // Use consistent polling interval
+        await new Promise(resolve => setTimeout(resolve, baseDelay));
+        
+      } catch (error: any) {
+        consecutiveErrors++;
+        
+        // Handle rate limiting
+        if (error.message && error.message.includes('429')) {
+          console.log(`[Klap] Rate limited. Waiting 60 seconds before retry...`)
+          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute on rate limit
+        } else if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`[Klap] Too many consecutive errors (${consecutiveErrors}). Aborting.`)
+          throw error;
+        } else {
+          console.warn(`[Klap] Polling error (attempt ${consecutiveErrors}/${maxConsecutiveErrors}):`, error.message)
+          // Wait longer on errors
+          await new Promise(resolve => setTimeout(resolve, baseDelay * 2));
+        }
+      }
     }
-    throw new Error(`[Klap] Task ${taskId} timed out after 5 minutes.`)
+    
+    const totalMinutes = Math.floor((Date.now() - startTime) / 60000);
+    throw new Error(`[Klap] Task ${taskId} timed out after ${totalMinutes} minutes. Klap processing may still be running.`)
   }
 
   /**

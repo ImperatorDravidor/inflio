@@ -85,13 +85,16 @@ function VideoCard({
 }) {
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
-  const StatusIcon = project.status === 'processing' ? IconLoader2 : 
+  const progress = ProjectService.calculateProjectProgress(project)
+  const isProcessing = project.status === 'processing' && progress < 100
+  const StatusIcon = isProcessing ? IconLoader2 : 
                      project.status === 'ready' ? IconCheck : 
                      IconClock
 
   // Helper function to handle project navigation
   const handleProjectClick = () => {
-    if (project.status === 'processing') {
+    // Check both status and progress to determine if still processing
+    if (project.status === 'processing' && progress < 100) {
       router.push(`/studio/processing/${project.id}`)
     } else {
       router.push(`/projects/${project.id}`)
@@ -152,11 +155,11 @@ function VideoCard({
                 </p>
               </div>
               <Badge 
-                variant={project.status === 'ready' ? 'default' : 'secondary'}
+                variant={isProcessing ? 'secondary' : 'default'}
                 className="ml-4 flex items-center gap-1"
               >
-                <StatusIcon className="h-3 w-3" />
-                {project.status}
+                <StatusIcon className={cn("h-3 w-3", isProcessing && "animate-spin")} />
+                {isProcessing ? 'processing' : project.status}
               </Badge>
             </div>
             
@@ -285,10 +288,10 @@ function VideoCard({
         {/* Status badge */}
         <Badge 
           className="absolute top-3 right-3 backdrop-blur-sm"
-          variant={project.status === 'ready' ? 'default' : 'secondary'}
+          variant={isProcessing ? 'secondary' : 'default'}
         >
-          <StatusIcon className="h-3 w-3 mr-1" />
-          {project.status}
+          <StatusIcon className={cn("h-3 w-3 mr-1", isProcessing && "animate-spin")} />
+          {isProcessing ? 'processing' : project.status}
         </Badge>
       </div>
 

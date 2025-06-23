@@ -37,7 +37,6 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis
 } from 'recharts'
-import CountUp from 'react-countup'
 
 // Type for icon component
 type IconComponent = Icon
@@ -178,14 +177,7 @@ export function AnimatedStatCard({
           </div>
           <p className="text-sm text-muted-foreground">{title}</p>
           <p className="text-2xl font-bold mt-1">
-            <CountUp
-              start={0}
-              end={value}
-              duration={2}
-              separator=","
-              prefix={prefix}
-              suffix={suffix}
-            />
+            {prefix}{value.toLocaleString()}{suffix}
           </p>
           {sparkline && sparkline.length > 0 && (
             <div className="absolute bottom-0 left-0 right-0 h-12 opacity-20">
@@ -281,13 +273,13 @@ export function PlatformPerformanceCard({
               <div>
                 <p className="text-xs text-muted-foreground">Views</p>
                 <p className="text-lg font-bold">
-                  <CountUp end={platform.metrics.views} separator="," />
+                  {platform.metrics.views.toLocaleString()}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Followers</p>
                 <p className="text-lg font-bold">
-                  <CountUp end={platform.metrics.followers} separator="," />
+                  {platform.metrics.followers.toLocaleString()}
                 </p>
               </div>
             </div>

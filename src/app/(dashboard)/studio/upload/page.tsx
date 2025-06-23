@@ -169,11 +169,14 @@ export default function UploadPage() {
   const handleUpload = async () => {
     if (!file || !videoMetadata) return;
 
-    const hasSelectedWorkflow = Object.values(workflowOptions).some(v => v);
-    if (!hasSelectedWorkflow) {
-      toast.error("Please select at least one workflow");
-      return;
-    }
+    // For now, we're focusing on transcription and clips
+    const simplifiedOptions = {
+      transcription: true,
+      clips: true,
+      blog: false,
+      social: false,
+      podcast: false
+    };
 
     // Check usage limits before processing
     if (!UsageService.canProcessVideo()) {
@@ -192,7 +195,6 @@ export default function UploadPage() {
       formData.append('file', file);
 
       // Step 1: Upload the file to our backend.
-      // The backend will handle storing it in Supabase and return the public URL.
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
@@ -212,15 +214,15 @@ export default function UploadPage() {
       toast.success("Video uploaded successfully!", { id: toastId });
       setUploadProgress(100);
 
-      // Step 2: Create the project in our database with the returned URL.
+      // Step 2: Create the project with simplified workflow options
       toast.info("Creating project...");
       const project = await ProjectService.createProject(
         projectTitle || file.name.replace(/\.[^/.]+$/, ""),
         file,
         supabaseVideoUrl,
-        thumbnail, // Use the locally generated thumbnail for now
+        thumbnail,
         videoMetadata,
-        workflowOptions,
+        simplifiedOptions, // Use simplified options
         userId || undefined
       );
 
@@ -235,21 +237,25 @@ export default function UploadPage() {
       // Increment usage after successful project creation
       const incrementSuccess = UsageService.incrementUsage();
       if (!incrementSuccess) {
-        // This shouldn't happen as we checked earlier, but just in case
         toast.warning("Usage limit reached. This may be your last video for this month.");
       }
       
-      // Step 3: Start the main processing workflows
-      toast.info('Starting AI processing workflows...');
+      // Step 3: Start the processing workflows (transcription and clips)
+      toast.info('Starting AI processing...');
       await ProjectService.startProcessing(project.id);
       
-      toast.success("Processing started! Redirecting to your project dashboard.");
-      router.push(`/studio/processing/${project.id}`);
+      toast.success("Processing started! You'll be redirected to see the progress.");
+      
+      // Redirect to processing page
+      setTimeout(() => {
+        router.push(`/studio/processing/${project.id}`);
+      }, 1000);
 
     } catch (err) {
       handleError(err, "Failed to upload and create project.")
       setUploading(false)
       setUploadProgress(0)
+      toast.dismiss(toastId)
     }
   };
 
@@ -283,19 +289,19 @@ export default function UploadPage() {
             >
               {/* Animated background pattern */}
               {!file && (
-                <div className="absolute inset-0 opacity-5">
+                <div className="absolute inset-0 opacity-5 pointer-events-none">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--primary)_0%,transparent_70%)] animate-pulse" />
                 </div>
               )}
 
               {!file ? (
                 <div className="relative">
-                  <IconUpload className="h-16 w-16 text-muted-foreground mb-6 mx-auto" />
+                  <IconUpload className="h-16 w-16 text-muted-foreground mb-6 mx-auto relative z-10" />
                   <h3 className="text-xl font-semibold mb-2">
-                    Drop your video here
+                    {dragActive ? "Drop it here!" : "Drag & drop your video"}
                   </h3>
                   <p className="text-muted-foreground mb-6">
-                    or click to browse
+                    or click to browse from your computer
                   </p>
                   <Button
                     onClick={() => fileInputRef.current?.click()}
@@ -382,11 +388,22 @@ export default function UploadPage() {
 
                         {/* Workflow Selection */}
                         {showWorkflowSelection && (
-                          <WorkflowSelection
-                            options={workflowOptions}
-                            onChange={setWorkflowOptions}
-                            disabled={uploading}
-                          />
+                          <div className="space-y-4">
+                            <WorkflowSelection
+                              options={workflowOptions}
+                              onChange={setWorkflowOptions}
+                              disabled={uploading}
+                              variant="grid"
+                            />
+                            
+                            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20">
+                              <IconSparkles className="h-4 w-4 text-blue-600" />
+                              <AlertDescription>
+                                <strong>Quick Start:</strong> We'll automatically generate transcriptions and smart clips from your video. 
+                                More features like blog posts and social media content are coming soon!
+                              </AlertDescription>
+                            </Alert>
+                          </div>
                         )}
                         
                         {/* Thumbnail Preview */}

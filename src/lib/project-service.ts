@@ -1,6 +1,17 @@
-import { Project, VideoMetadata, ProcessingTask, ContentFolders, SocialPost } from './project-types'
+import { 
+  Project, 
+  VideoMetadata, 
+  ProcessingTask, 
+  ContentFolders, 
+  SocialPost,
+  ClipData,
+  BlogPost,
+  PodcastData,
+  GeneratedImage
+} from './project-types'
 import { v4 as uuidv4 } from 'uuid'
 import { WorkflowOptions } from '@/components/workflow-selection'
+import { createSupabaseBrowserClient } from './supabase/client'
 
 const PROJECTS_KEY = 'inflio_projects'
 const PROJECT_PREFIX = 'inflio_project_'
@@ -23,27 +34,25 @@ export class ProjectService {
     workflows: WorkflowOptions,
     userId?: string
   ): Promise<Project> {
-    const projectId = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    if (!userId) {
+      throw new Error('User ID is required to create a project')
+    }
     
-    const project: Project = {
-      id: projectId,
+    const project = {
       title: title || videoFile.name.replace(/\.[^/.]+$/, ""),
       description: '',
-      video_id: videoId,
+      video_id: uuidv4(), // Use UUID for video_id
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl,
       metadata,
-      status: 'processing',
+      status: 'processing' as const,
       folders: {
         clips: [],
         blog: [],
         social: [],
         podcast: []
       },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      user_id: userId || 'demo-user',
+      user_id: userId,
       tasks: this.initializeTasksFromWorkflows(workflows),
       settings: {
         autoGenerateClips: workflows.clips ?? true,
@@ -60,16 +69,27 @@ export class ProjectService {
       tags: []
     }
 
-    // Save project
-    await this.saveProject(project)
-    
-    // Add to projects list
-    await this.addToProjectsList(project)
+    // Save project to database - Supabase will generate the ID
+    const { data, error } = await createSupabaseBrowserClient()
+      .from('projects')
+      .insert(project)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error creating project:', error)
+      throw new Error('Failed to create project')
+    }
     
     // Dispatch update event
     dispatchProjectUpdate()
     
-    return project
+    // Return the project with the generated ID
+    return {
+      ...data,
+      created_at: data.created_at || new Date().toISOString(),
+      updated_at: data.updated_at || new Date().toISOString()
+    } as Project
   }
 
   // Initialize processing tasks based on workflow selection
@@ -142,37 +162,57 @@ export class ProjectService {
     }))
   }
 
-  // Save project to localStorage
-  static async saveProject(project: Project): Promise<void> {
-    const key = `${PROJECT_PREFIX}${project.id}`
-    localStorage.setItem(key, JSON.stringify(project))
-  }
-
   // Get project by ID
-  static async getProject(projectId: string): Promise<Project | null> {
-    const key = `${PROJECT_PREFIX}${projectId}`
-    const data = localStorage.getItem(key)
+  static async getProject(projectId: string, userId?: string): Promise<Project | null> {
     try {
-      return data ? JSON.parse(data) : null
+      let query = createSupabaseBrowserClient()
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+
+      // If userId is provided, filter by user as well
+      if (userId) {
+        query = query.eq('user_id', userId)
+      }
+
+      const { data, error } = await query.single()
+
+      if (error) {
+        console.error('Error fetching project:', error)
+        return null
+      }
+
+      return data as Project
     } catch (error) {
-      console.error('Failed to parse project data:', error)
+      console.error('Failed to fetch project:', error)
       return null
     }
   }
 
   // Update project
   static async updateProject(projectId: string, updates: Partial<Project>): Promise<Project | null> {
-    const project = await this.getProject(projectId)
-    if (!project) return null
+    try {
+      const { data, error } = await createSupabaseBrowserClient()
+        .from('projects')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId)
+        .select()
+        .single()
 
-    const updatedProject = {
-      ...project,
-      ...updates,
-      updatedAt: new Date().toISOString()
+      if (error) {
+        console.error('Error updating project:', error)
+        return null
+      }
+
+      dispatchProjectUpdate()
+      return data as Project
+    } catch (error) {
+      console.error('Failed to update project:', error)
+      return null
     }
-
-    await this.saveProject(updatedProject)
-    return updatedProject
   }
 
   // Start processing for a project
@@ -195,11 +235,12 @@ export class ProjectService {
     const taskIndex = project.tasks.findIndex(t => t.type === taskType)
     if (taskIndex === -1) return
 
-    project.tasks[taskIndex] = {
-      ...project.tasks[taskIndex],
+    const updatedTasks = [...project.tasks]
+    updatedTasks[taskIndex] = {
+      ...updatedTasks[taskIndex],
       progress,
-      status: status || project.tasks[taskIndex].status,
-      ...(status === 'processing' && !project.tasks[taskIndex].startedAt
+      status: status || updatedTasks[taskIndex].status,
+      ...(status === 'processing' && !updatedTasks[taskIndex].startedAt
         ? { startedAt: new Date().toISOString() }
         : {}),
       ...(status === 'completed'
@@ -207,108 +248,122 @@ export class ProjectService {
         : {})
     }
 
-    await this.saveProject(project)
+    await this.updateProject(projectId, { tasks: updatedTasks })
   }
 
   // Add content to folder
   static async addToFolder<T extends keyof ContentFolders>(
     projectId: string,
     folderType: T,
-    content: ContentFolders[T][0]
+    content: any // We'll type this properly based on folderType
   ): Promise<void> {
     const project = await this.getProject(projectId)
     if (!project) return
 
-    // Type-safe folder update
-    const updatedFolders = {
-      ...project.folders,
-      [folderType]: [...project.folders[folderType], content]
-    } as ContentFolders
-
-    project.folders = updatedFolders
-
-    await this.saveProject(project)
-  }
-
-  // Get all projects
-  static async getAllProjects(): Promise<Project[]> {
-    const projectsList = localStorage.getItem(PROJECTS_KEY)
-    if (!projectsList) return []
-
-    try {
-      const projectIds = JSON.parse(projectsList) as string[]
-      const projects = await Promise.all(
-        projectIds.map(id => this.getProject(id))
-      )
-
-      return projects.filter(p => p !== null) as Project[]
-    } catch (error) {
-      console.error('Failed to parse projects list:', error)
-      return []
+    // Create a copy of the folders
+    const updatedFolders = { ...project.folders }
+    
+    // Update the specific folder with type safety
+    if (folderType === 'clips') {
+      updatedFolders.clips = [...project.folders.clips, content as ClipData]
+    } else if (folderType === 'blog') {
+      updatedFolders.blog = [...project.folders.blog, content as BlogPost]
+    } else if (folderType === 'social') {
+      updatedFolders.social = [...project.folders.social, content as SocialPost]
+    } else if (folderType === 'podcast') {
+      updatedFolders.podcast = [...project.folders.podcast, content as PodcastData]
+    } else if (folderType === 'images' && project.folders.images) {
+      updatedFolders.images = [...project.folders.images, content as GeneratedImage]
     }
+
+    await this.updateProject(projectId, { folders: updatedFolders })
   }
 
-  // Add project to list
-  private static async addToProjectsList(project: Project): Promise<void> {
-    const projectsList = localStorage.getItem(PROJECTS_KEY)
+  // Get all projects for a user
+  static async getAllProjects(userId: string): Promise<Project[]> {
     try {
-      const projectIds = projectsList ? JSON.parse(projectsList) : []
-      
-      if (!projectIds.includes(project.id)) {
-        projectIds.unshift(project.id)
-        localStorage.setItem(PROJECTS_KEY, JSON.stringify(projectIds))
+      const { data, error } = await createSupabaseBrowserClient()
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching projects:', error)
+        return []
       }
+
+      return (data || []) as Project[]
     } catch (error) {
-      console.error('Failed to parse projects list:', error)
-      // Initialize with new project ID if parsing fails
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify([project.id]))
+      console.error('Failed to fetch projects:', error)
+      return []
     }
   }
 
   // Delete project
   static async deleteProject(projectId: string): Promise<boolean> {
-    // Remove from projects list
-    const projectsList = localStorage.getItem(PROJECTS_KEY)
-    if (projectsList) {
-      try {
-        const projectIds = JSON.parse(projectsList) as string[]
-        const filtered = projectIds.filter(id => id !== projectId)
-        localStorage.setItem(PROJECTS_KEY, JSON.stringify(filtered))
-      } catch (error) {
-        console.error('Failed to parse projects list:', error)
+    try {
+      const { error } = await createSupabaseBrowserClient()
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+
+      if (error) {
+        console.error('Error deleting project:', error)
+        return false
       }
+
+      // Dispatch update event
+      dispatchProjectUpdate()
+      return true
+    } catch (error) {
+      console.error('Failed to delete project:', error)
+      return false
     }
-
-    // Remove project data
-    const key = `${PROJECT_PREFIX}${projectId}`
-    localStorage.removeItem(key)
-    
-    // Remove associated data
-    localStorage.removeItem(`video_${projectId}`)
-    localStorage.removeItem(`thumbnail_${projectId}`)
-
-    // Dispatch update event
-    dispatchProjectUpdate()
-
-    return true
   }
 
   // Search projects
-  static async searchProjects(query: string): Promise<Project[]> {
-    const projects = await this.getAllProjects()
-    const lowercaseQuery = query.toLowerCase()
+  static async searchProjects(query: string, userId: string): Promise<Project[]> {
+    try {
+      const { data, error } = await createSupabaseBrowserClient()
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .order('created_at', { ascending: false })
 
-    return projects.filter(project =>
-      project.title.toLowerCase().includes(lowercaseQuery) ||
-      project.description.toLowerCase().includes(lowercaseQuery) ||
-      project.tags.some(tag => tag.toLowerCase().includes(lowercaseQuery))
-    )
+      if (error) {
+        console.error('Error searching projects:', error)
+        return []
+      }
+
+      return (data || []) as Project[]
+    } catch (error) {
+      console.error('Failed to search projects:', error)
+      return []
+    }
   }
 
   // Get projects by status
-  static async getProjectsByStatus(status: Project['status']): Promise<Project[]> {
-    const projects = await this.getAllProjects()
-    return projects.filter(p => p.status === status)
+  static async getProjectsByStatus(status: Project['status'], userId: string): Promise<Project[]> {
+    try {
+      const { data, error } = await createSupabaseBrowserClient()
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', status)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching projects by status:', error)
+        return []
+      }
+
+      return (data || []) as Project[]
+    } catch (error) {
+      console.error('Failed to fetch projects by status:', error)
+      return []
+    }
   }
 
   // Link social post to project
@@ -333,10 +388,14 @@ export class ProjectService {
 
   // Get project statistics
   static getProjectStats(project: Project) {
+    // Count images (handle both undefined and array cases)
+    const totalImages = project.folders.images?.length || 0
+    
     return {
       totalClips: project.folders.clips.length,
       totalBlogs: project.folders.blog.length,
       totalSocialPosts: project.folders.social.length,
+      totalImages,
       podcastChapters: project.folders.podcast.length,
       completedTasks: project.tasks.filter(t => t.status === 'completed').length,
       totalTasks: project.tasks.length,

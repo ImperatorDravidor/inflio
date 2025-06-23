@@ -24,7 +24,10 @@ export function handleError(error: unknown, context?: string): void {
     message = error
   }
   
+  // Only show toast on client side
+  if (typeof window !== 'undefined') {
   toast.error(message)
+  }
 }
 
 export function handleApiError(response: Response): never {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProjectService } from '@/lib/services'
 import { TranscriptionService } from '@/lib/transcription-service'
+import { AIContentService } from '@/lib/ai-content-service'
 import { auth } from '@clerk/nextjs/server'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
 
@@ -281,10 +282,60 @@ export async function POST(request: NextRequest) {
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
-    // Store transcription in project
+    // Analyze transcript with AI to extract keywords and topics
+    let contentAnalysis
+    let analysisError = null
+    
+    // Only analyze if transcription has meaningful content
+    if (transcription && transcription.text && transcription.text.length > 100) {
+      try {
+        console.log('Starting AI content analysis...')
+        console.log(`Transcript length: ${transcription.text.length} characters`)
+        
+        // Check if OpenAI API key is configured
+        if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+          console.warn('OpenAI API key not configured, skipping content analysis')
+          analysisError = 'OpenAI API key not configured'
+        } else {
+          const startTime = Date.now()
+          const analysis = await AIContentService.analyzeTranscript(transcription)
+          const processingTime = Date.now() - startTime
+          
+          contentAnalysis = {
+            ...analysis,
+            analyzedAt: new Date().toISOString()
+          }
+          
+          console.log('AI analysis completed successfully:', {
+            keywords: contentAnalysis.keywords.length,
+            topics: contentAnalysis.topics.length,
+            sentiment: contentAnalysis.sentiment,
+            keyMoments: contentAnalysis.keyMoments.length,
+            processingTimeMs: processingTime
+          })
+        }
+      } catch (error) {
+        console.error('AI content analysis failed:', error)
+        analysisError = error instanceof Error ? error.message : 'Unknown error during analysis'
+        
+        // Log more details for debugging
+        console.error('Analysis error details:', {
+          transcriptLength: transcription.text.length,
+          segmentCount: transcription.segments.length,
+          language: transcription.language,
+          error: error
+        })
+      }
+    } else {
+      console.warn('Transcript too short for meaningful analysis:', transcription?.text?.length || 0)
+      analysisError = 'Transcript too short for analysis'
+    }
+
+    // Store transcription and analysis in project
     if (projectId) {
       await ProjectService.updateProject(projectId, {
-        transcription
+        transcription,
+        ...(contentAnalysis && { content_analysis: contentAnalysis })
       })
 
       // Update task progress
@@ -298,13 +349,18 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Transcription completed: ${transcription.segments.length} segments`)
+    if (contentAnalysis) {
+      console.log(`Content analysis completed: ${contentAnalysis.keywords.length} keywords, ${contentAnalysis.topics.length} topics`)
+    }
 
     return NextResponse.json({
       success: true,
       transcription,
+      contentAnalysis,
       segmentCount: transcription.segments.length,
       duration: transcription.duration,
-      mock: !process.env.ASSEMBLYAI_API_KEY // Let frontend know if using mock data
+      mock: !process.env.ASSEMBLYAI_API_KEY, // Let frontend know if using mock data
+      analysisError
     })
   } catch (error) {
     console.error('Transcription API error:', error)

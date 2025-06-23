@@ -22,7 +22,7 @@ import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { RecapWizard } from "@/components/social/recap-wizard"
 
 const steps = [
@@ -124,10 +124,10 @@ export default function OnboardingPage() {
       {/* Recap Dialog for new users */}
       {userId && showRecap && (
         <Dialog open={showRecap} onOpenChange={setShowRecap}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[1200px] max-h-[90vh] overflow-hidden p-0">
+            <DialogTitle className="sr-only">Welcome to Inflio</DialogTitle>
             <RecapWizard 
-              userId={userId} 
-              isReturningUser={false}
+              userId={userId}
               onClose={handleRecapClose}
             />
           </DialogContent>

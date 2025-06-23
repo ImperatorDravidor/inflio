@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import OpenAI from 'openai'
-import { BlogPost } from '@/lib/project-types'
-import { v4 as uuidv4 } from 'uuid'
+import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KE,
-})
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,134 +10,216 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { projectId, transcriptText, blogStyle } = await request.json()
-
-    if (!projectId || !transcriptText) {
-      return NextResponse.json(
-        { error: 'Missing required fields: projectId, transcriptText' },
-        { status: 400 }
-      )
+    const { projectId, options } = await request.json()
+    
+    if (!projectId) {
+      return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+    }
+    
+    // Default options if not provided
+    const blogOptions = options || {
+      style: 'professional',
+      length: 2000,
+      seoOptimized: true,
+      includeImages: true,
+      includeFAQ: true,
+      customInstructions: ''
     }
 
-    // 1. Get Project directly using admin client
+    // Fetch project with transcript and content analysis
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('*')
       .eq('id', projectId)
+      .eq('user_id', userId)
       .single()
 
     if (projectError || !project) {
+      console.error('Project fetch error:', projectError)
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // (Helper function to update task progress)
-    const updateTaskProgress = async (progress: number, status: string) => {
-        const taskIndex = project.tasks.findIndex((t: { type: string }) => t.type === 'blog');
-        if (taskIndex === -1) return;
-        project.tasks[taskIndex].progress = progress;
-        project.tasks[taskIndex].status = status;
-        await supabaseAdmin.from('projects').update({ tasks: project.tasks }).eq('id', projectId);
-    };
+    if (!project.transcription) {
+      return NextResponse.json({ error: 'No transcript available for this project' }, { status: 400 })
+    }
 
-    await updateTaskProgress(10, 'processing');
+    const contentAnalysis = project.content_analysis || {}
+    const keywords = contentAnalysis.keywords || []
+    const topics = contentAnalysis.topics || []
+    const summary = contentAnalysis.summary || ''
+    const keyMoments = contentAnalysis.keyMoments || []
+    const suggestions = contentAnalysis.contentSuggestions || {}
+    const blogIdeas = suggestions.blogPostIdeas || []
 
-    const prompt = `
-      You are an expert content creator and SEO specialist. Your task is to convert the following video transcript into a well-structured, engaging, and SEO-friendly blog post.
-      **Instructions:**
-      1. Create a compelling title that captures the essence of the content.
-      2. Write an engaging introduction that hooks the reader.
-      3. Structure the content with clear markdown headings (## for H2, ### for H3).
-      4. Transform the transcript into a well-written article with proper flow and narrative structure.
-      5. Use a ${blogStyle || 'professional'} tone throughout.
-      6. Include relevant examples, explanations, and context where appropriate.
-      7. Create natural transitions between sections.
-      8. End with a strong conclusion that summarizes key points.
-      9. Identify 5-7 relevant SEO tags/keywords.
-      10. Write a meta description (150-160 characters) for SEO.
-      
-      **Important:** 
-      - Do not just copy transcript segments verbatim
-      - Create a cohesive narrative that reads like a professional blog post
-      - Use proper markdown formatting for emphasis, lists, and structure
-      - Make the content engaging and valuable for readers
-      
-      **Transcript:**
-      ---
-      ${transcriptText}
-      ---
-      
-      **Output Format (JSON):**
-      Return a valid JSON object with the following structure:
-      {
-        "title": "Engaging blog title",
-        "content": "Full blog content in markdown format",
-        "excerpt": "Brief 2-3 sentence summary of the blog post",
-        "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-        "seoTitle": "SEO optimized title (60 chars max)",
-        "seoDescription": "SEO meta description (150-160 chars)"
-      }
-    `
+    // Build comprehensive context from content analysis
+    const contextPrompt = `
+Video Title: ${project.title}
+Content Summary: ${summary}
 
-    await updateTaskProgress(30, 'processing');
+Main Topics: ${topics.join(', ')}
+Keywords: ${keywords.join(', ')}
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-2024-11-20',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
+Key Moments from the Video:
+${keyMoments.map((moment: any, idx: number) => `${idx + 1}. [${moment.timestamp}] ${moment.description}`).join('\n')}
+
+Content Ideas: ${blogIdeas.join('; ')}
+
+Full Transcript:
+${project.transcription.text || project.transcription}
+`;
+
+    // Generate comprehensive blog post
+    const openai = getOpenAI();
+    
+    // Adjust system prompt based on writing style
+    const stylePrompts = {
+      professional: 'You are an expert content writer specializing in professional, authoritative content. Use formal language, industry terminology, and maintain a credible tone.',
+      casual: 'You are a friendly content creator who writes in a conversational, approachable style. Use everyday language, personal anecdotes, and connect with readers on a personal level.',
+      technical: 'You are a technical writer who creates detailed, expert-level content. Use precise terminology, include technical details, and explain complex concepts thoroughly.',
+      storytelling: 'You are a narrative content writer who uses storytelling techniques. Create engaging narratives, use vivid descriptions, and connect facts through compelling stories.'
+    }
+    
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-2025-04-14',
+      messages: [
+        {
+          role: 'system',
+          content: `${stylePrompts[blogOptions.style as keyof typeof stylePrompts] || stylePrompts.professional} ${blogOptions.seoOptimized ? 'Create SEO-optimized content with proper keyword integration.' : ''} Format the output in clean markdown with proper headings, lists, and emphasis.`
+        },
+        {
+          role: 'user',
+          content: `${contextPrompt}
+${blogOptions.customInstructions ? `\nAdditional Instructions: ${blogOptions.customInstructions}\n` : ''}
+
+Create a comprehensive ${blogOptions.style} blog article following these requirements:
+
+1. **Article Structure** (Target: ${blogOptions.length} words):
+   - Compelling introduction (${Math.round(blogOptions.length * 0.1)} words)
+   - ${blogOptions.length >= 2000 ? '4-6' : blogOptions.length >= 1000 ? '3-4' : '2-3'} main sections with descriptive headings
+   - ${blogOptions.length >= 1500 ? '2-3 subsections under each main section' : '1-2 subsections where appropriate'}
+   - Conclusion with actionable takeaways (${Math.round(blogOptions.length * 0.1)} words)
+   ${blogOptions.includeFAQ ? `- FAQ section with ${blogOptions.length >= 2000 ? '5-7' : '3-5'} questions` : ''}
+
+2. **Content Requirements**:
+   - Reference specific moments from the video transcript with timestamps
+   - Include relevant statistics, data, or examples
+   - Use the identified topics and keywords naturally throughout
+   - Create engaging content that provides value
+   - Include relevant quotes from the transcript
+
+${blogOptions.seoOptimized ? `3. **SEO Optimization**:
+   - Naturally integrate LSI and NLP keywords throughout
+   - Maintain optimal keyword density without stuffing
+   - Include internal and external linking suggestions naturally in the text` : ''}
+
+4. **Formatting**:
+   - Use markdown formatting (# for h1, ## for h2, ### for h3)
+   - Use **bold** for emphasis and *italics* for subtle emphasis
+   - Use > for blockquotes of important video quotes
+   - Create scannable content with bullet points and numbered lists
+   - Use [text](url) format for links
+
+Output the article in clean markdown format. ${blogOptions.seoOptimized || blogOptions.includeImages ? `At the end, include a separate JSON block with:
+${blogOptions.seoOptimized ? `- metaTitle (50-60 characters)
+- metaDescription (150-160 characters)
+- keywords (array of LSI/NLP keywords used)` : ''}
+${blogOptions.includeImages ? '- suggestedImages (3-5 image descriptions)' : ''}` : ''}
+
+Write the full article now, ensuring it's comprehensive, engaging, and perfectly suited to the ${blogOptions.style} style requested.`
+        }
+      ],
       temperature: 0.7,
       max_tokens: 4000,
-    })
+    });
 
-    await updateTaskProgress(80, 'processing');
+    const generatedContent = completion.choices[0].message.content || ''
 
-    let jsonResponse
-    try {
-      const content = response.choices[0].message.content
-      if (!content) {
-        throw new Error('Empty response from OpenAI')
+    // Parse the response - extract article and metadata
+    let articleContent = generatedContent
+    let metadata: any = {}
+    
+    // Check if there's a JSON block at the end
+    const jsonMatch = generatedContent.match(/```json\n([\s\S]+?)\n```\s*$/)
+    if (jsonMatch) {
+      try {
+        metadata = JSON.parse(jsonMatch[1])
+        // Remove the JSON block from the article content
+        articleContent = generatedContent.replace(/```json\n[\s\S]+?\n```\s*$/, '').trim()
+      } catch (e) {
+        console.error('Failed to parse metadata JSON:', e)
       }
-      jsonResponse = JSON.parse(content)
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError)
-      // Return a more specific error
-      return NextResponse.json(
-        { error: 'Failed to parse AI response. Please try again.' },
-        { status: 500 }
-      )
     }
-    
-    const wordCount = jsonResponse.content.split(' ').length
-    const readingTime = Math.ceil(wordCount / 200)
 
-    const newBlogPost: BlogPost = {
-      id: uuidv4(),
-      title: jsonResponse.title,
-      content: jsonResponse.content,
-      excerpt: jsonResponse.excerpt,
-      tags: jsonResponse.tags,
-      seoTitle: jsonResponse.seoTitle,
-      seoDescription: jsonResponse.seoDescription,
-      readingTime: readingTime,
-      sections: [],
-      createdAt: new Date().toISOString(),
-    }
+    // Extract title from the first H1 in the markdown
+    const titleMatch = articleContent.match(/^#\s+(.+)$/m)
+    const extractedTitle = titleMatch ? titleMatch[1] : project.title + ' - Complete Guide'
     
-    // 2. Add to folder directly using admin client
-    const updatedBlogFolder = [...project.folders.blog, newBlogPost];
+    // Extract excerpt from the first paragraph
+    const paragraphMatch = articleContent.match(/^(?!#|\*|\-|\>|\[).+$/m)
+    const extractedExcerpt = paragraphMatch 
+      ? paragraphMatch[0].substring(0, 200).trim() + '...'
+      : summary || project.title
+    
+    const blogPost = {
+      title: extractedTitle,
+      content: articleContent,
+      excerpt: extractedExcerpt,
+      author: 'AI Content Assistant',
+      tags: [...topics, ...keywords.slice(0, 5)],
+      metaTitle: metadata.metaTitle || extractedTitle.substring(0, 60),
+      metaDescription: metadata.metaDescription || extractedExcerpt.substring(0, 160),
+      projectId: projectId,
+      createdAt: new Date().toISOString(),
+      status: 'draft',
+      seo: {
+        keywords: metadata.keywords || keywords,
+        focusKeyword: keywords[0] || '',
+        readabilityScore: 'good',
+        seoScore: 'good',
+        suggestedImages: metadata.suggestedImages || []
+      }
+    }
+
+    // Generate a unique ID for the blog post
+    const blogId = crypto.randomUUID();
+    
+    // Store the blog post in the project's folders
+    const blogPostWithId = {
+      id: blogId,
+      ...blogPost
+    };
+
+    // Update the project's blog folder
+    const currentBlogFolder = project.folders?.blog || [];
+    const updatedFolders = {
+      ...project.folders,
+      blog: [...currentBlogFolder, blogPostWithId]
+    };
+
     const { error: updateError } = await supabaseAdmin
       .from('projects')
-      .update({ folders: { ...project.folders, blog: updatedBlogFolder } })
+      .update({ 
+        folders: updatedFolders,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', projectId);
 
-    if (updateError) throw updateError;
-    
-    await updateTaskProgress(100, 'completed');
+    if (updateError) {
+      console.error('Error saving blog post:', updateError);
+      // Continue anyway - return the generated content
+    }
 
-    return NextResponse.json({ success: true, blogPost: newBlogPost })
+    return NextResponse.json({
+      success: true,
+      blogPost: blogPostWithId
+    })
   } catch (error) {
-    console.error('Error generating blog post:', error)
+    console.error('Blog generation error:', error)
     return NextResponse.json(
-      { error: 'Failed to generate blog post.' },
+      { 
+        error: 'Failed to generate blog post',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

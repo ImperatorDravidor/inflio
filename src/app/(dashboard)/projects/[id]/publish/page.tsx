@@ -42,6 +42,8 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { formatDuration } from "@/lib/video-utils"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@clerk/nextjs"
+import { SocialAuthChecker } from "@/lib/social/auth-check"
 
 interface PublishableContent {
   id: string
@@ -135,6 +137,7 @@ export default function PublishProjectPage() {
   const params = useParams()
   const router = useRouter()
   const projectId = params.id as string
+  const { userId } = useAuth()
   
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -142,13 +145,42 @@ export default function PublishProjectPage() {
   const [publishableContent, setPublishableContent] = useState<PublishableContent[]>([])
   const [defaultScheduleDate, setDefaultScheduleDate] = useState<Date>(new Date())
   const [isPublishing, setIsPublishing] = useState(false)
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([])
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const steps: PublishStep[] = [
-    { id: 'content', title: 'Select Content', icon: IconFileText, complete: false },
     { id: 'platforms', title: 'Choose Platforms', icon: IconBrandTwitter, complete: false },
     { id: 'schedule', title: 'Schedule Posts', icon: IconCalendar, complete: false },
     { id: 'review', title: 'Review & Publish', icon: IconRocket, complete: false }
   ]
+
+  useEffect(() => {
+    if (userId) {
+      checkPlatformAuth()
+    }
+  }, [userId])
+
+  const checkPlatformAuth = async () => {
+    if (!userId) return
+    
+    setCheckingAuth(true)
+    try {
+      const connected = await SocialAuthChecker.getConnectedPlatforms(userId)
+      setConnectedPlatforms(connected)
+      
+      // If no platforms are connected, redirect to social hub
+      if (connected.length === 0) {
+        toast.error("Please connect at least one social media platform first")
+        setTimeout(() => {
+          router.push('/social')
+        }, 1500)
+      }
+    } catch (error) {
+      console.error('Error checking platform auth:', error)
+    } finally {
+      setCheckingAuth(false)
+    }
+  }
 
   useEffect(() => {
     loadProject()
@@ -163,7 +195,16 @@ export default function PublishProjectPage() {
         return
       }
       setProject(proj)
-      initializePublishableContent(proj)
+      
+      // Check for pre-selected content from publishing workflow
+      const selectedContentStr = sessionStorage.getItem('selectedContent')
+      if (selectedContentStr) {
+        const selectedContent = JSON.parse(selectedContentStr)
+        sessionStorage.removeItem('selectedContent') // Clean up
+        initializePublishableContent(proj, selectedContent)
+      } else {
+        initializePublishableContent(proj)
+      }
     } catch (error) {
       console.error("Failed to load project:", error)
       toast.error("Failed to load project")
@@ -172,17 +213,18 @@ export default function PublishProjectPage() {
     }
   }
 
-  const initializePublishableContent = (proj: Project) => {
+  const initializePublishableContent = (proj: Project, preSelectedContent?: any[]) => {
     const content: PublishableContent[] = []
 
     // Add clips
     proj.folders.clips.forEach(clip => {
+      const isPreSelected = preSelectedContent?.some(item => item.id === `clip-${clip.id}`)
       content.push({
         id: `clip-${clip.id}`,
         type: 'clip',
         title: clip.title || 'Untitled Clip',
         content: clip,
-        selected: true,
+        selected: isPreSelected || false,
         platforms: {
           twitter: false,
           linkedin: false,
@@ -197,12 +239,13 @@ export default function PublishProjectPage() {
 
     // Add blog posts
     proj.folders.blog.forEach(blog => {
+      const isPreSelected = preSelectedContent?.some(item => item.id === `blog-${blog.id}`)
       content.push({
         id: `blog-${blog.id}`,
         type: 'blog',
         title: blog.title,
         content: blog,
-        selected: false,
+        selected: isPreSelected || false,
         platforms: {
           twitter: false,
           linkedin: true,
@@ -211,6 +254,60 @@ export default function PublishProjectPage() {
           youtube: false,
           facebook: true
         }
+      })
+    })
+
+    // Add AI-generated images
+    if (proj.folders.images && proj.folders.images.length > 0) {
+      proj.folders.images.forEach((image: any, index: number) => {
+        const isPreSelected = preSelectedContent?.some(item => item.id === `image-${image.id}`)
+        content.push({
+          id: `image-${image.id}`,
+          type: 'social' as const, // Treat images as social content
+          title: image.type === 'carousel-slide' 
+            ? `Carousel ${image.carouselId} - Slide ${image.slideNumber}` 
+            : `AI Image: ${image.prompt.substring(0, 50)}...`,
+          content: {
+            id: image.id,
+            platform: 'instagram' as const, // Default platform
+            content: image.prompt,
+            hashtags: [], // Extract hashtags from prompt if needed
+            mediaUrl: image.url,
+            status: 'draft' as const,
+            createdAt: image.createdAt
+          } as SocialPost,
+          selected: isPreSelected || false,
+          platforms: {
+            twitter: true,
+            linkedin: true,
+            instagram: true,
+            tiktok: false, // TikTok doesn't support static images
+            youtube: false, // YouTube Shorts doesn't support static images
+            facebook: true
+          },
+          caption: image.prompt || ''
+        })
+      })
+    }
+
+    // Add social posts
+    proj.folders.social.forEach((social, index) => {
+      const isPreSelected = preSelectedContent?.some(item => item.id === `social-${index}`)
+      content.push({
+        id: `social-${index}`,
+        type: 'social',
+        title: `Social Post ${index + 1}`,
+        content: social,
+        selected: isPreSelected || false,
+        platforms: {
+          twitter: true,
+          linkedin: true,
+          instagram: true,
+          tiktok: false,
+          youtube: false,
+          facebook: true
+        },
+        caption: social.content || ''
       })
     })
 
@@ -228,6 +325,13 @@ export default function PublishProjectPage() {
   }
 
   const handlePlatformToggle = (contentId: string, platform: string) => {
+    // Check if platform is connected
+    if (!connectedPlatforms.includes(platform)) {
+      toast.error(`Please connect your ${platform} account first`)
+      router.push(`/social?connect=${platform}`)
+      return
+    }
+    
     setPublishableContent(prev => 
       prev.map(item => 
         item.id === contentId 
@@ -283,15 +387,55 @@ export default function PublishProjectPage() {
     setIsPublishing(true)
     
     try {
-      // TODO: Implement actual publishing logic here
-      // This would integrate with your social media APIs
+      // Create social posts for each selected content and platform
+      const socialPosts = []
       
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate API call
+      for (const item of selectedContent) {
+        const platforms = Object.entries(item.platforms)
+          .filter(([_, selected]) => selected)
+          .map(([platform]) => platform)
+        
+        for (const platform of platforms) {
+          const postData = {
+            projectId,
+            contentType: item.type,
+            contentId: item.content.id,
+            platform,
+            title: item.title,
+            caption: item.caption || item.title,
+            scheduledDate: item.scheduledDate || new Date(),
+            status: 'scheduled' as const,
+            mediaUrl: item.type === 'clip' ? (item.content as ClipData).exportUrl : undefined,
+            thumbnail: item.type === 'clip' ? (item.content as ClipData).thumbnail : undefined,
+            blogUrl: item.type === 'blog' ? `/blog/${(item.content as BlogPost).id}` : undefined,
+          }
+          
+          socialPosts.push(postData)
+        }
+      }
       
-      toast.success(`Successfully scheduled ${selectedContent.length} posts!`)
+      // Create social posts in the system
+      const response = await fetch('/api/social/recap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          action: 'createPosts',
+          posts: socialPosts
+        })
+      })
       
-      // Update project status
+      if (!response.ok) {
+        throw new Error('Failed to create social posts')
+      }
+      
+      toast.success(`Successfully scheduled ${socialPosts.length} posts across ${selectedContent.length} pieces of content!`)
+      
+      // Update project status to published
       await ProjectService.updateProject(projectId, { status: 'published' })
+      
+      // Posts created successfully
+      const result = await response.json()
       
       // Redirect to social calendar
       setTimeout(() => {
@@ -316,10 +460,19 @@ export default function PublishProjectPage() {
     }, 0)
   }
 
-  if (loading) {
+  if (loading || checkingAuth) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner size="lg" />
+        <Card className="max-w-md w-full mx-4">
+          <CardHeader className="text-center">
+            <CardTitle>
+              {checkingAuth ? "Checking social media connections..." : "Loading project..."}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <LoadingSpinner size="lg" />
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -384,6 +537,27 @@ export default function PublishProjectPage() {
           </div>
         </div>
 
+        {/* Selected Content Summary */}
+        {publishableContent.filter(item => item.selected).length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-base">Selected Content</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {publishableContent.filter(item => item.selected).map(item => (
+                  <Badge key={item.id} variant="secondary">
+                    {item.type === 'clip' && <IconScissors className="h-3 w-3 mr-1" />}
+                    {item.type === 'blog' && <IconArticle className="h-3 w-3 mr-1" />}
+                    {item.type === 'social' && <IconBrandTwitter className="h-3 w-3 mr-1" />}
+                    {item.title}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Content */}
         <AnimatePresence mode="wait">
           <motion.div
@@ -393,197 +567,71 @@ export default function PublishProjectPage() {
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
           >
-            {/* Step 1: Select Content */}
+            {/* Step 1: Platform Selection */}
             {currentStep === 0 && (
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Select Content to Publish</CardTitle>
+                    <CardTitle>Select Platforms</CardTitle>
                     <CardDescription>
-                      Choose which clips and posts you want to share
+                      Choose where to publish each piece of content
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {/* Video Clips */}
-                      {project.folders.clips.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <IconScissors className="h-5 w-5 text-primary" />
-                            Video Clips ({project.folders.clips.length})
-                          </h3>
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {publishableContent
-                              .filter(item => item.type === 'clip')
-                              .map(item => {
-                                const clip = item.content as ClipData
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className={cn(
-                                      "relative cursor-pointer rounded-lg overflow-hidden transition-all",
-                                      item.selected && "ring-2 ring-primary"
-                                    )}
-                                    onClick={() => handleContentSelection(item.id)}
-                                  >
-                                    <div className="aspect-[9/16] bg-black">
-                                      {clip.exportUrl ? (
-                                        <video
-                                          src={clip.exportUrl}
-                                          className="w-full h-full object-cover"
-                                          poster={clip.thumbnail}
-                                          muted
-                                        />
-                                      ) : (
-                                        <div className="flex items-center justify-center h-full">
-                                          <IconPlayerPlay className="h-10 w-10 text-gray-600" />
-                                        </div>
+                    {connectedPlatforms.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground mb-4">
+                          No social media platforms connected
+                        </p>
+                        <Button onClick={() => router.push('/social')}>
+                          Connect Platforms
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {publishableContent.filter(item => item.selected).map(item => (
+                          <Card key={item.id}>
+                            <CardContent className="p-4">
+                              <h4 className="font-medium mb-3">{item.title}</h4>
+                              <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                                {Object.entries(platformInfo).map(([platformId, platform]) => {
+                                  const Icon = platform.icon
+                                  const isConnected = connectedPlatforms.includes(platformId)
+                                  const isSelected = item.platforms[platformId as keyof typeof item.platforms]
+                                  
+                                  return (
+                                    <button
+                                      key={platformId}
+                                      onClick={() => handlePlatformToggle(item.id, platformId)}
+                                      disabled={!isConnected}
+                                      className={cn(
+                                        "flex flex-col items-center gap-1 p-3 rounded-lg border transition-all",
+                                        isConnected && isSelected && "border-primary bg-primary/10",
+                                        isConnected && !isSelected && "hover:border-primary/50",
+                                        !isConnected && "opacity-50 cursor-not-allowed"
                                       )}
-                                    </div>
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                                    <div className="absolute top-2 right-2">
-                                      <Checkbox
-                                        checked={item.selected}
-                                        className="border-white"
-                                      />
-                                    </div>
-                                    <div className="absolute bottom-2 left-2 right-2">
-                                      <p className="text-white text-sm font-medium line-clamp-1">
-                                        {item.title}
-                                      </p>
-                                      <p className="text-white/80 text-xs">
-                                        {formatDuration(clip.duration)}
-                                      </p>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Blog Posts */}
-                      {project.folders.blog.length > 0 && (
-                        <div className="mt-6">
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <IconArticle className="h-5 w-5 text-primary" />
-                            Blog Posts ({project.folders.blog.length})
-                          </h3>
-                          <div className="space-y-3">
-                            {publishableContent
-                              .filter(item => item.type === 'blog')
-                              .map(item => {
-                                const blog = item.content as BlogPost
-                                return (
-                                  <Card
-                                    key={item.id}
-                                    className={cn(
-                                      "cursor-pointer transition-all",
-                                      item.selected && "ring-2 ring-primary"
-                                    )}
-                                    onClick={() => handleContentSelection(item.id)}
-                                  >
-                                    <CardContent className="p-4">
-                                      <div className="flex items-start gap-4">
-                                        <Checkbox
-                                          checked={item.selected}
-                                          onClick={(e) => e.stopPropagation()}
-                                        />
-                                        <div className="flex-1">
-                                          <h4 className="font-medium">{blog.title}</h4>
-                                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                                            {blog.excerpt}
-                                          </p>
-                                          <div className="flex gap-2 mt-2">
-                                            {blog.tags.slice(0, 3).map(tag => (
-                                              <Badge key={tag} variant="secondary" className="text-xs">
-                                                {tag}
-                                              </Badge>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )
-                              })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                                    >
+                                      <Icon className="h-5 w-5" />
+                                      <span className="text-xs">{platform.name}</span>
+                                      {!isConnected && (
+                                        <span className="text-xs text-muted-foreground">Not connected</span>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
             )}
 
-            {/* Step 2: Choose Platforms */}
+            {/* Step 2: Schedule Posts */}
             {currentStep === 1 && (
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Select Platforms for Each Content</CardTitle>
-                    <CardDescription>
-                      Choose where each piece of content should be published
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {publishableContent
-                      .filter(item => item.selected)
-                      .map(item => (
-                        <div key={item.id} className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            {item.type === 'clip' ? (
-                              <IconScissors className="h-5 w-5 text-primary" />
-                            ) : (
-                              <IconArticle className="h-5 w-5 text-primary" />
-                            )}
-                            <h4 className="font-medium">{item.title}</h4>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 ml-8">
-                            {Object.entries(platformInfo).map(([key, platform]) => {
-                              const isClip = item.type === 'clip'
-                              const clip = isClip ? item.content as ClipData : null
-                              const duration = clip ? clip.duration : 0
-                              const Icon = platform.icon
-                              const disabled = isClip && duration > platform.limits.video.maxLength
-                              
-                              return (
-                                <label
-                                  key={key}
-                                  className={cn(
-                                    "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                                    item.platforms[key as keyof typeof item.platforms] && !disabled
-                                      ? "border-primary bg-primary/10"
-                                      : "border-border",
-                                    disabled && "opacity-50 cursor-not-allowed"
-                                  )}
-                                >
-                                  <Checkbox
-                                    checked={item.platforms[key as keyof typeof item.platforms]}
-                                    disabled={disabled}
-                                    onCheckedChange={() => !disabled && handlePlatformToggle(item.id, key)}
-                                  />
-                                  <Icon className="h-5 w-5" />
-                                  <span className="text-sm font-medium">{platform.name}</span>
-                                  {disabled && (
-                                    <span className="text-xs text-destructive">
-                                      Too long
-                                    </span>
-                                  )}
-                                </label>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Step 3: Schedule Posts */}
-            {currentStep === 2 && (
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
@@ -739,8 +787,8 @@ export default function PublishProjectPage() {
               </div>
             )}
 
-            {/* Step 4: Review & Publish */}
-            {currentStep === 3 && (
+            {/* Step 3: Review & Publish */}
+            {currentStep === 2 && (
               <div className="space-y-6">
                 <Card>
                   <CardHeader>

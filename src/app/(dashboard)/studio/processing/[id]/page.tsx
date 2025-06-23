@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { WorkflowLoading } from "@/components/workflow-loading"
 import { motion } from "framer-motion"
+import { cn } from "@/lib/utils"
 
 const taskDetails = {
   transcription: {
@@ -77,7 +78,7 @@ export default function ProcessingPage() {
   const [processingStarted, setProcessingStarted] = useState(false)
   const [startTime, setStartTime] = useState<Date | null>(null)
   const [estimatedEndTime, setEstimatedEndTime] = useState<Date | null>(null)
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [transcriptionStatus, setTranscriptionStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending')
 
   const loadProject = useCallback(async () => {
@@ -194,16 +195,16 @@ export default function ProcessingPage() {
         toast.warning("Transcription failed, but clips were generated")
       }
 
-      // Refresh the project data to show the new content
-      await loadProject()
-      
-      // Update the main project status
+      // Update the main project status FIRST
       await ProjectService.updateProject(projectId, { status: 'ready' })
+      
+      // Then refresh the project data to show the new content
+      await loadProject()
 
       // Redirect to the project page after a short delay
       setTimeout(() => {
         router.push(`/projects/${projectId}`)
-      }, 2000)
+      }, 1500)
 
     } catch (error) {
       console.error("Processing failed:", error)
@@ -237,20 +238,68 @@ export default function ProcessingPage() {
   }, [project, projectId, transcriptionStatus])
 
   useEffect(() => {
-    loadProject()
+    const initializeProject = async () => {
+      const proj = await ProjectService.getProject(projectId)
+      if (!proj) {
+        toast.error("Project not found")
+        router.push("/projects")
+        return
+      }
+      
+      setProject(proj)
+      setLoading(false)
+      
+      const progress = ProjectService.calculateProjectProgress(proj)
+      
+      // If project is complete, redirect immediately
+      if (proj.status === 'ready' || progress === 100) {
+        if (proj.status !== 'draft') {
+          // Set status to draft when processing completes
+          await ProjectService.updateProject(projectId, { status: 'draft' })
+        }
+        router.push(`/projects/${projectId}`)
+        return
+      }
+      
+      // Only start polling if actually processing
+      if (proj.status === 'processing' && progress < 100) {
+        const interval = setInterval(async () => {
+          const updatedProject = await ProjectService.getProject(projectId)
+          if (updatedProject) {
+            setProject(updatedProject)
+            
+            const updatedProgress = ProjectService.calculateProjectProgress(updatedProject)
+            
+            // Stop polling if project is ready or complete
+            if (updatedProject.status === 'ready' || updatedProgress === 100) {
+              clearInterval(interval)
+              pollingIntervalRef.current = null
+              
+              // Ensure status is updated to draft
+              if (updatedProject.status !== 'draft') {
+                await ProjectService.updateProject(projectId, { status: 'draft' })
+              }
+              
+              // Redirect to project page
+              setTimeout(() => {
+                router.push(`/projects/${projectId}`)
+              }, 1500)
+              return
+            }
+          }
+          await checkTranscriptionStatus()
+        }, 2000) // Poll every 2 seconds
+        
+        pollingIntervalRef.current = interval
+      }
+    }
     
-    // Start polling for updates
-    const interval = setInterval(async () => {
-      await loadProject()
-      await checkTranscriptionStatus()
-    }, 2000) // Poll every 2 seconds
-    
-    setPollingInterval(interval)
+    initializeProject()
     
     return () => {
-      if (interval) clearInterval(interval)
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
     }
-  }, [])
+  }, [projectId, router])
 
   useEffect(() => {
     // Check if all tasks are complete
@@ -259,18 +308,45 @@ export default function ProcessingPage() {
         task => task.status === 'completed' || task.status === 'failed'
       )
       
-      if (allTasksComplete && pollingInterval) {
-        clearInterval(pollingInterval)
-        setPollingInterval(null)
+      if (allTasksComplete && pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+        
+        // Ensure project status is updated to 'draft' if not already
+        if (project.status === 'processing') {
+          ProjectService.updateProject(projectId, { status: 'draft' })
+            .then(() => {
+              // Reload project to get updated status
+              loadProject()
+            })
+            .catch((error) => {
+              console.error('Failed to update project status:', error)
+            })
+        }
       }
     }
-  }, [project, pollingInterval])
+  }, [project, projectId, loadProject])
 
   useEffect(() => {
-    if (project && !processingStarted && project.status !== 'ready' && project.status !== 'processing') {
-      startKlapProcessing()
+    if (project && !processingStarted) {
+      const progress = ProjectService.calculateProjectProgress(project)
+      
+      // Only start processing if not already complete
+      if (project.status !== 'ready' && progress < 100) {
+        // If status is 'processing' but progress is 0, it's a fresh start
+        if (project.status === 'processing' && progress === 0) {
+          startKlapProcessing()
+        } else if (project.status !== 'processing') {
+          // Status is draft or something else, start processing
+          startKlapProcessing()
+        }
+      } else if (progress === 100 && project.status === 'processing') {
+        // Project is complete but status wasn't updated, fix it
+        ProjectService.updateProject(projectId, { status: 'draft' })
+          .then(() => router.push(`/projects/${projectId}`))
+      }
     }
-  }, [project, processingStarted, startKlapProcessing])
+  }, [project, processingStarted, startKlapProcessing, projectId, router])
 
   // Update timer every second
   useEffect(() => {
@@ -340,6 +416,8 @@ export default function ProcessingPage() {
     return `${minutes}m ${seconds}s remaining`
   }
 
+  const isProcessingComplete = project.status === 'draft' || project.status === 'ready' || overallProgress === 100
+
   return (
     <div className="relative">
       <AnimatedBackground variant="subtle" />
@@ -347,25 +425,47 @@ export default function ProcessingPage() {
       <div className="relative mx-auto max-w-6xl animate-in">
         {/* Header */}
         <div className="text-center mb-10">
-          <motion.div 
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4"
-            animate={{ y: [0, -5, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <IconSparkles className="h-4 w-4" />
-            AI Processing in Progress
-          </motion.div>
-          <h1 className="text-4xl font-bold mb-3">
-            Processing <span className="gradient-text">{project.title}</span>
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Our AI is analyzing your video and generating amazing content
-          </p>
-          {startTime && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <IconClock className="h-4 w-4" />
-              <span className="font-medium">{formatTimeRemaining() || "Processing..."}</span>
-            </div>
+          {isProcessingComplete ? (
+            <>
+              <motion.div 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/10 text-green-600 text-sm mb-4"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <IconCheck className="h-4 w-4" />
+                Processing Complete!
+              </motion.div>
+              <h1 className="text-4xl font-bold mb-3">
+                <span className="gradient-text">{project.title}</span> is Ready!
+              </h1>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Your content has been successfully generated
+              </p>
+            </>
+          ) : (
+            <>
+              <motion.div 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full gradient-premium-subtle backdrop-blur-sm text-primary text-sm mb-4"
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <IconSparkles className="h-4 w-4" />
+                AI Processing in Progress
+              </motion.div>
+              <h1 className="text-4xl font-bold mb-3">
+                Processing <span className="gradient-text">{project.title}</span>
+              </h1>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Our AI is analyzing your video and generating amazing content
+              </p>
+              {startTime && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <IconClock className="h-4 w-4" />
+                  <span className="font-medium">{formatTimeRemaining() || "Processing..."}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -376,7 +476,10 @@ export default function ProcessingPage() {
           transition={{ delay: 0.2 }}
         >
           <Card className="mb-8 overflow-hidden">
-            <div className="h-2 gradient-premium animate-gradient-x" />
+            <div className={cn(
+              "h-2 gradient-premium",
+              !isProcessingComplete && "animate-gradient-x"
+            )} />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
@@ -583,13 +686,13 @@ export default function ProcessingPage() {
 
         {/* Actions */}
         <div className="flex justify-center gap-4 mt-8">
-          {project.status === 'ready' && (
+          {(project.status === 'ready' || project.status === 'draft') && overallProgress === 100 && (
             <Button 
               size="lg" 
               className="gradient-premium hover:opacity-90 transition-opacity"
               onClick={() => router.push(`/projects/${projectId}`)}
             >
-              View Project
+              View Results
               <IconArrowRight className="h-4 w-4 ml-2" />
             </Button>
           )}

@@ -59,7 +59,30 @@ export default function AnalyticsPage() {
   const loadAnalytics = async () => {
     try {
       setLoading(true)
-      const allProjects = await ProjectService.getAllProjects(userId || undefined)
+      
+      if (!userId) {
+        setAnalyticsData({
+          totalProjects: 0,
+          totalVideoDuration: 0,
+          totalVideoSize: 0,
+          totalClips: 0,
+          totalBlogs: 0,
+          totalSocialPosts: 0,
+          totalPodcasts: 0,
+          projectsByStatus: {
+            draft: 0,
+            processing: 0,
+            ready: 0,
+            published: 0
+          },
+          recentActivity: [],
+          processingProjects: [],
+          weeklyStats: []
+        })
+        return
+      }
+      
+      const allProjects = await ProjectService.getAllProjects(userId)
 
       // Calculate analytics data
       const data: AnalyticsData = {

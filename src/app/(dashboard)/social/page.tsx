@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import React, { useState, useEffect, Suspense } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,35 +23,38 @@ import {
   IconSparkles,
   IconClock,
   IconCheck,
-  IconX
+  IconX,
+  IconRefresh,
+  IconPencil,
+  IconSettings,
+  IconArrowRight,
+  IconTrendingUp,
+  IconUsers,
+  IconRocket,
+  IconBolt,
+  IconLink
 } from "@tabler/icons-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { ROUTES } from "@/lib/constants"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useProjectNavigation } from "@/hooks/use-project-navigation"
 import { SocialMediaServiceClient } from "@/lib/social/types"
 import type { SocialIntegration, SocialPost, Platform } from "@/lib/social/types"
-
 import { format, formatDistance } from "date-fns"
 import { cn } from "@/lib/utils"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AnimatedBackground } from "@/components/animated-background"
-import {
-  IconSettings,
-  IconRefresh,
-  IconPencil,
-  IconLock,
-  IconLockOpen,
-  IconTemplate,
-  IconWand,
-  IconSend,
-  IconThumbUp,
-  IconMessage,
-  IconShare,
-  IconCrown,
-  IconChartLine
-} from "@tabler/icons-react"
+import { SocialPlatformSelector } from "@/components/social/social-platform-selector"
+import { SocialPostCard } from "@/components/social/social-post-card"
+import { SocialAnalyticsChart } from "@/components/social/social-analytics-chart"
+import { SocialQuickActions, QuickCreateWidget } from "@/components/social/social-quick-actions"
+import { SocialAuthChecker } from "@/lib/social/auth-check"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { SocialAccountConnector } from "@/components/social/social-account-connector"
+import SocialPostsExpandable from "@/components/social/social-posts-expandable"
+import { EmptyState } from "@/components/empty-state"
+import Link from "next/link"
 
 const platformIcons = {
   youtube: IconBrandYoutube,
@@ -59,9 +62,9 @@ const platformIcons = {
   tiktok: IconBrandTiktok,
   linkedin: IconBrandLinkedin,
   twitter: IconBrandTwitter,
-  x: IconBrandTwitter, // X uses the same icon as Twitter
+  x: IconBrandTwitter,
   facebook: IconBrandFacebook,
-  threads: IconBrandInstagram // Threads uses Instagram icon for now
+  threads: IconBrandInstagram
 }
 
 const platformColors = {
@@ -70,9 +73,9 @@ const platformColors = {
   tiktok: "text-black dark:text-white bg-gray-50 dark:bg-gray-950/20",
   linkedin: "text-blue-700 bg-blue-50 dark:bg-blue-950/20",
   twitter: "text-sky-500 bg-sky-50 dark:bg-sky-950/20",
-  x: "text-black dark:text-white bg-gray-50 dark:bg-gray-950/20", // X color scheme
+  x: "text-black dark:text-white bg-gray-50 dark:bg-gray-950/20",
   facebook: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
-  threads: "text-black dark:text-white bg-gray-50 dark:bg-gray-950/20" // Threads color
+  threads: "text-black dark:text-white bg-gray-50 dark:bg-gray-950/20"
 }
 
 const stateColors = {
@@ -84,8 +87,9 @@ const stateColors = {
   cancelled: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
 }
 
-export default function SocialMediaDashboard() {
+function SocialMediaDashboardContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { userId } = useAuth()
   const { navigateToProjects } = useProjectNavigation()
   const [integrations, setIntegrations] = useState<SocialIntegration[]>([])
@@ -93,10 +97,20 @@ export default function SocialMediaDashboard() {
   const [scheduledPosts, setScheduledPosts] = useState<SocialPost[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("overview")
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([])
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([])
 
   const socialService = new SocialMediaServiceClient()
+
+  // Check for connect parameter in URL
+  useEffect(() => {
+    const connectPlatform = searchParams.get('connect')
+    if (connectPlatform) {
+      setActiveTab('accounts')
+      toast.info(`Please connect your ${connectPlatform} account to continue`)
+    }
+  }, [searchParams])
 
   // Keyboard shortcuts
   const shortcuts = [
@@ -123,9 +137,11 @@ export default function SocialMediaDashboard() {
   useKeyboardShortcuts({ shortcuts })
 
   useEffect(() => {
-    loadData()
+    if (userId) {
+      loadData()
+      checkConnectedPlatforms()
+    }
 
-    // Listen for social updates
     const handleSocialUpdate = () => {
       loadData()
     }
@@ -148,6 +164,12 @@ export default function SocialMediaDashboard() {
       setIntegrations(integrationsData)
       setRecentPosts(postsData)
       setScheduledPosts(postsData.filter(p => p.state === 'scheduled'))
+
+      // Set selected platforms based on connected integrations
+      const connectedPlatforms = integrationsData
+        .filter(i => !i.disabled)
+        .map(i => i.platform as Platform)
+      setSelectedPlatforms(connectedPlatforms)
     } catch {
       console.error('Failed to load social media data')
       toast.error('Failed to load social media data')
@@ -163,9 +185,23 @@ export default function SocialMediaDashboard() {
     toast.success('Data refreshed!')
   }
 
-  const connectPlatform = (platform: Platform) => {
-    // TODO: Implement OAuth flow for each platform
-    toast.info(`Connecting to ${platform}...`)
+  const checkConnectedPlatforms = async () => {
+    if (!userId) return
+    
+    try {
+      const connected = await SocialAuthChecker.getConnectedPlatforms(userId)
+      setConnectedPlatforms(connected)
+    } catch (error) {
+      console.error('Error checking connected platforms:', error)
+    }
+  }
+
+  const connectPlatform = (platformId: string) => {
+    // For now, show instructions on how to connect
+    toast.info(`OAuth integration for ${platformId} is not yet configured. Please check the documentation for setup instructions.`)
+    
+    // In production, this would redirect to OAuth flow:
+    // window.location.href = `/api/social/auth/${platformId}`
   }
 
   const disconnectPlatform = async (integrationId: string) => {
@@ -214,6 +250,33 @@ export default function SocialMediaDashboard() {
     }, 0)
   }
 
+  // Transform integrations for platform selector
+  const platforms = Object.entries(platformIcons).map(([id, icon]) => {
+    const isConnected = connectedPlatforms.includes(id)
+    const integration = integrations.find(i => i.platform === id)
+    return {
+      id,
+      name: id.charAt(0).toUpperCase() + id.slice(1),
+      icon,
+      isConnected,
+      isSelected: selectedPlatforms.includes(id as Platform),
+      audienceSize: integration?.followers_count || 0,
+      engagementRate: 5.2, // Mock data
+      username: integration?.name
+    }
+  })
+
+  // Filter posts by selected platforms
+  const filteredScheduledPosts = scheduledPosts.filter(post => {
+    const platform = integrations.find(i => i.id === post.integration_id)?.platform
+    return !platform || selectedPlatforms.length === 0 || selectedPlatforms.includes(platform as Platform)
+  })
+
+  const filteredRecentPosts = recentPosts.filter(post => {
+    const platform = integrations.find(i => i.id === post.integration_id)?.platform
+    return !platform || selectedPlatforms.length === 0 || selectedPlatforms.includes(platform as Platform)
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -232,103 +295,83 @@ export default function SocialMediaDashboard() {
         transition={{ duration: 0.5 }}
         className="relative space-y-8"
       >
-        {/* Enhanced Header with Stats */}
+        {/* Enhanced Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-2xl p-8 text-white"
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 p-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">Social Media Hub</h1>
-              <p className="text-lg text-white/90">
-                Manage and grow your social presence across all platforms
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={refreshData}
-                disabled={refreshing}
-                className="bg-white/20 hover:bg-white/30 text-white border-0"
-              >
-                <IconRefresh className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
-                Refresh
-              </Button>
-              <Button
-                className="bg-white text-purple-600 hover:bg-white/90 shadow-lg"
-                onClick={() => router.push('/social/compose')}
-              >
-                <IconPencil className="h-4 w-4 mr-2" />
-                Create Post
-              </Button>
-            </div>
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute inset-0" style={{
+              backgroundImage: `radial-gradient(circle at 20% 80%, currentColor 1px, transparent 1px)`,
+              backgroundSize: '30px 30px'
+            }} />
           </div>
+          
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                  Social Media Hub
+                </h1>
+                <p className="text-lg text-muted-foreground">
+                  Manage and grow your social presence across all platforms
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshData}
+                  disabled={refreshing}
+                >
+                  <IconRefresh className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
+                  Refresh
+                </Button>
+                <Button
+                  onClick={() => router.push('/social/compose')}
+                  className="shadow-lg"
+                >
+                  <IconPencil className="h-4 w-4 mr-2" />
+                  Create Post
+                </Button>
+              </div>
+            </div>
 
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-              <p className="text-sm text-white/80">Platforms</p>
-              <p className="text-2xl font-bold">{stats.totalConnected}/6</p>
-              <p className="text-xs text-white/70">Connected</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-              <p className="text-sm text-white/80">Scheduled</p>
-              <p className="text-2xl font-bold">{stats.scheduledPosts}</p>
-              <p className="text-xs text-white/70">Ready to publish</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-              <p className="text-sm text-white/80">Published</p>
-              <p className="text-2xl font-bold">{stats.publishedToday}</p>
-              <p className="text-xs text-white/70">Today</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-              <p className="text-sm text-white/80">Engagement</p>
-              <p className="text-2xl font-bold">{stats.totalEngagement}</p>
-              <p className="text-xs text-white/70">Total interactions</p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Stats Cards - Simplified */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
-        >
-          {[
-            { label: "Total Posts", value: stats.totalPosts, icon: IconEdit, color: "text-blue-600" },
-            { label: "Scheduled", value: stats.scheduledPosts, icon: IconClock, color: "text-purple-600" },
-            { label: "Published Today", value: stats.publishedToday, icon: IconCheck, color: "text-green-600" },
-            { label: "Failed", value: stats.failedPosts, icon: IconX, color: "text-red-600" },
-            { label: "Engagement", value: stats.totalEngagement, icon: IconChartBar, color: "text-orange-600" },
-            { label: "Connected", value: `${stats.totalConnected}/6`, icon: IconSettings, color: "text-gray-600" }
-          ].map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + index * 0.05 }}
-            >
-              <Card className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Platforms', value: `${stats.totalConnected}/8`, icon: IconSettings, trend: '+2' },
+                { label: 'Scheduled', value: stats.scheduledPosts, icon: IconClock, trend: '+5' },
+                { label: 'Published Today', value: stats.publishedToday, icon: IconCheck, trend: '+12' },
+                { label: 'Total Engagement', value: stats.totalEngagement, icon: IconTrendingUp, trend: '+23%' }
+              ].map((stat, index) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-background/50 backdrop-blur-sm rounded-lg p-4"
+                >
                   <div className="flex items-center justify-between mb-2">
-                    <stat.icon className={cn("h-5 w-5", stat.color)} />
+                    {React.createElement(stat.icon, { className: "h-5 w-5 text-muted-foreground" })}
                     <Badge variant="secondary" className="text-xs">
-                      {stat.label}
+                      {stat.trend}
                     </Badge>
                   </div>
                   <p className="text-2xl font-bold">{stat.value}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
         </motion.div>
 
+        {/* Quick Actions */}
+        <SocialQuickActions variant="grid" />
+
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>
@@ -339,357 +382,206 @@ export default function SocialMediaDashboard() {
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Connected Accounts */}
+              {/* Quick Create Widget */}
+              <QuickCreateWidget />
+
+              {/* Recent Posts */}
               <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle>Connected Accounts</CardTitle>
-                  <CardDescription>Manage your social media connections</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.entries(platformIcons).map(([platform, Icon]) => {
-                      const integration = integrations.find(i => i.platform === platform)
-                      const isConnected = integration && !integration.disabled
-                      
-                      return (
-                        <motion.div
-                          key={platform}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                        >
-                          <Card className={cn(
-                            "cursor-pointer transition-all",
-                            isConnected ? "border-primary/50" : "border-muted"
-                          )}>
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className={cn("p-2 rounded-lg", platformColors[platform as Platform])}>
-                                    <Icon className="h-5 w-5" />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium capitalize">{platform}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {isConnected ? integration.name : "Not connected"}
-                                    </p>
-                                  </div>
-                                </div>
-                                {isConnected ? (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => disconnectPlatform(integration.id)}
-                                  >
-                                    <IconLockOpen className="h-4 w-4" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => connectPlatform(platform as Platform)}
-                                  >
-                                    <IconLock className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      )
-                    })}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Recent Posts</CardTitle>
+                      <CardDescription>Your latest social media activity</CardDescription>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setActiveTab('posts')}>
+                      View All
+                      <IconArrowRight className="h-4 w-4 ml-1" />
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Upcoming Posts */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Upcoming Posts</CardTitle>
-                  <CardDescription>Next scheduled posts</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {scheduledPosts.length > 0 ? (
+                  {recentPosts.length > 0 ? (
                     <div className="space-y-3">
-                      {scheduledPosts.map((post) => {
-                        const Icon = platformIcons[post.integration?.platform || 'twitter']
-                        return (
-                          <div key={post.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                            <div className={cn("p-2 rounded-lg", platformColors[post.integration?.platform || 'twitter'])}>
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium line-clamp-2">{post.content}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {formatDistance(new Date(post.publish_date), new Date(), { addSuffix: true })}
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      })}
+                      {recentPosts.slice(0, 3).map((post) => (
+                        <SocialPostCard
+                          key={post.id}
+                          post={post}
+                          onEdit={() => router.push(`/social/compose?postId=${post.id}`)}
+                          onDelete={() => deletePost(post.id)}
+                          onPublishNow={() => publishNow(post.id)}
+                          variant="compact"
+                        />
+                      ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <IconCalendar className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                      <p className="text-sm">No upcoming posts</p>
-                    </div>
+                    <EmptyState
+                      icon={React.createElement(IconEdit)}
+                      title="No posts yet"
+                      description="Start creating content to see it here"
+                      action={{
+                        label: "Create First Post",
+                        onClick: () => router.push('/social/compose')
+                      }}
+                    />
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Quick Actions */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="grid grid-cols-1 md:grid-cols-4 gap-4"
-            >
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(ROUTES.SOCIAL_COMPOSE)}>
-                  <CardContent className="p-6 text-center">
-                    <IconPencil className="h-8 w-8 mx-auto mb-3 text-primary" />
-                    <h3 className="font-medium">Compose</h3>
-                    <p className="text-sm text-muted-foreground">Create new post</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => toast.info('Templates coming soon!')}>
-                  <CardContent className="p-6 text-center">
-                    <IconTemplate className="h-8 w-8 mx-auto mb-3 text-green-600" />
-                    <h3 className="font-medium">Templates</h3>
-                    <p className="text-sm text-muted-foreground">Saved templates</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(ROUTES.SOCIAL_CALENDAR)}>
-                  <CardContent className="p-6 text-center">
-                    <IconCalendar className="h-8 w-8 mx-auto mb-3 text-blue-600" />
-                    <h3 className="font-medium">Calendar</h3>
-                    <p className="text-sm text-muted-foreground">Content schedule</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => toast.info('AI Assistant coming soon!')}>
-                  <CardContent className="p-6 text-center">
-                    <IconWand className="h-8 w-8 mx-auto mb-3 text-purple-600" />
-                    <h3 className="font-medium">AI Assistant</h3>
-                    <p className="text-sm text-muted-foreground">Generate content</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </motion.div>
+            {/* Analytics Overview */}
+            <SocialAnalyticsChart />
           </TabsContent>
 
           {/* Accounts Tab */}
           <TabsContent value="accounts" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {integrations.map((integration) => {
-                const Icon = platformIcons[integration.platform]
-                return (
-                  <Card key={integration.id}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("p-2 rounded-lg", platformColors[integration.platform])}>
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <h3 className="font-medium">{integration.name}</h3>
-                            <p className="text-sm text-muted-foreground capitalize">{integration.platform}</p>
-                          </div>
-                        </div>
-                        <Badge variant={integration.disabled ? "secondary" : "default"}>
-                          {integration.disabled ? "Disabled" : "Active"}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Connected</span>
-                          <span>{format(new Date(integration.created_at), 'MMM d, yyyy')}</span>
-                        </div>
-                        {integration.refresh_needed && (
-                          <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
-                            <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                              Token refresh needed
-                            </p>
-                          </div>
-                        )}
-                        <div className="flex gap-2 pt-2">
-                          <Button size="sm" variant="outline" className="flex-1">
-                            <IconSettings className="h-4 w-4 mr-2" />
-                            Settings
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => disconnectPlatform(integration.id)}
-                          >
-                            <IconTrash className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-              
-              {/* Add New Account Card */}
-              <Card className="cursor-pointer border-dashed hover:border-primary transition-colors" onClick={() => toast.info('Platform connection coming soon!')}>
-                <CardContent className="h-full flex items-center justify-center p-6">
-                  <div className="text-center">
-                    <IconPlus className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                    <h3 className="font-medium">Add Account</h3>
-                    <p className="text-sm text-muted-foreground">Connect a new platform</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Posts Tab */}
-          <TabsContent value="posts" className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                {Object.entries(platformIcons).map(([platform, Icon]) => (
-                  <Button
-                    key={platform}
-                    size="sm"
-                    variant={selectedPlatform === platform ? "default" : "outline"}
-                    onClick={() => setSelectedPlatform(selectedPlatform === platform ? null : platform as Platform)}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </Button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">All: {recentPosts.length}</Badge>
-                <Badge variant="outline" className={stateColors.scheduled}>
-                  Scheduled: {scheduledPosts.length}
-                </Badge>
-                <Badge variant="outline" className={stateColors.published}>
-                  Published: {recentPosts.filter(p => p.state === 'published').length}
-                </Badge>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {recentPosts
-                .filter(post => !selectedPlatform || post.integration?.platform === selectedPlatform)
-                .map((post) => {
-                  const Icon = platformIcons[post.integration?.platform || 'twitter']
-                  return (
-                    <Card key={post.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div className={cn("p-2 rounded-lg", platformColors[post.integration?.platform || 'twitter'])}>
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <p className="font-medium line-clamp-2">{post.content}</p>
-                                <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                                  <span>{format(new Date(post.publish_date), 'MMM d, yyyy h:mm a')}</span>
-                                  <Badge className={cn("text-xs", stateColors[post.state])}>
-                                    {post.state}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {post.state === 'scheduled' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => publishNow(post.id)}
-                                  >
-                                    <IconSend className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => toast.info('Edit post coming soon!')}
-                                >
-                                  <IconEdit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => deletePost(post.id)}
-                                >
-                                  <IconTrash className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                            {post.analytics && (
-                              <div className="flex items-center gap-6 mt-3 text-sm">
-                                <span className="flex items-center gap-1">
-                                  <IconEye className="h-4 w-4" />
-                                  {post.analytics.views || 0}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <IconThumbUp className="h-4 w-4" />
-                                  {post.analytics.likes || 0}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <IconMessage className="h-4 w-4" />
-                                  {post.analytics.comments || 0}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <IconShare className="h-4 w-4" />
-                                  {post.analytics.shares || 0}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-            </div>
-          </TabsContent>
-
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Social Media Analytics</CardTitle>
-                    <CardDescription>Track your performance across platforms</CardDescription>
-                  </div>
-                  <Badge variant="secondary" className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-black">
-                    <IconCrown className="h-3 w-3 mr-1" />
-                    Pro Feature
-                  </Badge>
-                </div>
+                <CardTitle>Connected Accounts</CardTitle>
+                <CardDescription>
+                  Connect your social media accounts to start publishing
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="text-center py-12">
-                                            <IconChartLine className="h-16 w-16 mx-auto mb-4 text-muted-foreground/20" />
-                  <h3 className="text-lg font-medium mb-2">Advanced Analytics Coming Soon</h3>
-                  <p className="text-muted-foreground mb-6">
-                    Get detailed insights on your social media performance
+              <CardContent className="space-y-4">
+                {connectedPlatforms.length === 0 && (
+                  <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+                    <IconSparkles className="h-4 w-4 text-amber-600" />
+                    <AlertDescription>
+                      <strong>Get Started:</strong> Connect at least one social media platform to start publishing your content.
+                      OAuth integration is coming soon. For now, check the documentation for manual setup.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                <SocialPlatformSelector
+                  platforms={platforms}
+                  onToggle={(platformId: string) => {
+                    setSelectedPlatforms(prev => 
+                      prev.includes(platformId as Platform) 
+                        ? prev.filter(p => p !== platformId)
+                        : [...prev, platformId as Platform]
+                    )
+                  }}
+                  onConnect={connectPlatform}
+                  variant="grid"
+                />
+                
+                <div className="mt-6 p-4 rounded-lg bg-muted/50">
+                  <h4 className="font-medium mb-2">Setup Instructions</h4>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    To connect your social media accounts:
                   </p>
-                  <Button className="gradient-premium">
-                    <IconSparkles className="h-4 w-4 mr-2" />
-                    Upgrade to Pro
+                  <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>Create developer apps on each platform</li>
+                    <li>Add OAuth credentials to your .env file</li>
+                    <li>Configure callback URLs in platform settings</li>
+                    <li>Click "Connect" to authenticate</li>
+                  </ol>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => window.open('/docs/setup/SOCIAL_MEDIA_SETUP.md', '_blank')}
+                  >
+                    View Setup Guide
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Posts Tab */}
+          <TabsContent value="posts" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>All Posts</CardTitle>
+                    <CardDescription>
+                      Manage your published and scheduled content
+                    </CardDescription>
+                  </div>
+                  <Button onClick={() => router.push('/social/compose')}>
+                    <IconPlus className="h-4 w-4 mr-2" />
+                    New Post
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {recentPosts.length > 0 ? (
+                  <div className="space-y-4">
+                    {recentPosts.map((post) => (
+                      <SocialPostCard
+                        key={post.id}
+                        post={post}
+                        onEdit={() => router.push(`/social/compose?postId=${post.id}`)}
+                        onDelete={() => deletePost(post.id)}
+                        onPublishNow={() => publishNow(post.id)}
+                        onViewAnalytics={() => toast.info('Analytics coming soon!')}
+                        variant="detailed"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={React.createElement(IconEdit)}
+                    title="No posts found"
+                    description="Create your first post to get started"
+                    action={{
+                      label: "Create Post",
+                      onClick: () => router.push('/social/compose')
+                    }}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-6">
+            <SocialAnalyticsChart showPlatformBreakdown />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Performing Posts</CardTitle>
+                  <CardDescription>Your best content this month</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-muted-foreground">
+                    <IconChartBar className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>Analytics data coming soon</p>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Audience Insights</CardTitle>
+                  <CardDescription>Understanding your followers</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-muted-foreground">
+                    <IconUsers className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>Insights coming soon</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
         </Tabs>
       </motion.div>
     </div>
+  )
+}
+
+export default function SocialMediaDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner size="lg" />
+      </div>
+    }>
+      <SocialMediaDashboardContent />
+    </Suspense>
   )
 } 

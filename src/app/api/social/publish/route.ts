@@ -1,94 +1,220 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SocialMediaServiceClient } from '@/lib/social/types'
-import { Platform } from '@/lib/social/types'
+import { auth } from '@clerk/nextjs/server'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { publishToSocialPlatform, refreshAccessToken } from '@/lib/social/platform-publishers'
+import { handleError, AppError } from '@/lib/error-handler'
+import { z } from 'zod'
 
-const socialMediaService = new SocialMediaServiceClient()
+const publishSchema = z.object({
+  postId: z.string().uuid()
+})
 
-// This would be called by a cron job or queue worker
 export async function POST(request: NextRequest) {
   try {
-    const { postId } = await request.json()
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json()
+    const validation = publishSchema.safeParse(body)
     
-    if (!postId) {
-      return NextResponse.json({ error: 'Post ID is required' }, { status: 400 })
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: 'Invalid request', details: validation.error.errors },
+        { status: 400 }
+      )
     }
 
-    // Get the post details
-    const post = await socialMediaService.getPostById(postId)
-    
-    if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    const { postId } = validation.data
+    const supabase = createSupabaseBrowserClient()
+
+    // Get post details with integration
+    const { data: post, error: postError } = await supabase
+      .from('social_posts')
+      .select(`
+        *,
+        integration:social_integrations(*)
+      `)
+      .eq('id', postId)
+      .eq('user_id', userId)
+      .single()
+
+    if (postError || !post) {
+      throw new AppError('Post not found', 'POST_NOT_FOUND', 404)
     }
 
-    if (post.state !== 'scheduled' && post.state !== 'publishing') {
-      return NextResponse.json({ error: 'Post is not scheduled' }, { status: 400 })
+    // Check if post is already published
+    if (post.state === 'published') {
+      return NextResponse.json({
+        success: true,
+        message: 'Post already published',
+        url: post.metadata?.url
+      })
     }
 
-    // Update post state to publishing
-    await socialMediaService.updatePost(postId, { state: 'publishing' })
+    // Check if post is scheduled for future
+    const publishDate = new Date(post.publish_date)
+    if (publishDate > new Date()) {
+      throw new AppError(
+        'Cannot publish future scheduled post. Wait for scheduled time or update publish date.',
+        'FUTURE_POST',
+        400
+      )
+    }
+
+    // Get integration details
+    let integration = post.integration
+    if (!integration && post.integration_id) {
+      // Fallback: fetch integration separately
+      const { data: integrationData } = await supabase
+        .from('social_integrations')
+        .select('*')
+        .eq('id', post.integration_id)
+        .single()
+      
+      if (!integrationData) {
+        throw new AppError('Social account not found', 'INTEGRATION_NOT_FOUND', 404)
+      }
+      integration = integrationData
+    }
+
+    // For staging posts without integration_id, get platform from metadata
+    const platform = integration?.platform || post.metadata?.platform || post.platform
+    if (!platform) {
+      throw new AppError('Platform not specified', 'PLATFORM_MISSING', 400)
+    }
+
+    // Update post status to publishing
+    await supabase
+      .from('social_posts')
+      .update({ 
+        state: 'publishing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', postId)
 
     try {
-      // Here you would integrate with actual social media APIs
-      // For now, we'll simulate the publishing process
+      let publishResult
       
-      switch (post.integration?.platform) {
-        case 'x':
-          // TODO: Implement X (Twitter) API integration
-          console.log('Publishing to X:', post.content)
-          break
-          
-        case 'instagram':
-          // TODO: Implement Instagram API integration
-          console.log('Publishing to Instagram:', post.content)
-          break
-          
-        case 'linkedin':
-          // TODO: Implement LinkedIn API integration
-          console.log('Publishing to LinkedIn:', post.content)
-          break
-          
-        case 'facebook':
-          // TODO: Implement Facebook API integration
-          console.log('Publishing to Facebook:', post.content)
-          break
-          
-        case 'youtube':
-          // TODO: Implement YouTube API integration
-          console.log('Publishing to YouTube:', post.content)
-          break
-          
-        case 'tiktok':
-          // TODO: Implement TikTok API integration
-          console.log('Publishing to TikTok:', post.content)
-          break
+      if (integration) {
+        // Check if token needs refresh
+        let accessToken = integration.token
+        
+        if (integration.token_expiration) {
+          const expiration = new Date(integration.token_expiration)
+          if (expiration <= new Date() && integration.refresh_token) {
+            // Refresh the token
+            const refreshResult = await refreshAccessToken(
+              platform,
+              integration.refresh_token
+            )
+            
+            accessToken = refreshResult.accessToken
+            
+            // Update token in database
+            await supabase
+              .from('social_integrations')
+              .update({
+                token: accessToken,
+                token_expiration: refreshResult.expiresIn 
+                  ? new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString()
+                  : null,
+                refresh_needed: false,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', integration.id)
+          }
+        }
+
+        // Publish to platform
+        publishResult = await publishToSocialPlatform(
+          platform,
+          accessToken,
+          {
+            content: post.content,
+            mediaUrls: post.media_urls,
+            hashtags: post.hashtags,
+            metadata: post.metadata
+          }
+        )
+      } else {
+        // Staging post without real integration
+        publishResult = {
+          success: true,
+          platformPostId: `staging-${Date.now()}`,
+          url: '#',
+          error: 'This is a staged post without a connected account'
+        }
       }
 
-      // Simulate successful publishing
-      await socialMediaService.updatePost(postId, { 
-        state: 'published',
-        analytics: {
-          published_at: new Date().toISOString()
-        }
-      })
+      if (publishResult.success) {
+        // Update post as published
+        await supabase
+          .from('social_posts')
+          .update({
+            state: 'published',
+            metadata: {
+              ...post.metadata,
+              platform_post_id: publishResult.platformPostId,
+              url: publishResult.url,
+              published_at: new Date().toISOString()
+            },
+            error: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', postId)
 
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Post published successfully',
-        postId 
-      })
+        return NextResponse.json({
+          success: true,
+          message: 'Post published successfully',
+          url: publishResult.url,
+          platformPostId: publishResult.platformPostId
+        })
+      } else {
+        // Publishing failed
+        await supabase
+          .from('social_posts')
+          .update({
+            state: 'failed',
+            error: publishResult.error || 'Publishing failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', postId)
 
+        throw new AppError(
+          publishResult.error || 'Publishing failed',
+          'PUBLISH_FAILED',
+          500
+        )
+      }
     } catch (publishError) {
-      // If publishing fails, update the post state to failed
-      await socialMediaService.updatePost(postId, { 
-        state: 'failed',
-        error: publishError instanceof Error ? publishError.message : 'Unknown error'
-      })
-      
+      // Update post as failed
+      await supabase
+        .from('social_posts')
+        .update({
+          state: 'failed',
+          error: publishError instanceof Error ? publishError.message : 'Unknown error',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', postId)
+
       throw publishError
     }
 
   } catch (error) {
-    console.error('Error publishing post:', error)
+    handleError(error, 'social-publish')
+    
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode || 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Failed to publish post' },
       { status: 500 }
