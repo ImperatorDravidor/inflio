@@ -18,39 +18,53 @@ export class UsageService {
    * Get current usage data
    */
   static getUsage(): UsageData {
-    if (typeof window === 'undefined') return this.DEFAULT_PLAN
-    
-    const stored = localStorage.getItem(this.STORAGE_KEY)
-    if (!stored) {
-      this.setUsage(this.DEFAULT_PLAN)
-      return this.DEFAULT_PLAN
+    // Always return default plan during SSR or when localStorage is not available
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return { ...this.DEFAULT_PLAN }
     }
-
-    const usage = JSON.parse(stored) as UsageData
     
-    // Check if we need to reset monthly usage
-    if (new Date() >= new Date(usage.resetDate)) {
-      const resetUsage = {
-        ...usage,
-        used: 0,
-        resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY)
+      if (!stored) {
+        this.setUsage(this.DEFAULT_PLAN)
+        return { ...this.DEFAULT_PLAN }
       }
-      this.setUsage(resetUsage)
-      return resetUsage
-    }
 
-    return usage
+      const usage = JSON.parse(stored) as UsageData
+      
+      // Check if we need to reset monthly usage
+      if (new Date() >= new Date(usage.resetDate)) {
+        const resetUsage = {
+          ...usage,
+          used: 0,
+          resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
+        }
+        this.setUsage(resetUsage)
+        return resetUsage
+      }
+
+      return usage
+    } catch (error) {
+      // If localStorage access fails (e.g., in private browsing mode), return default
+      console.warn('Failed to access localStorage:', error)
+      return { ...this.DEFAULT_PLAN }
+    }
   }
 
   /**
    * Set usage data
    */
   private static setUsage(usage: UsageData) {
-    if (typeof window === 'undefined') return
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(usage))
+    if (typeof window === 'undefined' || !window.localStorage) return
     
-    // Dispatch custom event for real-time updates
-    window.dispatchEvent(new CustomEvent('usageUpdate', { detail: usage }))
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(usage))
+      
+      // Dispatch custom event for real-time updates
+      window.dispatchEvent(new CustomEvent('usageUpdate', { detail: usage }))
+    } catch (error) {
+      console.warn('Failed to save usage data:', error)
+    }
   }
 
   /**

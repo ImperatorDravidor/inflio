@@ -160,14 +160,46 @@ Write the full article now, ensuring it's comprehensive, engaging, and perfectly
       ? paragraphMatch[0].substring(0, 200).trim() + '...'
       : summary || project.title
     
+    // Calculate reading time (average 200 words per minute)
+    const wordCount = articleContent.split(/\s+/).length
+    const readingTime = Math.ceil(wordCount / 200)
+    
+    // Extract sections from the markdown content
+    const sections: Array<{ heading: string; content: string }> = []
+    const sectionRegex = /^##\s+(.+)$/gm
+    let lastIndex = 0
+    let match
+    
+    while ((match = sectionRegex.exec(articleContent)) !== null) {
+      if (lastIndex > 0) {
+        // Get the content between the previous heading and this one
+        const prevSection = sections[sections.length - 1]
+        if (prevSection) {
+          prevSection.content = articleContent.substring(lastIndex, match.index).trim()
+        }
+      }
+      sections.push({
+        heading: match[1],
+        content: ''
+      })
+      lastIndex = match.index + match[0].length
+    }
+    
+    // Get the content for the last section
+    if (sections.length > 0 && lastIndex > 0) {
+      sections[sections.length - 1].content = articleContent.substring(lastIndex).trim()
+    }
+    
     const blogPost = {
       title: extractedTitle,
       content: articleContent,
       excerpt: extractedExcerpt,
       author: 'AI Content Assistant',
       tags: [...topics, ...keywords.slice(0, 5)],
-      metaTitle: metadata.metaTitle || extractedTitle.substring(0, 60),
-      metaDescription: metadata.metaDescription || extractedExcerpt.substring(0, 160),
+      seoTitle: metadata.metaTitle || extractedTitle.substring(0, 60),
+      seoDescription: metadata.metaDescription || extractedExcerpt.substring(0, 160),
+      readingTime: readingTime,
+      sections: sections,
       projectId: projectId,
       createdAt: new Date().toISOString(),
       status: 'draft',

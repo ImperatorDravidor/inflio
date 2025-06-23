@@ -117,6 +117,12 @@ Run these only if you encounter specific issues:
 - Creates missing user profiles
 - Run if you have users without profiles
 
+**File:** `fix-blog-structure.sql`
+- Fixes blog posts with old structure (metaTitle/metaDescription)
+- Converts to new structure (seoTitle/seoDescription)
+- Adds missing readingTime and sections fields
+- Run if blog posts show as "generated" but don't display properly
+
 ## Running Migrations
 
 ### Option 1: Supabase Dashboard (Recommended)

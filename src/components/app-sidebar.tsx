@@ -39,12 +39,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { userId } = useAuth()
   const [projectCount, setProjectCount] = React.useState<number>(0)
+  const [isHydrated, setIsHydrated] = React.useState(false)
   const [usageData, setUsageData] = React.useState<UsageData>({
     used: 0,
     limit: 25,
     plan: 'basic',
     resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()
   })
+  
+  // Mark component as hydrated after mount
+  React.useEffect(() => {
+    setIsHydrated(true)
+  }, [])
   
   // Fetch project count and usage data on mount
   React.useEffect(() => {
@@ -68,7 +74,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
     
     fetchProjectCount()
-    updateUsageData()
+    
+    // Only update usage data on client side after hydration
+    if (isHydrated) {
+      updateUsageData()
+    }
     
     // Listen for project updates
     const handleStorageChange = (e: StorageEvent) => {
@@ -98,7 +108,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       window.removeEventListener('projectUpdate', handleProjectUpdate)
       window.removeEventListener('usageUpdate', handleUsageUpdate as EventListener)
     }
-  }, [userId])
+  }, [userId, isHydrated])
   
   const workflowItems = [
     {
@@ -146,8 +156,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
   ]
   
-  const usagePercentage = UsageService.getUsagePercentage()
-  const remainingVideos = UsageService.getRemainingVideos()
+  // Calculate values from state to ensure consistency
+  const usagePercentage = usageData.limit > 0 
+    ? Math.min(100, Math.round((usageData.used / usageData.limit) * 100)) 
+    : 0
+  const remainingVideos = Math.max(0, usageData.limit - usageData.used)
   
   return (
     <Sidebar variant="inset" className="flex flex-col h-screen overflow-hidden border-r border-sidebar-border/60 bg-gradient-to-b from-sidebar/98 to-sidebar backdrop-blur-xl" {...props}>
