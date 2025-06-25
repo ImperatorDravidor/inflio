@@ -397,4 +397,108 @@
   .animation-delay-400 {
     animation-delay: 400ms;
   }
+}
+
+/* Video Player Subtitle Styles */
+video {
+  position: relative;
+}
+
+/* Style the subtitle track */
+video::cue {
+  font-family: 'Inter', 'Arial', sans-serif;
+  font-size: 1.1em;
+  line-height: 1.4;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.3em 0.6em;
+  border-radius: 0.3em;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Webkit-specific subtitle styles */
+video::-webkit-media-text-track-container {
+  position: absolute;
+  bottom: 10%;
+  width: 100%;
+  text-align: center;
+}
+
+video::-webkit-media-text-track-background {
+  background-color: transparent !important;
+}
+
+video::-webkit-media-text-track-display {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  padding: 0.3em 0.6em !important;
+  border-radius: 0.3em !important;
+  margin: 0 auto !important;
+  max-width: 90% !important;
+}
+
+/* Firefox-specific subtitle styles */
+video::cue(:not(:empty)) {
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 0.3em 0.6em;
+  border-radius: 0.3em;
+}
+
+/* Ensure subtitles are visible on fullscreen */
+video:fullscreen::cue {
+  font-size: 1.5em;
+}
+
+/* Custom subtitle animation classes */
+.subtitle-fade-in {
+  animation: subtitleFadeIn 0.3s ease-in-out;
+}
+
+.subtitle-slide-up {
+  animation: subtitleSlideUp 0.3s ease-in-out;
+}
+
+@keyframes subtitleFadeIn {
+  from {
+    opacity: 0;
   }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes subtitleSlideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Ensure video player controls don't overlap subtitles */
+video::-webkit-media-controls-panel {
+  margin-bottom: 50px;
+}
+
+/* Custom scrollbar for subtitle settings */
+.subtitle-settings-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subtitle-settings-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.subtitle-settings-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.subtitle-settings-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* END: Video Player Subtitle Styles */

@@ -23,7 +23,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { RecapWizard } from "@/components/social/recap-wizard"
 
 const steps = [
   { id: 'welcome', title: 'Welcome', icon: Sparkles },
@@ -42,7 +41,6 @@ export default function OnboardingPage() {
   const { userId } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showRecap, setShowRecap] = useState(false);
   
   const [formData, setFormData] = useState({
     fullName: "",
@@ -97,8 +95,8 @@ export default function OnboardingPage() {
 
       toast.success("Profile saved! Welcome to Inflio.");
       
-      // Show recap wizard for new users
-      setShowRecap(true);
+      // Redirect to dashboard
+      router.push("/dashboard");
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
@@ -106,10 +104,7 @@ export default function OnboardingPage() {
     }
   };
 
-  const handleRecapClose = () => {
-    setShowRecap(false);
-    router.push("/dashboard");
-  };
+
   
   if (!isLoaded) {
     return (
@@ -121,18 +116,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/5 via-accent/5 to-primary/5">
-      {/* Recap Dialog for new users */}
-      {userId && showRecap && (
-        <Dialog open={showRecap} onOpenChange={setShowRecap}>
-          <DialogContent className="max-w-[1200px] max-h-[90vh] overflow-hidden p-0">
-            <DialogTitle className="sr-only">Welcome to Inflio</DialogTitle>
-            <RecapWizard 
-              userId={userId}
-              onClose={handleRecapClose}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+
 
       <div className="min-h-screen bg-muted/20 flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-2xl">

@@ -53,7 +53,6 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from "next/image"
-import { RecapWizard } from "@/components/social/recap-wizard"
 import { 
   AnimatedStatCard,
   AchievementBadge,
@@ -130,8 +129,6 @@ export default function DashboardPage() {
     completedProjects: 0
   })
   const [loading, setLoading] = useState(true)
-  const [showRecap, setShowRecap] = useState(false)
-  const [hasSeenRecap, setHasSeenRecap] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [viewMode, setViewMode] = useState<'overview' | 'calendar' | 'analytics'>('overview')
@@ -232,19 +229,7 @@ export default function DashboardPage() {
 
   const generateSparkline = () => [45, 52, 48, 62, 58, 71, 65] // Fixed values for consistent rendering
 
-  useEffect(() => {
-    // Check if user has seen recap today
-    const lastRecapDate = localStorage.getItem(`recap_shown_${userId}`)
-    const today = new Date().toDateString()
-    
-    if (!lastRecapDate || lastRecapDate !== today) {
-      setTimeout(() => {
-        setShowRecap(true)
-        localStorage.setItem(`recap_shown_${userId}`, today)
-      }, 1000)
-    }
-    setHasSeenRecap(true)
-  }, [userId])
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -442,18 +427,7 @@ export default function DashboardPage() {
       {/* Celebration Overlay */}
       <CelebrationOverlay show={showCelebration} />
 
-      {/* Recap Dialog */}
-      {userId && hasSeenRecap && (
-        <Dialog open={showRecap} onOpenChange={setShowRecap}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
-            <DialogTitle className="sr-only">Content Performance Report</DialogTitle>
-            <RecapWizard 
-              userId={userId} 
-              onClose={() => setShowRecap(false)}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+
 
       {/* Enhanced Header with Streak */}
       <motion.div 
@@ -476,13 +450,6 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <Button 
-                variant="outline"
-                onClick={() => setShowRecap(true)}
-              >
-                <IconChartBar className="h-4 w-4 mr-2" />
-                View Recap
-              </Button>
               <Button 
                 className="gradient-premium shadow-lg"
                 onClick={() => router.push('/studio/upload')}

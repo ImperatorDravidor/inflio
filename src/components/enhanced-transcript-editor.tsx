@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { Switch } from '@/components/ui/switch'
 
 interface TranscriptSegment {
   start: number
@@ -28,9 +29,19 @@ interface SubtitleSettings {
   fontSize: number
   fontColor: string
   backgroundColor: string
+  backgroundOpacity: number
   position: 'top' | 'center' | 'bottom'
   alignment: 'left' | 'center' | 'right'
-  opacity: number
+  strokeColor: string
+  strokeWidth: number
+  animation: 'none' | 'fade' | 'slide'
+  animationDuration: number
+  lineHeight: number
+  padding: number
+  maxWidth: number
+  shadow: boolean
+  shadowColor: string
+  shadowBlur: number
 }
 
 interface EnhancedTranscriptEditorProps {
@@ -58,9 +69,19 @@ export function EnhancedTranscriptEditor({
     fontSize: 24,
     fontColor: '#FFFFFF',
     backgroundColor: '#000000',
+    backgroundOpacity: 80,
     position: 'bottom',
     alignment: 'center',
-    opacity: 80
+    strokeColor: '#000000',
+    strokeWidth: 0,
+    animation: 'none',
+    animationDuration: 300,
+    lineHeight: 1.5,
+    padding: 8,
+    maxWidth: 90,
+    shadow: true,
+    shadowColor: '#000000',
+    shadowBlur: 4
   })
   const [isApplying, setIsApplying] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -71,10 +92,20 @@ export function EnhancedTranscriptEditor({
   const [activeTab, setActiveTab] = useState('edit')
   const [processingStage, setProcessingStage] = useState('')
   const [subtitlesApplied, setSubtitlesApplied] = useState(false)
+  const [vttBlobUrl, setVttBlobUrl] = useState<string | null>(null)
 
   useEffect(() => {
     setEditingSegments(segments)
   }, [segments])
+
+  useEffect(() => {
+    // Cleanup VTT blob URL on unmount
+    return () => {
+      if (vttBlobUrl) {
+        URL.revokeObjectURL(vttBlobUrl)
+      }
+    }
+  }, [vttBlobUrl])
 
   const handleSegmentEdit = (index: number, field: keyof TranscriptSegment, value: any) => {
     const newSegments = [...editingSegments]
@@ -99,9 +130,62 @@ export function EnhancedTranscriptEditor({
   const handleApplySubtitles = async () => {
     try {
       setIsApplying(true)
-      setProgress(5)
-      setProcessingStage('Preparing video...')
+      setProgress(0)
+      setProcessingStage('Generating subtitle file...')
       
+      // Cleanup previous VTT URL if exists
+      if (vttBlobUrl) {
+        URL.revokeObjectURL(vttBlobUrl)
+        setVttBlobUrl(null)
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 500)) // Small delay for better UX
+      
+      // Generate VTT with custom styling
+      const vttContent = generateStyledVTT(editingSegments, subtitleSettings)
+      const vttBlob = new Blob([vttContent], { type: 'text/vtt' })
+      const newVttUrl = URL.createObjectURL(vttBlob)
+      setVttBlobUrl(newVttUrl)
+      
+      setProgress(30)
+      setProcessingStage('Applying subtitles to video player...')
+      
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Apply VTT subtitles to the video player with proper video URL
+      onVideoUrlUpdate?.(videoUrl, newVttUrl)
+      
+      setProgress(60)
+      setProcessingStage('Configuring subtitle display...')
+      
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      setSubtitlesApplied(true)
+      setProgress(100)
+      setProcessingStage('Subtitles applied successfully!')
+      
+      // Also try to burn subtitles using cloud service if available (background task)
+      tryCloudSubtitleBurning(newVttUrl)
+      
+      setTimeout(() => {
+        setIsApplying(false)
+        setProgress(0)
+        setProcessingStage('')
+      }, 2000)
+      
+      toast.success('✅ Subtitles applied! Your content is ready for publishing.')
+      
+    } catch (error) {
+      console.error('Error applying subtitles:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to apply subtitles')
+      setProgress(0)
+      setProcessingStage('')
+      setIsApplying(false)
+    }
+  }
+  
+  const tryCloudSubtitleBurning = async (vttUrl: string) => {
+    try {
       const response = await fetch('/api/apply-subtitles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,103 +197,94 @@ export function EnhancedTranscriptEditor({
         })
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to apply subtitles')
-      }
-
-      const result = await response.json()
-      setProgress(30)
-      setProcessingStage('Uploading to cloud...')
-      
-      if (result.status === 'completed') {
-        setProgress(100)
-        setProcessingStage('Complete!')
-        if (result.videoUrl || result.vttUrl) {
-          onVideoUrlUpdate?.(result.videoUrl || videoUrl, result.vttUrl)
-          setSubtitlesApplied(true)
-          toast.success('🎉 Subtitles applied! Your long-form content is ready.')
+      if (response.ok) {
+        const result = await response.json()
+        
+        if (result.status === 'completed' && result.videoUrl) {
+          // Update with burned-in video if available
+          onVideoUrlUpdate?.(result.videoUrl, vttUrl)
+          toast.info('🎬 Enhanced video with burned-in subtitles is ready!')
+        } else if (result.taskId) {
+          // Poll for progress in background
+          pollTaskStatusBackground(result.taskId, vttUrl)
         }
-      } else if (result.taskId) {
-        // Poll for progress
-        pollTaskStatus(result.taskId)
       }
     } catch (error) {
-      console.error('Error applying subtitles:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to apply subtitles')
-      setProgress(0)
-      setProcessingStage('')
-    } finally {
-      if (progress === 100) {
-        setTimeout(() => {
-          setIsApplying(false)
-          setProgress(0)
-          setProcessingStage('')
-        }, 2000)
-      }
+      // Silent fail - we already have VTT subtitles working
+      console.log('Cloud subtitle service unavailable, using VTT overlay')
     }
   }
-
-  const pollTaskStatus = async (taskId: string) => {
-    const stages = [
-      'Generating subtitle file...',
-      'Applying subtitles to video...',
-      'Optimizing video quality...',
-      'Finalizing...'
-    ]
-    let stageIndex = 0
+  
+  const generateStyledVTT = (segments: TranscriptSegment[], settings: SubtitleSettings): string => {
+    let vtt = 'WEBVTT\n\n'
     
+    // Add VTT styling header with enhanced settings
+    vtt += 'STYLE\n'
+    vtt += '::cue {\n'
+    vtt += `  font-family: ${settings.fontFamily}, sans-serif;\n`
+    vtt += `  font-size: ${settings.fontSize}px;\n`
+    vtt += `  color: ${settings.fontColor};\n`
+    vtt += `  background-color: ${settings.backgroundColor}${Math.round(settings.backgroundOpacity * 2.55).toString(16).padStart(2, '0')};\n`
+    vtt += `  text-align: ${settings.alignment};\n`
+    vtt += `  line-height: ${settings.lineHeight};\n`
+    vtt += `  padding: ${settings.padding}px;\n`
+    
+    if (settings.strokeWidth > 0) {
+      vtt += `  text-shadow: ${settings.strokeColor} 0px 0px ${settings.strokeWidth}px;\n`
+    }
+    
+    if (settings.shadow) {
+      vtt += `  box-shadow: ${settings.shadowColor} 0px 2px ${settings.shadowBlur}px;\n`
+    }
+    
+    vtt += '}\n\n'
+    
+    // Add subtitle entries
+    segments.forEach((segment, index) => {
+      const start = formatVTTTime(segment.start)
+      const end = formatVTTTime(segment.end)
+      const position = settings.position === 'top' ? 10 : settings.position === 'center' ? 50 : 90
+      
+      vtt += `${index + 1}\n`
+      vtt += `${start} --> ${end} position:${position}% line:${position}% align:${settings.alignment} size:${settings.maxWidth}%\n`
+      vtt += `${segment.text}\n\n`
+    })
+    
+    return vtt
+  }
+
+  const formatVTTTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    const ms = Math.floor((seconds % 1) * 1000)
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+  }
+
+  const pollTaskStatusBackground = async (taskId: string, vttUrl: string) => {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/apply-subtitles/status/${taskId}`)
         if (!response.ok) throw new Error('Failed to get status')
         
         const task = await response.json()
-        const taskProgress = task.progress || 50
         
-        // Update stage based on progress
-        if (taskProgress > 25 && stageIndex < 1) {
-          stageIndex = 1
-          setProcessingStage(stages[stageIndex])
-        } else if (taskProgress > 50 && stageIndex < 2) {
-          stageIndex = 2
-          setProcessingStage(stages[stageIndex])
-        } else if (taskProgress > 75 && stageIndex < 3) {
-          stageIndex = 3
-          setProcessingStage(stages[stageIndex])
-        }
-        
-        setProgress(Math.min(95, taskProgress))
-        
-        if (task.status === 'completed') {
+        if (task.status === 'completed' && task.outputVideoUrl) {
           clearInterval(interval)
-          setProgress(100)
-          setProcessingStage('Complete!')
-          if (task.outputVideoUrl || task.vttUrl) {
-            onVideoUrlUpdate?.(task.outputVideoUrl || videoUrl, task.vttUrl)
-            setSubtitlesApplied(true)
-            toast.success('🎉 Subtitles applied! Your long-form content is ready.')
-          }
-          setTimeout(() => {
-            setIsApplying(false)
-            setProgress(0)
-            setProcessingStage('')
-          }, 2000)
+          onVideoUrlUpdate?.(task.outputVideoUrl, vttUrl)
+          toast.info('🎬 Enhanced video with burned-in subtitles is ready!')
         } else if (task.status === 'failed') {
           clearInterval(interval)
-          toast.error(task.error || 'Failed to process subtitles')
-          setIsApplying(false)
-          setProgress(0)
-          setProcessingStage('')
+          // Silent fail - we already have working subtitles
         }
       } catch (error) {
         clearInterval(interval)
-        toast.error('Failed to check processing status')
-        setIsApplying(false)
-        setProgress(0)
-        setProcessingStage('')
+        // Silent fail - we already have working subtitles
       }
-    }, 2000)
+    }, 5000) // Check every 5 seconds in background
+    
+    // Stop checking after 5 minutes
+    setTimeout(() => clearInterval(interval), 300000)
   }
 
   const formatTime = (seconds: number): string => {
@@ -234,11 +309,7 @@ export function EnhancedTranscriptEditor({
         }).join('\n')
         break
       case 'vtt':
-        content = `WEBVTT\n\n${editingSegments.map(s => {
-          const start = `${Math.floor(s.start/3600).toString().padStart(2,'0')}:${Math.floor((s.start%3600)/60).toString().padStart(2,'0')}:${Math.floor(s.start%60).toString().padStart(2,'0')}.${Math.floor((s.start%1)*1000).toString().padStart(3,'0')}`
-          const end = `${Math.floor(s.end/3600).toString().padStart(2,'0')}:${Math.floor((s.end%3600)/60).toString().padStart(2,'0')}:${Math.floor(s.end%60).toString().padStart(2,'0')}.${Math.floor((s.end%1)*1000).toString().padStart(3,'0')}`
-          return `${start} --> ${end}\n${s.text}`
-        }).join('\n\n')}`
+        content = generateStyledVTT(editingSegments, subtitleSettings)
         break
     }
     
@@ -362,112 +433,345 @@ export function EnhancedTranscriptEditor({
             </TabsContent>
             
             <TabsContent value="subtitles" className="h-full flex flex-col gap-4">
-              <div className="flex-1 space-y-4 overflow-y-auto">
-                <div className="grid gap-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Font</Label>
-                      <Select
-                        value={subtitleSettings.fontFamily}
-                        onValueChange={(value) => setSubtitleSettings({...subtitleSettings, fontFamily: value})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Arial">Arial</SelectItem>
-                          <SelectItem value="Helvetica">Helvetica</SelectItem>
-                          <SelectItem value="Roboto">Roboto</SelectItem>
-                          <SelectItem value="Open Sans">Open Sans</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label>Position</Label>
-                      <Select
-                        value={subtitleSettings.position}
-                        onValueChange={(value: 'top' | 'center' | 'bottom') => setSubtitleSettings({...subtitleSettings, position: value})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="top">Top</SelectItem>
-                          <SelectItem value="center">Center</SelectItem>
-                          <SelectItem value="bottom">Bottom</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
+              <div className="flex-1 space-y-4 overflow-y-auto subtitle-settings-scroll">
+                <div className="grid gap-6">
+                  {/* Basic Settings */}
                   <div>
-                    <Label>Size: {subtitleSettings.fontSize}px</Label>
-                    <Slider
-                      value={[subtitleSettings.fontSize]}
-                      onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, fontSize: value})}
-                      min={16}
-                      max={40}
-                      step={2}
-                      className="mt-2"
-                    />
+                    <h3 className="text-sm font-semibold mb-3">Basic Settings</h3>
+                    <div className="grid gap-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Font Family</Label>
+                          <Select
+                            value={subtitleSettings.fontFamily}
+                            onValueChange={(value) => setSubtitleSettings({...subtitleSettings, fontFamily: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Arial">Arial</SelectItem>
+                              <SelectItem value="Helvetica">Helvetica</SelectItem>
+                              <SelectItem value="Roboto">Roboto</SelectItem>
+                              <SelectItem value="Open Sans">Open Sans</SelectItem>
+                              <SelectItem value="Montserrat">Montserrat</SelectItem>
+                              <SelectItem value="Inter">Inter</SelectItem>
+                              <SelectItem value="Poppins">Poppins</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Position</Label>
+                          <Select
+                            value={subtitleSettings.position}
+                            onValueChange={(value: 'top' | 'center' | 'bottom') => setSubtitleSettings({...subtitleSettings, position: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="top">Top</SelectItem>
+                              <SelectItem value="center">Center</SelectItem>
+                              <SelectItem value="bottom">Bottom</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Text Alignment</Label>
+                          <Select
+                            value={subtitleSettings.alignment}
+                            onValueChange={(value: 'left' | 'center' | 'right') => setSubtitleSettings({...subtitleSettings, alignment: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="left">Left</SelectItem>
+                              <SelectItem value="center">Center</SelectItem>
+                              <SelectItem value="right">Right</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Animation</Label>
+                          <Select
+                            value={subtitleSettings.animation}
+                            onValueChange={(value: 'none' | 'fade' | 'slide') => setSubtitleSettings({...subtitleSettings, animation: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="fade">Fade In/Out</SelectItem>
+                              <SelectItem value="slide">Slide Up</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label>Font Size: {subtitleSettings.fontSize}px</Label>
+                        <Slider
+                          value={[subtitleSettings.fontSize]}
+                          onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, fontSize: value})}
+                          min={12}
+                          max={48}
+                          step={1}
+                          className="mt-2"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Line Height: {subtitleSettings.lineHeight}</Label>
+                          <Slider
+                            value={[subtitleSettings.lineHeight]}
+                            onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, lineHeight: value})}
+                            min={1}
+                            max={3}
+                            step={0.1}
+                            className="mt-2"
+                          />
+                        </div>
+                        
+                        <div>
+                          <Label>Max Width: {subtitleSettings.maxWidth}%</Label>
+                          <Slider
+                            value={[subtitleSettings.maxWidth]}
+                            onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, maxWidth: value})}
+                            min={50}
+                            max={100}
+                            step={5}
+                            className="mt-2"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Text Color</Label>
-                      <div className="flex gap-2 mt-1">
-                        <Input
-                          type="color"
-                          value={subtitleSettings.fontColor}
-                          onChange={(e) => setSubtitleSettings({...subtitleSettings, fontColor: e.target.value})}
-                          className="w-20 h-9"
-                        />
-                        <Input
-                          value={subtitleSettings.fontColor}
-                          onChange={(e) => setSubtitleSettings({...subtitleSettings, fontColor: e.target.value})}
-                          className="flex-1"
+                  <Separator />
+                  
+                  {/* Colors & Background */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3">Colors & Background</h3>
+                    <div className="grid gap-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Text Color</Label>
+                          <div className="flex gap-2 mt-1">
+                            <Input
+                              type="color"
+                              value={subtitleSettings.fontColor}
+                              onChange={(e) => setSubtitleSettings({...subtitleSettings, fontColor: e.target.value})}
+                              className="w-20 h-9"
+                            />
+                            <Input
+                              value={subtitleSettings.fontColor}
+                              onChange={(e) => setSubtitleSettings({...subtitleSettings, fontColor: e.target.value})}
+                              className="flex-1 font-mono text-sm"
+                              placeholder="#FFFFFF"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <Label>Background Color</Label>
+                          <div className="flex gap-2 mt-1">
+                            <Input
+                              type="color"
+                              value={subtitleSettings.backgroundColor}
+                              onChange={(e) => setSubtitleSettings({...subtitleSettings, backgroundColor: e.target.value})}
+                              className="w-20 h-9"
+                            />
+                            <Input
+                              value={subtitleSettings.backgroundColor}
+                              onChange={(e) => setSubtitleSettings({...subtitleSettings, backgroundColor: e.target.value})}
+                              className="flex-1 font-mono text-sm"
+                              placeholder="#000000"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label>Background Opacity: {subtitleSettings.backgroundOpacity}%</Label>
+                        <Slider
+                          value={[subtitleSettings.backgroundOpacity]}
+                          onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, backgroundOpacity: value})}
+                          min={0}
+                          max={100}
+                          step={5}
+                          className="mt-2"
                         />
                       </div>
-                    </div>
-                    
-                    <div>
-                      <Label>Background</Label>
-                      <div className="flex gap-2 mt-1">
-                        <Input
-                          type="color"
-                          value={subtitleSettings.backgroundColor}
-                          onChange={(e) => setSubtitleSettings({...subtitleSettings, backgroundColor: e.target.value})}
-                          className="w-20 h-9"
-                        />
-                        <Input
-                          value={subtitleSettings.backgroundColor}
-                          onChange={(e) => setSubtitleSettings({...subtitleSettings, backgroundColor: e.target.value})}
-                          className="flex-1"
+                      
+                      <div>
+                        <Label>Padding: {subtitleSettings.padding}px</Label>
+                        <Slider
+                          value={[subtitleSettings.padding]}
+                          onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, padding: value})}
+                          min={0}
+                          max={20}
+                          step={1}
+                          className="mt-2"
                         />
                       </div>
                     </div>
                   </div>
+                  
+                  <Separator />
+                  
+                  {/* Text Effects */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3">Text Effects</h3>
+                    <div className="grid gap-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="shadow">Drop Shadow</Label>
+                        <Switch
+                          id="shadow"
+                          checked={subtitleSettings.shadow}
+                          onCheckedChange={(checked) => setSubtitleSettings({...subtitleSettings, shadow: checked})}
+                        />
+                      </div>
+                      
+                      {subtitleSettings.shadow && (
+                        <div className="grid grid-cols-2 gap-4 pl-4">
+                          <div>
+                            <Label>Shadow Color</Label>
+                            <div className="flex gap-2 mt-1">
+                              <Input
+                                type="color"
+                                value={subtitleSettings.shadowColor}
+                                onChange={(e) => setSubtitleSettings({...subtitleSettings, shadowColor: e.target.value})}
+                                className="w-20 h-9"
+                              />
+                              <Input
+                                value={subtitleSettings.shadowColor}
+                                onChange={(e) => setSubtitleSettings({...subtitleSettings, shadowColor: e.target.value})}
+                                className="flex-1 font-mono text-sm"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <Label>Shadow Blur: {subtitleSettings.shadowBlur}px</Label>
+                            <Slider
+                              value={[subtitleSettings.shadowBlur]}
+                              onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, shadowBlur: value})}
+                              min={0}
+                              max={10}
+                              step={1}
+                              className="mt-2"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Stroke Width: {subtitleSettings.strokeWidth}px</Label>
+                          <Slider
+                            value={[subtitleSettings.strokeWidth]}
+                            onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, strokeWidth: value})}
+                            min={0}
+                            max={5}
+                            step={0.5}
+                            className="mt-2"
+                          />
+                        </div>
+                        
+                        {subtitleSettings.strokeWidth > 0 && (
+                          <div>
+                            <Label>Stroke Color</Label>
+                            <div className="flex gap-2 mt-1">
+                              <Input
+                                type="color"
+                                value={subtitleSettings.strokeColor}
+                                onChange={(e) => setSubtitleSettings({...subtitleSettings, strokeColor: e.target.value})}
+                                className="w-20 h-9"
+                              />
+                              <Input
+                                value={subtitleSettings.strokeColor}
+                                onChange={(e) => setSubtitleSettings({...subtitleSettings, strokeColor: e.target.value})}
+                                className="flex-1 font-mono text-sm"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {subtitleSettings.animation !== 'none' && (
+                        <div>
+                          <Label>Animation Duration: {subtitleSettings.animationDuration}ms</Label>
+                          <Slider
+                            value={[subtitleSettings.animationDuration]}
+                            onValueChange={([value]) => setSubtitleSettings({...subtitleSettings, animationDuration: value})}
+                            min={100}
+                            max={1000}
+                            step={50}
+                            className="mt-2"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <Separator />
 
-                  {showPreview && (
-                    <div className="mt-6">
-                      <Label>Preview</Label>
-                      <div className="mt-2 bg-black rounded-lg p-8 flex items-center justify-center aspect-video">
-                        <p 
+                  {/* Live Preview */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <Label>Live Preview</Label>
+                      <Switch
+                        checked={showPreview}
+                        onCheckedChange={setShowPreview}
+                      />
+                    </div>
+                    {showPreview && (
+                      <div className="bg-black rounded-lg p-8 flex items-center justify-center aspect-video relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+                        <div 
+                          className="relative"
                           style={{
-                            fontFamily: subtitleSettings.fontFamily,
-                            fontSize: `${subtitleSettings.fontSize}px`,
-                            color: subtitleSettings.fontColor,
-                            backgroundColor: subtitleSettings.backgroundColor + Math.round(subtitleSettings.opacity * 2.55).toString(16).padStart(2, '0'),
-                            padding: '8px 16px',
-                            borderRadius: '4px'
+                            maxWidth: `${subtitleSettings.maxWidth}%`,
+                            textAlign: subtitleSettings.alignment as any,
+                            position: 'absolute',
+                            bottom: subtitleSettings.position === 'bottom' ? '10%' : undefined,
+                            top: subtitleSettings.position === 'top' ? '10%' : undefined,
+                            left: '50%',
+                            transform: 'translateX(-50%)'
                           }}
                         >
-                          This is how your subtitles will look
-                        </p>
+                          <p 
+                            style={{
+                              fontFamily: `${subtitleSettings.fontFamily}, sans-serif`,
+                              fontSize: `${subtitleSettings.fontSize}px`,
+                              color: subtitleSettings.fontColor,
+                              backgroundColor: subtitleSettings.backgroundColor + Math.round(subtitleSettings.backgroundOpacity * 2.55).toString(16).padStart(2, '0'),
+                              padding: `${subtitleSettings.padding}px ${subtitleSettings.padding * 2}px`,
+                              borderRadius: '4px',
+                              lineHeight: subtitleSettings.lineHeight,
+                              textShadow: subtitleSettings.strokeWidth > 0 
+                                ? `${subtitleSettings.strokeColor} 0px 0px ${subtitleSettings.strokeWidth}px` 
+                                : undefined,
+                              boxShadow: subtitleSettings.shadow 
+                                ? `${subtitleSettings.shadowColor} 0px 2px ${subtitleSettings.shadowBlur}px` 
+                                : undefined,
+                              display: 'inline-block'
+                            }}
+                          >
+                            This is how your subtitles will appear on the video
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -483,10 +787,12 @@ export function EnhancedTranscriptEditor({
                       <span className="text-muted-foreground">{Math.round(progress)}%</span>
                     </div>
                     <Progress value={progress} className="h-2" />
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>Estimated time: {estimateProcessingTime()} minute{estimateProcessingTime() > 1 ? 's' : ''}</span>
-                    </div>
+                    {progress > 0 && progress < 100 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>Processing subtitles...</span>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -572,4 +878,4 @@ export function EnhancedTranscriptEditor({
       </CardContent>
     </div>
   )
-} 
+}

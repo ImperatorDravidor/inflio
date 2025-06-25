@@ -7,7 +7,6 @@ Successfully reorganized the Inflio codebase documentation from a messy structur
 ### Previous Structure (Problematic)
 ```
 docs/
-├── RECAP_WIZARD.md
 ├── SOCIAL_MEDIA_INTEGRATION.md
 └── setup/
     └── SOCIAL_MEDIA_SETUP.md
@@ -76,7 +75,7 @@ docs/
 Consider merging these similar files:
 - `setup/environment-variables.md` and `setup/environment-setup.md`
 - `setup/transcription-setup.md` and `setup/transcription-implementation.md`
-- `features/recap-workflow.md` and `features/recap-portal-enhancements.md`
+
 
 ## Development Summaries
 

@@ -16,7 +16,6 @@ Welcome to the Inflio documentation. This guide will help you set up, understand
 - [Video Processing](./features/video-processing.md) - Upload and process videos
 - [AI Content Analysis](./features/ai-content-analysis.md) - Extract keywords, topics & insights with AI
 - [AI Carousel Generation](./features/ai-carousel-generation.md) - Create multi-slide social carousels
-- [Social Media Recap](./features/social-media-recap.md) - Analytics and insights
 - [Blog Editor](./features/blog-editor.md) - Content creation tools
 - [Blog Management](./features/blog-management.md) - Manage, duplicate & delete blog posts
 - [Publishing Workflow](./features/publishing-workflow.md) - Multi-platform publishing

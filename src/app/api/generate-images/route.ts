@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
       background = 'opaque',
       n = 1,
       isCarousel = false,
-      carouselPrompts = []
+      carouselPrompts = [],
+      type = 'ai-generated'
     } = await request.json()
     
     if (!projectId || !prompt) {
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
           background,
           url: publicUrl,
           createdAt: new Date().toISOString(),
-          type: 'ai-generated'
+          type: type || 'ai-generated'
         })
       }
     }
@@ -223,12 +224,19 @@ export async function POST(request: NextRequest) {
       images: [...currentImages, ...generatedImages]
     }
 
+    // If type is thumbnail, also update the project's thumbnail_url
+    const updateData: any = { 
+      folders: updatedFolders,
+      updated_at: new Date().toISOString()
+    }
+    
+    if (type === 'thumbnail' && generatedImages.length > 0) {
+      updateData.thumbnail_url = generatedImages[0].url
+    }
+
     const { error: updateError } = await supabaseAdmin
       .from('projects')
-      .update({ 
-        folders: updatedFolders,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', projectId)
 
     if (updateError) {
@@ -237,7 +245,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      images: generatedImages
+      images: generatedImages,
+      imageUrl: generatedImages.length > 0 ? generatedImages[0].url : null
     })
 
   } catch (error) {

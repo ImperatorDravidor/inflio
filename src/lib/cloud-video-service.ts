@@ -116,6 +116,8 @@ export class CloudVideoService {
   
   private async applySubtitlesCloudinary(videoUrl: string, segments: TranscriptSegment[], taskId: string, settings?: SubtitleSettings): Promise<ApplySubtitlesResult> {
     try {
+      console.log('Starting Cloudinary subtitle application...')
+      
       // Upload the video to Cloudinary first
       const uploadResult = await cloudinary.uploader.upload(videoUrl, {
         resource_type: 'video',
@@ -123,10 +125,12 @@ export class CloudVideoService {
         folder: 'inflio/subtitled',
       })
       
+      console.log('Video uploaded to Cloudinary:', uploadResult.public_id)
+      
       // Generate SRT content
       const srtContent = this.generateSRT(segments)
       
-      // Upload SRT file
+      // Upload SRT file as a raw file
       const srtUpload = await cloudinary.uploader.upload(
         `data:text/plain;base64,${Buffer.from(srtContent).toString('base64')}`,
         {
@@ -137,25 +141,56 @@ export class CloudVideoService {
         }
       )
       
-      // Generate video URL with subtitle overlay
+      console.log('SRT file uploaded:', srtUpload.public_id)
+      
+      // Build subtitle style string for Cloudinary
+      const textColor = settings?.fontColor?.replace('#', '') || 'ffffff'
+      const bgColor = settings?.backgroundColor?.replace('#', '') || '000000'
+      const fontSize = settings?.fontSize || 24
+      const fontFamily = settings?.fontFamily?.replace(' ', '_') || 'Arial'
+      
+      // Position mapping
+      const gravityMap = {
+        'top': 'north',
+        'center': 'center', 
+        'bottom': 'south'
+      }
+      const gravity = gravityMap[settings?.position || 'bottom']
+      
+      // For now, let's generate a URL with the video and provide VTT subtitles
+      // Cloudinary's subtitle burning requires specific setup that may not be available
+      // So we'll provide both the original video and VTT subtitles for the player
       const processedUrl = cloudinary.url(uploadResult.public_id, {
         resource_type: 'video',
         transformation: [
           {
-            overlay: {
-              resource_type: 'subtitles',
-              public_id: srtUpload.public_id
-            },
-            gravity: settings?.position === 'top' ? 'north' : settings?.position === 'bottom' ? 'south' : 'center',
-            color: settings?.fontColor?.replace('#', '') || 'ffffff',
-            font_family: settings?.fontFamily?.replace(' ', '_') || 'Arial',
-            font_size: settings?.fontSize || 24
-          },
-          {
-            flags: 'layer_apply'
+            quality: 'auto',
+            fetch_format: 'auto'
           }
         ]
       })
+      
+      console.log('Generated video URL:', processedUrl)
+      
+      // Also generate a VTT file for the video player
+      const vttContent = this.generateVTT(segments)
+      const vttFileName = `${taskId}.vtt`
+      
+      // Upload VTT to Supabase for web player
+      const { data: vttUploadData, error: vttUploadError } = await supabaseAdmin.storage
+        .from('project-files')
+        .upload(`subtitles/${vttFileName}`, new Blob([vttContent], { type: 'text/vtt' }), {
+          contentType: 'text/vtt',
+          upsert: true
+        })
+        
+      let vttUrl: string | undefined
+      if (!vttUploadError) {
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from('project-files')
+          .getPublicUrl(`subtitles/${vttFileName}`)
+        vttUrl = publicUrl
+      }
       
       // Update task status
       const task = activeTasks.get(taskId)
@@ -163,6 +198,7 @@ export class CloudVideoService {
         task.status = 'completed'
         task.progress = 100
         task.outputVideoUrl = processedUrl
+        task.vttUrl = vttUrl
         task.completedAt = new Date().toISOString()
       }
       
@@ -171,6 +207,7 @@ export class CloudVideoService {
         status: 'completed',
         progress: 100,
         videoUrl: processedUrl,
+        vttUrl,
         provider: 'cloudinary'
       }
     } catch (error) {

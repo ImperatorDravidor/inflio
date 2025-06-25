@@ -4,44 +4,11 @@ import {
   SocialPlatform, 
   PlatformMetrics, 
   TopPerformingContent,
-  RecapData,
-  Milestone,
-  Insight,
   ProjectUpdate
 } from './types';
 import { ProjectService } from '@/lib/project-service';
 
 export class SocialMediaService {
-  static async getRecapData(userId: string, period: 'week' | 'month' = 'week'): Promise<RecapData> {
-    try {
-      // Get current period stats
-      const stats = await this.getSocialMediaStats(userId, period);
-      
-      // Get previous period stats for comparison
-      const previousPeriodStats = await this.getPreviousPeriodStats(userId, period);
-      
-      // Generate milestones based on achievements
-      const milestones = this.generateMilestones(stats, previousPeriodStats);
-      
-      // Generate insights and recommendations
-      const insights = this.generateInsights(stats, previousPeriodStats);
-      
-      // Get next steps
-      const nextSteps = this.generateNextSteps(stats);
-
-      return {
-        stats,
-        previousPeriodStats,
-        milestones,
-        insights,
-        nextSteps
-      };
-    } catch (error) {
-      console.error('Error getting recap data:', error);
-      // Return mock data for now
-      return this.getMockRecapData(userId, period);
-    }
-  }
 
   static async getSocialMediaStats(userId: string, period: 'week' | 'month' | 'quarter' | 'year' | 'alltime' = 'week'): Promise<SocialMediaStats> {
     const endDate = new Date();
@@ -150,144 +117,7 @@ export class SocialMediaService {
     return Math.random() * 50 - 10; // Random growth between -10% and +40%
   }
 
-  private static async getPreviousPeriodStats(userId: string, period: 'week' | 'month'): Promise<SocialMediaStats> {
-    const endDate = new Date();
-    const periodDays = period === 'week' ? 7 : 30;
-    endDate.setDate(endDate.getDate() - periodDays);
-    
-    return this.getSocialMediaStats(userId, period);
-  }
 
-  private static generateMilestones(stats: SocialMediaStats, previousStats?: SocialMediaStats): Milestone[] {
-    const milestones: Milestone[] = [];
-    
-    // Check for follower milestones
-    if (stats.totalFollowersGained > 100) {
-      milestones.push({
-        id: '1',
-        type: 'followers',
-        title: '100+ New Followers! 🎉',
-        description: `You gained ${stats.totalFollowersGained} followers this ${stats.period}`,
-        achievedAt: new Date(),
-        value: stats.totalFollowersGained
-      });
-    }
-    
-    // Check for view milestones
-    if (stats.totalViews > 10000) {
-      milestones.push({
-        id: '2',
-        type: 'views',
-        title: '10K+ Views Milestone! 👀',
-        description: 'Your content reached over 10,000 people',
-        achievedAt: new Date(),
-        value: stats.totalViews
-      });
-    }
-    
-    // Check for engagement milestones
-    if (stats.avgEngagementRate > 5) {
-      milestones.push({
-        id: '3',
-        type: 'engagement',
-        title: 'High Engagement Rate! 💬',
-        description: `${stats.avgEngagementRate.toFixed(1)}% engagement rate is above industry average`,
-        achievedAt: new Date(),
-        value: stats.avgEngagementRate
-      });
-    }
-    
-    return milestones;
-  }
-
-  private static generateInsights(stats: SocialMediaStats, previousStats?: SocialMediaStats): Insight[] {
-    const insights: Insight[] = [];
-    
-    // Platform performance insights
-    const bestPlatform = stats.platformMetrics.reduce((best, current) => 
-      current.views > best.views ? current : best
-    );
-    
-    insights.push({
-      id: '1',
-      type: 'performance',
-      title: `${bestPlatform.platform.charAt(0).toUpperCase() + bestPlatform.platform.slice(1)} is Your Top Platform`,
-      description: `With ${bestPlatform.views.toLocaleString()} views and ${bestPlatform.followersGained} new followers`,
-      priority: 'high',
-      actionable: true,
-      action: 'Focus more content on this platform'
-    });
-    
-    // Growth insights
-    if (stats.growthRate > 20) {
-      insights.push({
-        id: '2',
-        type: 'trend',
-        title: 'Rapid Growth Detected! 📈',
-        description: `Your views grew by ${stats.growthRate.toFixed(1)}% compared to last ${stats.period}`,
-        priority: 'high',
-        actionable: true,
-        action: 'Keep doing what you\'re doing!'
-      });
-    }
-    
-    // Opportunity insights
-    const lowPerformingPlatform = stats.platformMetrics.reduce((worst, current) => 
-      current.views < worst.views ? current : worst
-    );
-    
-    if (lowPerformingPlatform.views < 500) {
-      insights.push({
-        id: '3',
-        type: 'opportunity',
-        title: `Opportunity on ${lowPerformingPlatform.platform}`,
-        description: 'This platform has room for growth. Consider adjusting your content strategy.',
-        priority: 'medium',
-        actionable: true,
-        action: 'Try different content formats or posting times'
-      });
-    }
-    
-    // Best practices tips
-    insights.push({
-      id: '4',
-      type: 'tip',
-      title: 'Pro Tip: Optimal Posting Times',
-      description: 'Tuesday-Thursday, 9AM-12PM typically see highest engagement',
-      priority: 'low',
-      actionable: false
-    });
-    
-    return insights;
-  }
-
-  private static generateNextSteps(stats: SocialMediaStats): string[] {
-    const nextSteps: string[] = [];
-    
-    if (stats.topPerformingContent.length > 0) {
-      nextSteps.push(`Create more content similar to "${stats.topPerformingContent[0].title}"`);
-    }
-    
-    nextSteps.push('Schedule content for peak engagement times');
-    nextSteps.push('Engage with your audience through comments and DMs');
-    
-    if (stats.avgEngagementRate < 3) {
-      nextSteps.push('Add more calls-to-action to boost engagement');
-    }
-    
-    return nextSteps;
-  }
-
-  private static getMockRecapData(userId: string, period: 'week' | 'month'): RecapData {
-    const mockStats = this.getMockStats(userId, period, new Date(), new Date());
-    
-    return {
-      stats: mockStats,
-      milestones: this.generateMilestones(mockStats),
-      insights: this.generateInsights(mockStats),
-      nextSteps: this.generateNextSteps(mockStats)
-    };
-  }
 
   private static getMockStats(userId: string, period: 'week' | 'month' | 'quarter' | 'year' | 'alltime', startDate: Date, endDate: Date): SocialMediaStats {
     const platforms: SocialPlatform[] = ['instagram', 'tiktok', 'facebook', 'youtube', 'linkedin', 'x'];

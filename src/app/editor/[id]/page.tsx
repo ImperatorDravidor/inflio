@@ -15,6 +15,7 @@ import { retrieveVideo } from "@/lib/services"
 import { ProcessingResults } from "@/components/processing-results"
 import { ExportManager } from "@/components/export-manager"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { ThumbnailCreator } from "@/components/thumbnail-creator"
 import { 
   IconPlayerPlay,
   IconPlayerPause,
@@ -99,6 +100,8 @@ export default function VideoEditorPage() {
   const [processProgress, setProcessProgress] = useState(0)
   const [activeTab, setActiveTab] = useState("process")
   const [showExport, setShowExport] = useState(false)
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>("")
+  const [contentAnalysis, setContentAnalysis] = useState<any>(null)
 
   const [processingOptions, setProcessingOptions] = useState<ProcessingOption[]>([
     {
@@ -177,6 +180,16 @@ export default function VideoEditorPage() {
               uploadedAt: new Date().toISOString()
             }
           }))
+          
+          // Load thumbnail if exists
+          if (data.thumbnailUrl) {
+            setThumbnailUrl(data.thumbnailUrl)
+          }
+          
+          // Load content analysis if exists
+          if (data.contentAnalysis) {
+            setContentAnalysis(data.contentAnalysis)
+          }
           
           // Try to load video from our storage utility
           const videoData = await retrieveVideo(videoId)
@@ -394,6 +407,37 @@ export default function VideoEditorPage() {
     }
   }
 
+  const handleThumbnailUpdate = (newThumbnailUrl: string) => {
+    setThumbnailUrl(newThumbnailUrl)
+    
+    // Update in localStorage
+    const stored = localStorage.getItem(`video_${videoId}`)
+    if (stored) {
+      try {
+        const data = JSON.parse(stored)
+        data.thumbnailUrl = newThumbnailUrl
+        localStorage.setItem(`video_${videoId}`, JSON.stringify(data))
+      } catch (error) {
+        console.error('Failed to update thumbnail in storage:', error)
+      }
+    }
+    
+    // Update project if exists
+    const projectsStr = localStorage.getItem('projects')
+    if (projectsStr) {
+      try {
+        const projects = JSON.parse(projectsStr)
+        const projectIndex = projects.findIndex((p: any) => p.id === videoId)
+        if (projectIndex !== -1) {
+          projects[projectIndex].thumbnail_url = newThumbnailUrl
+          localStorage.setItem('projects', JSON.stringify(projects))
+        }
+      } catch (error) {
+        console.error('Failed to update project thumbnail:', error)
+      }
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -424,6 +468,13 @@ export default function VideoEditorPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <ThumbnailCreator
+                projectId={videoId}
+                projectTitle={videoInfo.title}
+                contentAnalysis={contentAnalysis}
+                currentThumbnail={thumbnailUrl}
+                onThumbnailUpdate={handleThumbnailUpdate}
+              />
               <Button variant="outline" size="sm">
                 <IconShare className="h-4 w-4 mr-2" />
                 Share

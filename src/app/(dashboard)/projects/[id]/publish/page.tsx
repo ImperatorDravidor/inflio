@@ -415,12 +415,11 @@ export default function PublishProjectPage() {
       }
       
       // Create social posts in the system
-      const response = await fetch('/api/social/recap', {
+      const response = await fetch('/api/social/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          action: 'createPosts',
           posts: socialPosts
         })
       })

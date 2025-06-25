@@ -919,13 +919,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             <Card className="overflow-hidden border-primary/20 shadow-lg">
               <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-accent/20">
                 {project.video_url ? (
-                  <video
-                    ref={videoRef}
-                    src={project.video_url}
-                    className="w-full h-full"
-                    controls
-                    poster={project.thumbnail_url}
-                  />
+                  <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      src={project.video_url}
+                      className="w-full h-full object-contain"
+                      controls
+                      crossOrigin="anonymous"
+                      onLoadedMetadata={(e) => {
+                        const video = e.currentTarget
+                        // Update project metadata with actual video duration
+                        if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
+                          setProject(prev => prev ? {
+                            ...prev,
+                            metadata: {
+                              ...prev.metadata,
+                              duration: video.duration
+                            }
+                          } : null)
+                        }
+                      }}
+                      preload="metadata"
+                    >
+                      <p>Your browser doesn't support HTML5 video.</p>
+                    </video>
+                  </div>
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <IconVideo className="h-20 w-20 text-primary/30" />
@@ -2173,6 +2191,20 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     bgColor: 'bg-red-100 dark:bg-red-900/20',
                                     iconColor: 'text-red-600 dark:text-red-400',
                                     emoji: '🎬'
+                                  },
+                                  concept: { 
+                                    icon: IconSparkles, 
+                                    color: 'from-indigo-500 to-purple-500',
+                                    bgColor: 'bg-indigo-100 dark:bg-indigo-900/20',
+                                    iconColor: 'text-indigo-600 dark:text-indigo-400',
+                                    emoji: '💡'
+                                  },
+                                  hook: { 
+                                    icon: IconRocket, 
+                                    color: 'from-pink-500 to-rose-500',
+                                    bgColor: 'bg-pink-100 dark:bg-pink-900/20',
+                                    iconColor: 'text-pink-600 dark:text-pink-400',
+                                    emoji: '🪝'
                                   }
                                 }[suggestion.type] || { 
                                   icon: IconPhoto, 
@@ -2434,6 +2466,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         track.srclang = 'en'
                         track.src = vttUrl
                         track.default = true
+                        
+                        // Force track to be showing
+                        track.addEventListener('load', () => {
+                          if (videoRef.current && videoRef.current.textTracks[0]) {
+                            videoRef.current.textTracks[0].mode = 'showing'
+                          }
+                        })
+                        
                         videoRef.current.appendChild(track)
                       }
                       

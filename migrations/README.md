@@ -123,6 +123,12 @@ Run these only if you encounter specific issues:
 - Adds missing readingTime and sections fields
 - Run if blog posts show as "generated" but don't display properly
 
+**File:** `supabase-subtitle-storage.sql`
+- Adds subtitle support to the videos bucket
+- Allows VTT and SRT file uploads
+- Sets up proper policies for subtitle files
+- Run if subtitle functionality is not working properly
+
 ## Running Migrations
 
 ### Option 1: Supabase Dashboard (Recommended)

@@ -44,33 +44,7 @@ export interface SocialMediaStats {
   avgEngagementRate: number;
 }
 
-export interface RecapData {
-  stats: SocialMediaStats;
-  previousPeriodStats?: SocialMediaStats;
-  milestones: Milestone[];
-  insights: Insight[];
-  nextSteps: string[];
-}
 
-export interface Milestone {
-  id: string;
-  type: 'followers' | 'views' | 'engagement' | 'content';
-  title: string;
-  description: string;
-  achievedAt: Date;
-  icon?: string;
-  value?: number;
-}
-
-export interface Insight {
-  id: string;
-  type: 'tip' | 'trend' | 'performance' | 'opportunity';
-  title: string;
-  description: string;
-  priority: 'high' | 'medium' | 'low';
-  actionable: boolean;
-  action?: string;
-}
 
 export interface ProjectUpdate {
   id: string;

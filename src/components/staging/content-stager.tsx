@@ -38,7 +38,7 @@ import {
 } from "@tabler/icons-react"
 import { StagedContent } from "@/lib/staging/staging-service"
 import { Platform } from "@/lib/social/types"
-import { cn } from "@/lib/utils"
+import { cn, countCharacters, getPlatformLimit, getPlatformHashtagLimit, getPlatformPreviewLength } from "@/lib/utils"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -74,17 +74,6 @@ const contentTypeIcons = {
   blog: IconArticle,
   image: IconPhoto,
   carousel: IconPhoto
-}
-
-// Platform character limits
-const PLATFORM_LIMITS = {
-  instagram: { caption: 2200, hashtags: 30, hashtagChars: 2200 },
-  facebook: { caption: 63206, hashtags: 0, hashtagChars: 0 },
-  x: { caption: 280, hashtags: 280, hashtagChars: 280 },
-  linkedin: { caption: 3000, hashtags: 3000, hashtagChars: 3000 },
-  tiktok: { caption: 2200, hashtags: 100, hashtagChars: 2200 },
-  youtube: { caption: 5000, hashtags: 15, hashtagChars: 500 },
-  threads: { caption: 500, hashtags: 0, hashtagChars: 0 }
 }
 
 export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps) {
@@ -165,13 +154,14 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
           const caption = field === 'caption' ? value : (item.platformContent[platform]?.caption || '')
           const hashtags = field === 'hashtags' ? value : (item.platformContent[platform]?.hashtags || [])
           const hashtagText = hashtags.map((tag: string) => `#${tag}`).join(' ')
-          const totalLength = caption.length + (hashtagText ? hashtagText.length + 1 : 0)
-          const limit = PLATFORM_LIMITS[platform]
+          const fullText = caption + (hashtagText ? ' ' + hashtagText : '')
+          const totalLength = countCharacters(fullText, platform)
+          const limit = getPlatformLimit(platform)
           
           updatedPlatformContent.characterCount = totalLength
-          updatedPlatformContent.isValid = totalLength <= limit.caption
-          updatedPlatformContent.validationErrors = totalLength > limit.caption 
-            ? [`Content exceeds ${limit.caption} character limit (${totalLength} characters)`]
+          updatedPlatformContent.isValid = totalLength <= limit
+          updatedPlatformContent.validationErrors = totalLength > limit 
+            ? [`Content exceeds ${limit} character limit (${totalLength} characters)`]
             : []
         }
         
@@ -199,9 +189,9 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
     const currentHashtags = item?.platformContent[platform]?.hashtags || []
     const cleanHashtag = hashtag.replace('#', '').trim()
     
-    const limit = PLATFORM_LIMITS[platform]
-    if (currentHashtags.length >= limit.hashtags && limit.hashtags > 0) {
-      toast.error(`Maximum ${limit.hashtags} hashtags allowed on ${platform}`)
+    const hashtagLimit = getPlatformHashtagLimit(platform)
+    if (currentHashtags.length >= hashtagLimit && hashtagLimit > 0) {
+      toast.error(`Maximum ${hashtagLimit} hashtags allowed on ${platform}`)
       return
     }
     
@@ -221,30 +211,60 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
     setIsGenerating({ ...isGenerating, [key]: true })
     
     try {
+      // Get the project ID from the current item's original data
+      const projectId = currentItem?.originalData?.projectId || 
+                       (window.location.pathname.match(/projects\/([^\/]+)/)?.[1])
+      
+      // Prepare comprehensive content data
+      const contentData = {
+        id: currentItem?.id || '',
+        title: currentItem?.title || '',
+        description: currentItem?.description || '',
+        type: currentItem?.type || 'clip',
+        duration: currentItem?.duration,
+        thumbnail: currentItem?.thumbnailUrl,
+        // Include all virality and analysis data
+        score: currentItem?.originalData?.score,
+        scoreReasoning: currentItem?.originalData?.scoreReasoning,
+        transcript: currentItem?.originalData?.transcript,
+        sentiment: currentItem?.originalData?.sentiment,
+        analytics: currentItem?.analytics,
+        originalData: currentItem?.originalData
+      }
+      
       // Call AI service to generate caption
       const response = await fetch('/api/generate-caption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: currentItem?.originalData,
+          content: contentData,
           platform,
-          type: currentItem?.type
+          projectId,
+          projectContext: currentItem?.originalData?.projectContext
         })
       })
       
       if (!response.ok) throw new Error('Failed to generate caption')
       
-      const { caption, hashtags, suggestions } = await response.json()
+      const { caption, hashtags, suggestions, cta, hook } = await response.json()
       
+      // Update caption
       handlePlatformContentUpdate(contentId, platform, 'caption', caption)
+      
+      // Update hashtags
       if (hashtags && hashtags.length > 0) {
         handleHashtagUpdate(contentId, platform, hashtags)
+      }
+      
+      // Update CTA if provided
+      if (cta) {
+        handlePlatformContentUpdate(contentId, platform, 'cta', cta)
       }
       
       // Store AI suggestions for later use
       setAiSuggestions({
         ...aiSuggestions,
-        [key]: suggestions
+        [key]: suggestions || { tip: 'AI-generated caption based on content analysis' }
       })
       
       toast.success('Smart caption generated!')
@@ -578,7 +598,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                         isValid ? "bg-green-500" : "bg-red-500"
                                       )} />
                                       <span className="text-muted-foreground">
-                                        {platformData.characterCount}/{PLATFORM_LIMITS[platform].caption}
+                                        {platformData.characterCount}/{getPlatformLimit(platform)}
                                       </span>
                                     </div>
                                   )}
@@ -766,7 +786,8 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                         characterCount: 0,
                         isValid: true
                       }
-                      const limit = PLATFORM_LIMITS[platform]
+                      const platformLimit = getPlatformLimit(platform)
+                      const hashtagLimit = getPlatformHashtagLimit(platform)
                       const key = `${currentItem.id}-${platform}`
                       const suggestions = aiSuggestions[key]
 
@@ -815,15 +836,15 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                   "min-h-[120px] pr-16",
                                   !platformData.isValid && "border-destructive focus-visible:ring-destructive"
                                 )}
-                                maxLength={limit.caption}
+                                maxLength={platformLimit}
                               />
                               <div className={cn(
                                 "absolute bottom-2 right-2 text-xs px-2 py-1 rounded",
-                                (platformData.characterCount || 0) > limit.caption * 0.9 
+                                (platformData.characterCount || 0) > platformLimit * 0.9 
                                   ? "bg-destructive/10 text-destructive"
                                   : "bg-muted text-muted-foreground"
                               )}>
-                                {platformData.characterCount || 0}/{limit.caption}
+                                {platformData.characterCount || 0}/{platformLimit}
                               </div>
                             </div>
                             
@@ -846,10 +867,10 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                           </div>
 
                           {/* Hashtags */}
-                          {limit.hashtags > 0 && (
+                          {hashtagLimit > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <Label>Hashtags ({platformData.hashtags?.length || 0}/{limit.hashtags})</Label>
+                                <Label>Hashtags ({platformData.hashtags?.length || 0}/{hashtagLimit})</Label>
                                 <div className="flex items-center gap-2">
                                   <Button
                                     size="sm"
@@ -902,7 +923,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                       e.currentTarget.value = ''
                                     }
                                   }}
-                                  disabled={platformData.hashtags?.length >= limit.hashtags}
+                                  disabled={platformData.hashtags?.length >= hashtagLimit}
                                 />
                                 <Button
                                   variant="secondary"
@@ -914,7 +935,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                       input.value = ''
                                     }
                                   }}
-                                  disabled={platformData.hashtags?.length >= limit.hashtags}
+                                  disabled={platformData.hashtags?.length >= hashtagLimit}
                                 >
                                   <IconHash className="h-4 w-4" />
                                 </Button>
