@@ -925,7 +925,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     className="w-full h-full"
                     controls
                     poster={project.thumbnail_url}
-                  />
+                    crossOrigin="anonymous"
+                  >
+                    {/* Subtitle tracks will be added dynamically */}
+                  </video>
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <IconVideo className="h-20 w-20 text-primary/30" />
@@ -2434,6 +2437,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         track.srclang = 'en'
                         track.src = vttUrl
                         track.default = true
+                        
+                        // Force track to be showing
+                        track.addEventListener('load', () => {
+                          if (videoRef.current && videoRef.current.textTracks[0]) {
+                            videoRef.current.textTracks[0].mode = 'showing'
+                          }
+                        })
+                        
                         videoRef.current.appendChild(track)
                       }
                       

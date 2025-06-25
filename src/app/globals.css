@@ -397,4 +397,37 @@
   .animation-delay-400 {
     animation-delay: 400ms;
   }
-  }
+}
+
+/* Video Subtitle Styling */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  line-height: 1.4;
+}
+
+/* Ensure subtitles are visible on different backgrounds */
+video::-webkit-media-text-track-container {
+  margin-bottom: 2rem;
+}
+
+video::-webkit-media-text-track-display {
+  margin: 0 auto;
+  max-width: 80%;
+}
+
+/* Style for subtitle selection in controls */
+video::-webkit-media-controls-toggle-closed-captions-button {
+  display: block;
+}
+
+/* Ensure video maintains aspect ratio with subtitles */
+video {
+  max-width: 100%;
+  height: auto;
+}

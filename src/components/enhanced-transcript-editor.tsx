@@ -100,57 +100,96 @@ export function EnhancedTranscriptEditor({
     try {
       setIsApplying(true)
       setProgress(5)
-      setProcessingStage('Preparing video...')
+      setProcessingStage('Preparing subtitles...')
       
-      const response = await fetch('/api/apply-subtitles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          videoUrl,
-          segments: editingSegments,
-          settings: subtitleSettings
+      // First, generate and apply VTT subtitles for the player
+      const vttContent = generateVTT(editingSegments)
+      const vttBlob = new Blob([vttContent], { type: 'text/vtt' })
+      const vttUrl = URL.createObjectURL(vttBlob)
+      
+      // Apply VTT subtitles immediately to the video player
+      onVideoUrlUpdate?.(videoUrl, vttUrl)
+      setSubtitlesApplied(true)
+      
+      setProgress(50)
+      setProcessingStage('Subtitles applied to player!')
+      
+      // Also try to burn subtitles using cloud service if available
+      try {
+        const response = await fetch('/api/apply-subtitles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId,
+            videoUrl,
+            segments: editingSegments,
+            settings: subtitleSettings
+          })
         })
-      })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to apply subtitles')
-      }
-
-      const result = await response.json()
-      setProgress(30)
-      setProcessingStage('Uploading to cloud...')
-      
-      if (result.status === 'completed') {
+        if (response.ok) {
+          const result = await response.json()
+          setProgress(75)
+          setProcessingStage('Processing with cloud service...')
+          
+          if (result.status === 'completed' && result.videoUrl) {
+            setProgress(100)
+            setProcessingStage('Complete!')
+            // Update with burned-in video if available
+            onVideoUrlUpdate?.(result.videoUrl, result.vttUrl || vttUrl)
+            toast.success('🎉 Subtitles burned into video! Your long-form content is ready.')
+          } else if (result.taskId) {
+            // Poll for progress
+            pollTaskStatus(result.taskId, vttUrl)
+          }
+        } else {
+          // Cloud service failed, but we still have VTT subtitles
+          setProgress(100)
+          setProcessingStage('Complete!')
+          toast.success('✅ Subtitles applied as overlay. Your content is ready!')
+        }
+      } catch (cloudError) {
+        // Cloud service failed, but we still have VTT subtitles
+        console.log('Cloud subtitle service unavailable, using VTT overlay')
         setProgress(100)
         setProcessingStage('Complete!')
-        if (result.videoUrl || result.vttUrl) {
-          onVideoUrlUpdate?.(result.videoUrl || videoUrl, result.vttUrl)
-          setSubtitlesApplied(true)
-          toast.success('🎉 Subtitles applied! Your long-form content is ready.')
-        }
-      } else if (result.taskId) {
-        // Poll for progress
-        pollTaskStatus(result.taskId)
+        toast.success('✅ Subtitles applied as overlay. Your content is ready!')
       }
+      
+      setTimeout(() => {
+        setIsApplying(false)
+        setProgress(0)
+        setProcessingStage('')
+      }, 2000)
+      
     } catch (error) {
       console.error('Error applying subtitles:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to apply subtitles')
       setProgress(0)
       setProcessingStage('')
-    } finally {
-      if (progress === 100) {
-        setTimeout(() => {
-          setIsApplying(false)
-          setProgress(0)
-          setProcessingStage('')
-        }, 2000)
-      }
+      setIsApplying(false)
     }
   }
+  
+  const generateVTT = (segments: TranscriptSegment[]): string => {
+    let vtt = 'WEBVTT\n\n'
+    segments.forEach((segment, index) => {
+      const start = formatVTTTime(segment.start)
+      const end = formatVTTTime(segment.end)
+      vtt += `${index + 1}\n${start} --> ${end}\n${segment.text}\n\n`
+    })
+    return vtt
+  }
+  
+  const formatVTTTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    const ms = Math.floor((seconds % 1) * 1000)
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+  }
 
-  const pollTaskStatus = async (taskId: string) => {
+  const pollTaskStatus = async (taskId: string, fallbackVttUrl?: string) => {
     const stages = [
       'Generating subtitle file...',
       'Applying subtitles to video...',
@@ -185,8 +224,8 @@ export function EnhancedTranscriptEditor({
           clearInterval(interval)
           setProgress(100)
           setProcessingStage('Complete!')
-          if (task.outputVideoUrl || task.vttUrl) {
-            onVideoUrlUpdate?.(task.outputVideoUrl || videoUrl, task.vttUrl)
+          if (task.outputVideoUrl || task.vttUrl || fallbackVttUrl) {
+            onVideoUrlUpdate?.(task.outputVideoUrl || videoUrl, task.vttUrl || fallbackVttUrl)
             setSubtitlesApplied(true)
             toast.success('🎉 Subtitles applied! Your long-form content is ready.')
           }
