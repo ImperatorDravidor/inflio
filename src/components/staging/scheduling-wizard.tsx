@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Calendar } from "@/components/ui/calendar"
 import { 
   IconCalendar,
   IconClock,
@@ -27,10 +28,12 @@ import {
   IconWand,
   IconBolt,
   IconChartBar,
-  IconHash
+  IconHash,
+  IconBrandFacebook,
+  IconShare2
 } from "@tabler/icons-react"
 import { StagedContent, ScheduledContent, StagingService } from "@/lib/staging/staging-service"
-import { format, addDays, startOfDay, addHours } from "date-fns"
+import { format, addDays, startOfDay, addHours, isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
@@ -44,14 +47,26 @@ interface SchedulingWizardProps {
 
 type SchedulingStrategy = 'optimal' | 'rapid' | 'steady' | 'viral'
 
-const platformIcons: Record<SocialPlatform, any> = {
+const platformIcons: Record<string, any> = {
   x: IconBrandTwitter,
   instagram: IconBrandInstagram,
   linkedin: IconBrandLinkedin,
   tiktok: IconBrandTiktok,
   youtube: IconBrandYoutube,
+  'youtube-short': IconBrandYoutube,
   threads: IconBrandThreads,
-  facebook: IconBrandInstagram
+  facebook: IconBrandFacebook
+}
+
+const platformColors: Record<string, string> = {
+  x: 'from-gray-900 to-black',
+  instagram: 'from-purple-500 to-pink-500',
+  linkedin: 'from-blue-600 to-blue-700',
+  tiktok: 'from-black to-gray-800',
+  youtube: 'from-red-500 to-red-600',
+  'youtube-short': 'from-red-500 to-red-600',
+  threads: 'from-gray-800 to-black',
+  facebook: 'from-blue-500 to-blue-600'
 }
 
 const strategies = [
@@ -95,7 +110,22 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [aiInsights, setAiInsights] = useState<string[]>([])
-  const [step, setStep] = useState<'strategy' | 'preview'>('strategy')
+  const [step, setStep] = useState<'strategy' | 'calendar' | 'preview'>('strategy')
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [hoveredDate, setHoveredDate] = useState<Date | null>(null)
+
+  // Calendar helpers
+  const getWeekDays = () => {
+    const start = startOfWeek(selectedDate, { weekStartsOn: 0 })
+    const end = endOfWeek(selectedDate, { weekStartsOn: 0 })
+    return eachDayOfInterval({ start, end })
+  }
+
+  const getPostsForDate = (date: Date) => {
+    return scheduledContent.filter(post => 
+      isSameDay(new Date(post.scheduledDate), date)
+    )
+  }
 
   const analyzeAndSchedule = async () => {
     setIsAnalyzing(true)
@@ -121,7 +151,7 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
     const scheduled = await generateScheduleByStrategy(content, selectedStrategy)
     setScheduledContent(scheduled)
     setIsAnalyzing(false)
-    setStep('preview')
+    setStep('calendar')
   }
 
   const generateScheduleByStrategy = async (
@@ -224,12 +254,13 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
     const optimalTimes: Date[] = []
     
     // Platform-specific optimal times
-    const platformPeakHours: Record<SocialPlatform, number[]> = {
+    const platformPeakHours: Record<string, number[]> = {
       x: [9, 12, 17, 20],
       instagram: [11, 13, 19, 21],
       linkedin: [7, 10, 12, 17],
       tiktok: [6, 10, 19, 23],
       youtube: [12, 15, 20, 22],
+      'youtube-short': [12, 15, 20, 22],
       threads: [8, 12, 18, 21],
       facebook: [9, 13, 15, 19]
     }
@@ -265,6 +296,242 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
     return ['goviral', 'viralnow', 'trending', 'fyp', 'explore', 'viralpost']
   }
 
+  // Calendar View
+  if (step === 'calendar') {
+    return (
+      <div className="space-y-6">
+        {/* Calendar Header */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Schedule Calendar View</CardTitle>
+                <CardDescription>
+                  Review when your content will be published across platforms
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setStep('strategy')
+                    setScheduledContent([])
+                  }}
+                >
+                  Change Strategy
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setStep('preview')}
+                  className="bg-gradient-to-r from-primary to-primary/80"
+                >
+                  Continue
+                  <IconChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Week View Calendar */}
+            <div className="space-y-4">
+              {/* Days of Week Header */}
+              <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="py-2">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-2">
+                {getWeekDays().map(date => {
+                  const posts = getPostsForDate(date)
+                  const isToday = isSameDay(date, new Date())
+                  const isHovered = hoveredDate && isSameDay(date, hoveredDate)
+                  
+                  return (
+                    <motion.div
+                      key={date.toISOString()}
+                      onHoverStart={() => setHoveredDate(date)}
+                      onHoverEnd={() => setHoveredDate(null)}
+                      className={cn(
+                        "min-h-[120px] p-2 rounded-lg border bg-card transition-all",
+                        isToday && "border-primary bg-primary/5",
+                        isHovered && "shadow-lg border-primary/50",
+                        posts.length > 0 && "bg-accent/5"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={cn(
+                          "text-sm font-medium",
+                          isToday && "text-primary"
+                        )}>
+                          {format(date, 'd')}
+                        </span>
+                        {posts.length > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {posts.length}
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <ScrollArea className="h-[80px]">
+                        <div className="space-y-1">
+                          {posts.slice(0, 3).map((post, idx) => (
+                            <motion.div
+                              key={idx}
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: idx * 0.05 }}
+                              className="group"
+                            >
+                              <div className="flex items-center gap-1 p-1 rounded bg-muted/50 hover:bg-muted transition-colors">
+                                <div className="flex -space-x-1">
+                                  {post.platforms.slice(0, 2).map((platform, pidx) => {
+                                    const Icon = platformIcons[platform] || IconShare2
+                                    return (
+                                      <div
+                                        key={pidx}
+                                        className={cn(
+                                          "w-5 h-5 rounded-full flex items-center justify-center bg-gradient-to-br text-white",
+                                          platformColors[platform] || 'from-gray-500 to-gray-600'
+                                        )}
+                                        style={{ zIndex: 2 - pidx }}
+                                      >
+                                        <Icon className="h-3 w-3" />
+                                      </div>
+                                    )
+                                  })}
+                                  {post.platforms.length > 2 && (
+                                    <div className="w-5 h-5 rounded-full bg-muted-foreground/20 flex items-center justify-center text-xs">
+                                      +{post.platforms.length - 2}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-xs truncate flex-1">
+                                  {format(post.scheduledDate, 'h:mma')}
+                                </span>
+                              </div>
+                            </motion.div>
+                          ))}
+                          {posts.length > 3 && (
+                            <div className="text-xs text-muted-foreground text-center">
+                              +{posts.length - 3} more
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </motion.div>
+                  )
+                })}
+              </div>
+              
+              {/* Legend */}
+              <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-primary/20" />
+                  <span>Today</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-accent/20" />
+                  <span>Scheduled Posts</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Posts List by Day */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Detailed Schedule</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[300px] pr-4">
+              <div className="space-y-4">
+                {getWeekDays().map(date => {
+                  const posts = getPostsForDate(date)
+                  if (posts.length === 0) return null
+                  
+                  return (
+                    <div key={date.toISOString()} className="space-y-2">
+                      <h4 className="font-medium text-sm text-muted-foreground">
+                        {format(date, 'EEEE, MMMM d')}
+                      </h4>
+                      {posts.map((post, idx) => (
+                        <PostCard key={idx} post={post} />
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Post Card Component
+  const PostCard = ({ post }: { post: ScheduledContent }) => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:shadow-md transition-all"
+      >
+        <div className="flex -space-x-2">
+          {post.platforms.map((platform, idx) => {
+            const Icon = platformIcons[platform] || IconShare2
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br text-white shadow-sm",
+                  platformColors[platform] || 'from-gray-500 to-gray-600'
+                )}
+                style={{ zIndex: post.platforms.length - idx }}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+            )
+          })}
+        </div>
+        
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium text-sm">{post.stagedContent.title}</h4>
+            <Badge variant="outline" className="text-xs">
+              {post.stagedContent.type}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+            <div className="flex items-center gap-1">
+              <IconClock className="h-3 w-3" />
+              {format(post.scheduledDate, 'h:mm a')}
+            </div>
+            {post.engagementPrediction && (
+              <div className="flex items-center gap-1">
+                <IconChartBar className="h-3 w-3" />
+                {post.engagementPrediction.score}% reach
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {post.suggestedHashtags && post.suggestedHashtags.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <IconHash className="h-3 w-3" />
+            {post.suggestedHashtags.length}
+          </div>
+        )}
+      </motion.div>
+    )
+  }
+
+  // Preview step (existing code)
   if (step === 'preview') {
     return (
       <div className="space-y-6">
@@ -290,12 +557,9 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setStep('strategy')
-                    setScheduledContent([])
-                  }}
+                  onClick={() => setStep('calendar')}
                 >
-                  Change Strategy
+                  Back to Calendar
                 </Button>
               </div>
             </CardHeader>
@@ -414,11 +678,14 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
                         {/* Platforms */}
                         <div className="flex items-center gap-2">
                           {item.platforms.map((platform) => {
-                            const Icon = platformIcons[platform] || IconBrandTwitter
+                            const Icon = platformIcons[platform] || IconShare2
                             return (
                               <div
                                 key={platform}
-                                className="p-1.5 rounded-md bg-muted"
+                                className={cn(
+                                  "p-2 rounded-md bg-gradient-to-br text-white",
+                                  platformColors[platform] || 'from-gray-500 to-gray-600'
+                                )}
                                 title={platform}
                               >
                                 <Icon className="h-3.5 w-3.5" />
@@ -443,11 +710,8 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
 
         {/* Actions */}
         <div className="flex justify-between">
-          <Button variant="outline" onClick={() => {
-            setStep('strategy')
-            setScheduledContent([])
-          }}>
-            Back to Strategy
+          <Button variant="outline" onClick={() => setStep('calendar')}>
+            Back to Calendar
           </Button>
           <Button 
             onClick={() => onComplete(scheduledContent)}
@@ -461,6 +725,7 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
     )
   }
 
+  // Strategy Selection (existing code with improvements)
   return (
     <div className="space-y-6">
       {/* Strategy Selection */}

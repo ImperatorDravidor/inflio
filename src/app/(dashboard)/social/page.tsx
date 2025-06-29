@@ -434,59 +434,10 @@ function SocialMediaDashboardContent() {
 
           {/* Accounts Tab */}
           <TabsContent value="accounts" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Connected Accounts</CardTitle>
-                <CardDescription>
-                  Connect your social media accounts to start publishing
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {connectedPlatforms.length === 0 && (
-                  <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
-                    <IconSparkles className="h-4 w-4 text-amber-600" />
-                    <AlertDescription>
-                      <strong>Get Started:</strong> Connect at least one social media platform to start publishing your content.
-                      OAuth integration is coming soon. For now, check the documentation for manual setup.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                
-                <SocialPlatformSelector
-                  platforms={platforms}
-                  onToggle={(platformId: string) => {
-                    setSelectedPlatforms(prev => 
-                      prev.includes(platformId as Platform) 
-                        ? prev.filter(p => p !== platformId)
-                        : [...prev, platformId as Platform]
-                    )
-                  }}
-                  onConnect={connectPlatform}
-                  variant="grid"
-                />
-                
-                <div className="mt-6 p-4 rounded-lg bg-muted/50">
-                  <h4 className="font-medium mb-2">Setup Instructions</h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    To connect your social media accounts:
-                  </p>
-                  <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                    <li>Create developer apps on each platform</li>
-                    <li>Add OAuth credentials to your .env file</li>
-                    <li>Configure callback URLs in platform settings</li>
-                    <li>Click "Connect" to authenticate</li>
-                  </ol>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-3"
-                    onClick={() => window.open('/docs/setup/SOCIAL_MEDIA_SETUP.md', '_blank')}
-                  >
-                    View Setup Guide
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <SocialAccountConnector onConnectionChange={() => {
+              loadData()
+              checkConnectedPlatforms()
+            }} />
           </TabsContent>
 
           {/* Posts Tab */}

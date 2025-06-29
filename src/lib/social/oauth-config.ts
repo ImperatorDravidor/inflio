@@ -36,17 +36,21 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     icon: 'instagram',
     color: '#E4405F',
     oauth: {
-      clientId: process.env.INSTAGRAM_CLIENT_ID!,
-      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET!,
+      clientId: process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_APP_ID!,
+      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET!,
       redirectUri: getRedirectUri('instagram'),
-      authorizationUrl: 'https://api.instagram.com/oauth/authorize',
-      tokenUrl: 'https://api.instagram.com/oauth/access_token',
+      authorizationUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
+      tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token',
       scopes: [
+        'public_profile',
+        'email',
         'instagram_basic',
         'instagram_content_publish',
+        'instagram_manage_comments',
         'instagram_manage_insights',
         'pages_show_list',
-        'pages_read_engagement'
+        'pages_read_engagement',
+        'business_management'
       ]
     },
     apiBaseUrl: 'https://graph.instagram.com',
@@ -142,8 +146,8 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     icon: 'youtube',
     color: '#FF0000',
     oauth: {
-      clientId: process.env.YOUTUBE_CLIENT_ID!,
-      clientSecret: process.env.YOUTUBE_CLIENT_SECRET!,
+      clientId: process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.YOUTUBE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET!,
       redirectUri: getRedirectUri('youtube'),
       authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
       tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -231,6 +235,11 @@ export function generateOAuthUrl(platform: string, state: string): string {
   // Platform-specific params
   if (platform === 'instagram' || platform === 'facebook') {
     params.append('display', 'popup')
+  }
+  
+  if (platform === 'youtube') {
+    // Google requires specific params
+    params.append('include_granted_scopes', 'true')
   }
   
   return `${config.oauth.authorizationUrl}?${params.toString()}`

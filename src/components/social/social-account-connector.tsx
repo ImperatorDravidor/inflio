@@ -22,7 +22,7 @@ import {
   IconTrash
 } from '@tabler/icons-react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { PLATFORM_CONFIGS } from '@/lib/social/oauth-config'
+import { PLATFORM_CONFIGS, validatePlatformConfig } from '@/lib/social/oauth-config'
 import { cn } from '@/lib/utils'
 
 interface SocialIntegration {
@@ -59,6 +59,36 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
 
   useEffect(() => {
     loadIntegrations()
+    
+    // Check if we just completed an OAuth connection
+    const urlParams = new URLSearchParams(window.location.search)
+    const connected = urlParams.get('connected')
+    const error = urlParams.get('error')
+    
+    if (connected) {
+      // Clean up the URL
+      window.history.replaceState({}, '', window.location.pathname)
+      
+      // Show success message
+      toast.success(`Successfully connected ${connected}!`)
+      
+      // Clear session storage
+      sessionStorage.removeItem('connecting_platform')
+      
+      // Reload integrations
+      loadIntegrations()
+      
+      // Trigger callback
+      onConnectionChange?.()
+    }
+    
+    if (error) {
+      // Clean up the URL
+      window.history.replaceState({}, '', window.location.pathname)
+      
+      // Show error message
+      toast.error(error)
+    }
   }, [])
 
   const loadIntegrations = async () => {
@@ -87,6 +117,19 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
       const existing = integrations.find(i => i.platform === platform && !i.disabled)
       if (existing) {
         toast.info(`${platform} is already connected`)
+        setConnecting(null)
+        return
+      }
+
+      // Validate platform configuration
+      if (!validatePlatformConfig(platform)) {
+        toast.error(
+          `${platform} OAuth is not configured. Please add the required environment variables.`,
+          {
+            description: 'Check the documentation for setup instructions.'
+          }
+        )
+        setConnecting(null)
         return
       }
 
@@ -99,40 +142,20 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.message || 'Failed to initiate connection')
+        throw new Error(error.error || 'Failed to initiate connection')
       }
 
       const { authUrl } = await response.json()
       
-      // Open OAuth popup
-      const width = 600
-      const height = 700
-      const left = window.innerWidth / 2 - width / 2
-      const top = window.innerHeight / 2 - height / 2
+      // Store platform in session storage for callback
+      sessionStorage.setItem('connecting_platform', platform)
       
-      const popup = window.open(
-        authUrl,
-        `Connect ${platform}`,
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
-      )
-
-      // Check for popup close
-      const checkInterval = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(checkInterval)
-          setConnecting(null)
-          // Reload integrations after a delay
-          setTimeout(() => {
-            loadIntegrations()
-            onConnectionChange?.()
-          }, 1000)
-        }
-      }, 500)
+      // Redirect to OAuth provider
+      window.location.href = authUrl
 
     } catch (error) {
       console.error('Connection error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to connect account')
-    } finally {
       setConnecting(null)
     }
   }
@@ -190,16 +213,45 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
     )
   }
 
+  // Count configured platforms
+  const configuredPlatforms = platforms.filter(p => validatePlatformConfig(p))
+  const hasAnyConfigured = configuredPlatforms.length > 0
+
   return (
     <div className="space-y-6">
-      {/* Warning for missing OAuth credentials */}
-      <Alert>
-        <IconAlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          To connect social accounts, you need to set up OAuth credentials for each platform.
-          Check the environment variables documentation for setup instructions.
-        </AlertDescription>
-      </Alert>
+      {/* OAuth Setup Guide */}
+      {hasAnyConfigured ? (
+        <Alert>
+          <IconCheck className="h-4 w-4" />
+          <AlertDescription className="space-y-2">
+            <p>
+              <strong>Ready to connect!</strong> You have {configuredPlatforms.length} platform{configuredPlatforms.length !== 1 ? 's' : ''} configured.
+            </p>
+            <p className="text-sm">
+              Click "Connect Account" on any configured platform below to get started.
+            </p>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+          <IconAlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="space-y-2">
+            <p>
+              <strong>No OAuth credentials detected!</strong> You need to add your OAuth app credentials to connect social accounts.
+            </p>
+            <p className="text-sm">
+              Add your client IDs and secrets to your <code className="text-xs bg-muted px-1 py-0.5 rounded">.env.local</code> file. 
+              <a 
+                href="/docs/setup/social-oauth-complete-guide.md" 
+                target="_blank"
+                className="text-primary underline ml-1"
+              >
+                View setup guide
+              </a>
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Platform Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -208,9 +260,13 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
           const Icon = platformIcons[platform as keyof typeof platformIcons]
           const integration = integrations.find(i => i.platform === platform && !i.disabled)
           const status = integration ? getIntegrationStatus(integration) : 'disconnected'
+          const isConfigured = validatePlatformConfig(platform)
           
           return (
-            <Card key={platform} className="relative overflow-hidden">
+            <Card key={platform} className={cn(
+              "relative overflow-hidden transition-all",
+              !isConfigured && "opacity-60"
+            )}>
               <div 
                 className="absolute inset-0 opacity-5"
                 style={{ backgroundColor: config.color }}
@@ -231,7 +287,8 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
                     <div>
                       <CardTitle className="text-lg">{config.name}</CardTitle>
                       <CardDescription className="text-xs">
-                        {integration ? `@${integration.provider_identifier}` : 'Not connected'}
+                        {integration ? `@${integration.provider_identifier}` : 
+                         isConfigured ? 'Not connected' : 'Not configured'}
                       </CardDescription>
                     </div>
                   </div>
@@ -252,6 +309,12 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
                   {status === 'refresh_needed' && (
                     <Badge variant="secondary" className="text-xs">
                       Refresh Needed
+                    </Badge>
+                  )}
+                  
+                  {!isConfigured && (
+                    <Badge variant="secondary" className="text-xs">
+                      Setup Required
                     </Badge>
                   )}
                 </div>
@@ -277,7 +340,7 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
                 )}
                 
                 <div className="flex gap-2">
-                  {!integration && (
+                  {!integration && isConfigured && (
                     <Button
                       size="sm"
                       className="w-full"
@@ -295,6 +358,17 @@ export function SocialAccountConnector({ onConnectionChange }: SocialAccountConn
                           Connect Account
                         </>
                       )}
+                    </Button>
+                  )}
+                  
+                  {!integration && !isConfigured && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.open('/docs/setup/social-oauth-complete-guide.md', '_blank')}
+                    >
+                      View Setup Guide
                     </Button>
                   )}
                   

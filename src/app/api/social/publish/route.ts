@@ -6,11 +6,16 @@ import { handleError, AppError } from '@/lib/error-handler'
 import { z } from 'zod'
 
 const publishSchema = z.object({
-  postId: z.string().uuid()
+  content: z.string().min(1).max(5000),
+  platforms: z.array(z.string()).min(1),
+  media: z.array(z.string()).optional(),
+  scheduledFor: z.string().datetime().optional(),
+  projectId: z.string().uuid().optional()
 })
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json(
@@ -19,6 +24,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate request
     const body = await request.json()
     const validation = publishSchema.safeParse(body)
     
@@ -29,196 +35,316 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { postId } = validation.data
+    const { content, platforms, media, scheduledFor, projectId } = validation.data
     const supabase = createSupabaseBrowserClient()
 
-    // Get post details with integration
-    const { data: post, error: postError } = await supabase
-      .from('social_posts')
-      .select(`
-        *,
-        integration:social_integrations(*)
-      `)
-      .eq('id', postId)
+    // Get connected integrations for the requested platforms
+    const { data: integrations, error: integrationsError } = await supabase
+      .from('social_integrations')
+      .select('*')
       .eq('user_id', userId)
-      .single()
+      .in('platform', platforms)
+      .eq('disabled', false)
 
-    if (postError || !post) {
-      throw new AppError('Post not found', 'POST_NOT_FOUND', 404)
-    }
-
-    // Check if post is already published
-    if (post.state === 'published') {
-      return NextResponse.json({
-        success: true,
-        message: 'Post already published',
-        url: post.metadata?.url
-      })
-    }
-
-    // Check if post is scheduled for future
-    const publishDate = new Date(post.publish_date)
-    if (publishDate > new Date()) {
-      throw new AppError(
-        'Cannot publish future scheduled post. Wait for scheduled time or update publish date.',
-        'FUTURE_POST',
-        400
+    if (integrationsError || !integrations || integrations.length === 0) {
+      return NextResponse.json(
+        { error: 'No connected accounts found for the selected platforms' },
+        { status: 400 }
       )
     }
 
-    // Get integration details
-    let integration = post.integration
-    if (!integration && post.integration_id) {
-      // Fallback: fetch integration separately
-      const { data: integrationData } = await supabase
-        .from('social_integrations')
-        .select('*')
-        .eq('id', post.integration_id)
-        .single()
-      
-      if (!integrationData) {
-        throw new AppError('Social account not found', 'INTEGRATION_NOT_FOUND', 404)
-      }
-      integration = integrationData
-    }
+    // Create posts for each platform
+    const posts = []
+    const errors = []
 
-    // For staging posts without integration_id, get platform from metadata
-    const platform = integration?.platform || post.metadata?.platform || post.platform
-    if (!platform) {
-      throw new AppError('Platform not specified', 'PLATFORM_MISSING', 400)
-    }
+    for (const integration of integrations) {
+      try {
+        // Create post record
+        const { data: post, error: postError } = await supabase
+          .from('social_posts')
+          .insert({
+            user_id: userId,
+            integration_id: integration.id,
+            project_id: projectId,
+            state: scheduledFor ? 'scheduled' : 'publishing',
+            publish_date: scheduledFor || new Date().toISOString(),
+            content,
+            media_urls: media || [],
+            settings: {
+              platform: integration.platform,
+              autoHashtags: true
+            }
+          })
+          .select()
+          .single()
 
-    // Update post status to publishing
-    await supabase
-      .from('social_posts')
-      .update({ 
-        state: 'publishing',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', postId)
+        if (postError) throw postError
 
-    try {
-      let publishResult
-      
-      if (integration) {
-        // Check if token needs refresh
-        let accessToken = integration.token
-        
-        if (integration.token_expiration) {
-          const expiration = new Date(integration.token_expiration)
-          if (expiration <= new Date() && integration.refresh_token) {
-            // Refresh the token
-            const refreshResult = await refreshAccessToken(
-              platform,
-              integration.refresh_token
-            )
-            
-            accessToken = refreshResult.accessToken
-            
-            // Update token in database
+        // If not scheduled, publish immediately
+        if (!scheduledFor) {
+          // Call platform-specific publish API
+          const publishResult = await publishToPlatform(integration, post)
+          
+          if (publishResult.success) {
+            // Update post state
             await supabase
-              .from('social_integrations')
-              .update({
-                token: accessToken,
-                token_expiration: refreshResult.expiresIn 
-                  ? new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString()
-                  : null,
-                refresh_needed: false,
-                updated_at: new Date().toISOString()
+              .from('social_posts')
+              .update({ 
+                state: 'published',
+                analytics: 'analytics' in publishResult ? publishResult.analytics : {}
               })
-              .eq('id', integration.id)
+              .eq('id', post.id)
+            
+            posts.push({
+              ...post,
+              state: 'published',
+              platformResponse: 'data' in publishResult ? publishResult.data : null
+            })
+          } else {
+            // Update post state to failed
+            await supabase
+              .from('social_posts')
+              .update({ 
+                state: 'failed',
+                error: 'error' in publishResult ? publishResult.error : 'Unknown error'
+              })
+              .eq('id', post.id)
+            
+            errors.push({
+              platform: integration.platform,
+              error: 'error' in publishResult ? publishResult.error : 'Unknown error'
+            })
           }
+        } else {
+          posts.push(post)
         }
-
-        // Publish to platform
-        publishResult = await publishToSocialPlatform(
-          platform,
-          accessToken,
-          {
-            content: post.content,
-            mediaUrls: post.media_urls,
-            hashtags: post.hashtags,
-            metadata: post.metadata
-          }
-        )
-      } else {
-        // Staging post without real integration
-        publishResult = {
-          success: true,
-          platformPostId: `staging-${Date.now()}`,
-          url: '#',
-          error: 'This is a staged post without a connected account'
-        }
-      }
-
-      if (publishResult.success) {
-        // Update post as published
-        await supabase
-          .from('social_posts')
-          .update({
-            state: 'published',
-            metadata: {
-              ...post.metadata,
-              platform_post_id: publishResult.platformPostId,
-              url: publishResult.url,
-              published_at: new Date().toISOString()
-            },
-            error: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', postId)
-
-        return NextResponse.json({
-          success: true,
-          message: 'Post published successfully',
-          url: publishResult.url,
-          platformPostId: publishResult.platformPostId
+      } catch (error) {
+        errors.push({
+          platform: integration.platform,
+          error: error instanceof Error ? error.message : 'Unknown error'
         })
-      } else {
-        // Publishing failed
-        await supabase
-          .from('social_posts')
-          .update({
-            state: 'failed',
-            error: publishResult.error || 'Publishing failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', postId)
-
-        throw new AppError(
-          publishResult.error || 'Publishing failed',
-          'PUBLISH_FAILED',
-          500
-        )
       }
-    } catch (publishError) {
-      // Update post as failed
-      await supabase
-        .from('social_posts')
-        .update({
-          state: 'failed',
-          error: publishError instanceof Error ? publishError.message : 'Unknown error',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', postId)
-
-      throw publishError
     }
+
+    return NextResponse.json({
+      success: posts.length > 0,
+      posts,
+      errors: errors.length > 0 ? errors : undefined,
+      scheduled: !!scheduledFor
+    })
 
   } catch (error) {
-    handleError(error, 'social-publish')
-    
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.statusCode || 500 }
-      )
-    }
-    
+    console.error('Publish error:', error)
     return NextResponse.json(
-      { error: 'Failed to publish post' },
+      { 
+        error: 'Failed to publish content',
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      },
       { status: 500 }
     )
+  }
+}
+
+// Platform-specific publishing logic
+async function publishToPlatform(integration: any, post: any) {
+  const { platform, token } = integration
+  
+  try {
+    switch (platform) {
+      case 'x':
+      case 'twitter':
+        return await publishToTwitter(token, post)
+      
+      case 'linkedin':
+        return await publishToLinkedIn(token, post, integration.provider_identifier)
+      
+      case 'facebook':
+      case 'instagram':
+        return await publishToMeta(platform, token, post, integration.provider_identifier)
+      
+      case 'youtube':
+        return await publishToYouTube(token, post)
+      
+      default:
+        return {
+          success: false,
+          error: `Platform ${platform} not yet implemented`
+        }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Platform API error'
+    }
+  }
+}
+
+// Twitter/X Publishing
+async function publishToTwitter(token: string, post: any) {
+  const response = await fetch('https://api.twitter.com/2/tweets', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: post.content,
+      // Add media if present
+      ...(post.media_urls?.length > 0 && {
+        media: { media_ids: post.media_urls }
+      })
+    })
+  })
+
+  const data = await response.json()
+  
+  if (!response.ok) {
+    throw new Error(data.detail || 'Failed to post to Twitter')
+  }
+
+  return {
+    success: true,
+    data,
+    analytics: {
+      post_id: data.data.id,
+      url: `https://twitter.com/i/web/status/${data.data.id}`
+    }
+  }
+}
+
+// LinkedIn Publishing
+async function publishToLinkedIn(token: string, post: any, authorId: string) {
+  // First, register the post
+  const registerResponse = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Restli-Protocol-Version': '2.0.0'
+    },
+    body: JSON.stringify({
+      author: `urn:li:person:${authorId}`,
+      lifecycleState: 'PUBLISHED',
+      specificContent: {
+        'com.linkedin.ugc.ShareContent': {
+          shareCommentary: {
+            text: post.content
+          },
+          shareMediaCategory: post.media_urls?.length > 0 ? 'IMAGE' : 'NONE',
+          // Add media if present
+          ...(post.media_urls?.length > 0 && {
+            media: post.media_urls.map((url: string) => ({
+              status: 'READY',
+              originalUrl: url
+            }))
+          })
+        }
+      },
+      visibility: {
+        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+      }
+    })
+  })
+
+  const data = await registerResponse.json()
+  
+  if (!registerResponse.ok) {
+    throw new Error(data.message || 'Failed to post to LinkedIn')
+  }
+
+  return {
+    success: true,
+    data,
+    analytics: {
+      post_id: data.id,
+      url: `https://www.linkedin.com/feed/update/${data.id}`
+    }
+  }
+}
+
+// Meta (Facebook/Instagram) Publishing
+async function publishToMeta(platform: string, token: string, post: any, pageId: string) {
+  const endpoint = platform === 'instagram' 
+    ? `https://graph.facebook.com/v18.0/${pageId}/media`
+    : `https://graph.facebook.com/v18.0/${pageId}/feed`
+
+  const params: any = {
+    access_token: token,
+    message: post.content
+  }
+
+  // Handle media for Instagram
+  if (platform === 'instagram' && post.media_urls?.length > 0) {
+    params.image_url = post.media_urls[0]
+    params.caption = post.content
+    delete params.message
+  }
+
+  // Handle media for Facebook
+  if (platform === 'facebook' && post.media_urls?.length > 0) {
+    params.link = post.media_urls[0]
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    body: new URLSearchParams(params)
+  })
+
+  const data = await response.json()
+  
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Failed to post to Meta platform')
+  }
+
+  // For Instagram, we need to publish the media after creating it
+  if (platform === 'instagram' && data.id) {
+    const publishResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${pageId}/media_publish`,
+      {
+        method: 'POST',
+        body: new URLSearchParams({
+          creation_id: data.id,
+          access_token: token
+        })
+      }
+    )
+
+    const publishData = await publishResponse.json()
+    
+    if (!publishResponse.ok) {
+      throw new Error(publishData.error?.message || 'Failed to publish Instagram post')
+    }
+
+    return {
+      success: true,
+      data: publishData,
+      analytics: {
+        post_id: publishData.id,
+        url: `https://www.instagram.com/p/${publishData.id}`
+      }
+    }
+  }
+
+  return {
+    success: true,
+    data,
+    analytics: {
+      post_id: data.id,
+      url: platform === 'facebook' 
+        ? `https://www.facebook.com/${data.id}`
+        : `https://www.instagram.com/p/${data.id}`
+    }
+  }
+}
+
+// YouTube Publishing (Community Posts or Video Description)
+async function publishToYouTube(token: string, post: any) {
+  // YouTube doesn't have a direct "post" API like other platforms
+  // This would typically be used for community posts or video descriptions
+  // For now, return a placeholder
+  return {
+    success: false,
+    error: 'YouTube publishing requires video upload functionality'
   }
 }
 

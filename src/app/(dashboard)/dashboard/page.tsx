@@ -687,12 +687,20 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-4 p-4 rounded-xl border hover:border-primary/50 transition-all">
                       <div className="relative h-16 w-24 rounded-lg overflow-hidden bg-muted">
                         {project.thumbnail_url ? (
-                          <Image
-                            src={project.thumbnail_url}
-                            alt={project.title}
-                            fill
-                            className="object-cover"
-                          />
+                          project.thumbnail_url.startsWith('http') ? (
+                            <img
+                              src={project.thumbnail_url}
+                              alt={project.title}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <Image
+                              src={project.thumbnail_url}
+                              alt={project.title}
+                              fill
+                              className="object-cover"
+                            />
+                          )
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <IconVideo className="h-8 w-8 text-muted-foreground/50" />

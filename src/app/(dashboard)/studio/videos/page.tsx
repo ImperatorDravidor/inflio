@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { ThumbnailCreator } from "@/components/thumbnail-creator"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +34,8 @@ import {
   IconFilter,
   IconSortDescending,
   IconLoader2,
-  IconCheck
+  IconCheck,
+  IconPhoto
 } from "@tabler/icons-react"
 import Image from "next/image"
 import { ProjectService } from "@/lib/services"
@@ -77,11 +79,13 @@ const itemVariants = {
 function VideoCard({ 
   project, 
   viewMode,
-  onDelete 
+  onDelete,
+  onThumbnailUpdate
 }: { 
   project: Project
   viewMode: ViewMode
-  onDelete: (id: string) => void 
+  onDelete: (id: string) => void
+  onThumbnailUpdate: () => void
 }) {
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
@@ -101,6 +105,19 @@ function VideoCard({
     }
   }
 
+  // Handle thumbnail update
+  const handleThumbnailUpdate = async (newThumbnailUrl: string) => {
+    try {
+      // The ThumbnailCreator component already updates the database
+      // through the API routes, so we just need to refresh the projects list
+      onThumbnailUpdate()
+      toast.success('Thumbnail updated successfully!')
+    } catch (error) {
+      console.error('Failed to update thumbnail:', error)
+      toast.error('Failed to update thumbnail')
+    }
+  }
+
   if (viewMode === 'list') {
     return (
       <MotionCard
@@ -116,13 +133,21 @@ function VideoCard({
           >
             {project.thumbnail_url ? (
               <>
-                <Image 
-                  src={project.thumbnail_url} 
-                  alt={project.title}
-                  width={160}
-                  height={96}
-                  className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500"
-                />
+                {project.thumbnail_url.startsWith('http') ? (
+                  <img
+                    src={project.thumbnail_url}
+                    alt={project.title}
+                    className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500"
+                  />
+                ) : (
+                  <Image 
+                    src={project.thumbnail_url} 
+                    alt={project.title}
+                    width={160}
+                    height={96}
+                    className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               </>
             ) : (
@@ -135,6 +160,17 @@ function VideoCard({
                 <IconPlayerPlay className="h-6 w-6 text-primary" />
               </div>
             </div>
+            
+            {/* Thumbnail Generator Button for List View */}
+            <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ThumbnailCreator
+                projectId={project.id}
+                projectTitle={project.title}
+                currentThumbnail={project.thumbnail_url}
+                onThumbnailUpdate={handleThumbnailUpdate}
+              />
+            </div>
+            
             <div className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/80 text-white text-xs font-medium">
               {formatDuration(project.metadata.duration)}
             </div>
@@ -258,13 +294,21 @@ function VideoCard({
       >
         {project.thumbnail_url ? (
           <>
-            <Image 
-              src={project.thumbnail_url} 
-              alt={project.title}
-              width={400}
-              height={225}
-              className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-700"
-            />
+            {project.thumbnail_url.startsWith('http') ? (
+              <img
+                src={project.thumbnail_url}
+                alt={project.title}
+                className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-700"
+              />
+            ) : (
+              <Image 
+                src={project.thumbnail_url} 
+                alt={project.title}
+                width={400}
+                height={225}
+                className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-700"
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           </>
         ) : (
@@ -278,6 +322,16 @@ function VideoCard({
           <div className="p-4 rounded-full bg-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
             <IconPlayerPlay className="h-8 w-8 text-primary" />
           </div>
+        </div>
+        
+        {/* Thumbnail Generator Button for Grid View */}
+        <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
+          <ThumbnailCreator
+            projectId={project.id}
+            projectTitle={project.title}
+            currentThumbnail={project.thumbnail_url}
+            onThumbnailUpdate={handleThumbnailUpdate}
+          />
         </div>
         
         {/* Duration badge */}
@@ -357,6 +411,8 @@ export default function StudioVideosPage() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [sortOption, setSortOption] = useState<SortOption>('recent')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [selectedClip, setSelectedClip] = useState<Clip | null>(null)
+  const [showVideoModal, setShowVideoModal] = useState(false)
 
   const loadProjects = async () => {
     if (!userId) return
@@ -619,6 +675,7 @@ export default function StudioVideosPage() {
                   project={project}
                   viewMode={viewMode}
                   onDelete={handleDelete}
+                  onThumbnailUpdate={loadProjects}
                 />
               ))}
             </AnimatePresence>

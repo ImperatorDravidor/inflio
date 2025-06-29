@@ -237,11 +237,52 @@ async function getUserProfile(
 ): Promise<UserProfile> {
   // Platform-specific user profile fetching
   switch (platform) {
-    case 'instagram':
+    case 'instagram': {
+      // Instagram uses Facebook's Graph API
+      // First get Facebook user, then Instagram business account
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/me?fields=id,name,email,picture,accounts{instagram_business_account}&access_token=${accessToken}`
+      )
+      
+      if (!response.ok) {
+        throw new AppError('Failed to fetch Instagram profile', 'PROFILE_FETCH_ERROR')
+      }
+      
+      const data = await response.json()
+      
+      // Get Instagram business account if available
+      const instagramAccount = data.accounts?.data?.[0]?.instagram_business_account
+      if (instagramAccount) {
+        const igResponse = await fetch(
+          `https://graph.facebook.com/v18.0/${instagramAccount.id}?fields=username,profile_picture_url&access_token=${accessToken}`
+        )
+        
+        if (igResponse.ok) {
+          const igData = await igResponse.json()
+          return {
+            id: igData.id,
+            name: igData.username || data.name,
+            email: data.email,
+            picture: igData.profile_picture_url || data.picture?.data?.url,
+            username: igData.username
+          }
+        }
+      }
+      
+      // Fallback to Facebook profile
+      return {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        picture: data.picture?.data?.url,
+        username: data.name
+      }
+    }
+    
     case 'facebook': {
       // Use Graph API
       const response = await fetch(
-        `${config.apiBaseUrl}/me?fields=id,name,email,picture&access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/me?fields=id,name,email,picture&access_token=${accessToken}`
       )
       
       if (!response.ok) {
@@ -254,7 +295,7 @@ async function getUserProfile(
         name: data.name,
         email: data.email,
         picture: data.picture?.data?.url,
-        username: data.username
+        username: data.username || data.name
       }
     }
 

@@ -34,7 +34,8 @@ import {
   IconBulb,
   IconTrendingUp,
   IconEdit,
-  IconCalendar
+  IconCalendar,
+  IconShare2
 } from "@tabler/icons-react"
 import { StagedContent } from "@/lib/staging/staging-service"
 import { Platform } from "@/lib/social/types"
@@ -49,11 +50,12 @@ interface ContentStagerProps {
   onNext: () => void
 }
 
-const platformIcons = {
+const platformIcons: Record<string, any> = {
   instagram: IconBrandInstagram,
   linkedin: IconBrandLinkedin,
   tiktok: IconBrandTiktok,
   youtube: IconBrandYoutube,
+  'youtube-short': IconBrandYoutube,
   x: IconBrandX,
   facebook: IconBrandFacebook,
   threads: IconBrandInstagram
@@ -69,16 +71,21 @@ const platformColors = {
   threads: 'from-gray-800 to-black'
 }
 
-const contentTypeIcons = {
+const contentTypeIcons: Record<string, any> = {
   clip: IconVideo,
   blog: IconArticle,
   image: IconPhoto,
-  carousel: IconPhoto
+  carousel: IconPhoto,
+  social: IconShare2,
+  longform: IconVideo
 }
 
 export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps) {
-  const [selectedContent, setSelectedContent] = useState<string>(content[0]?.id || '')
-  const [editedContent, setEditedContent] = useState<StagedContent[]>(content)
+  // Ensure content is always an array
+  const safeContent = Array.isArray(content) ? content : []
+  
+  const [selectedContent, setSelectedContent] = useState<string>(safeContent[0]?.id || '')
+  const [editedContent, setEditedContent] = useState<StagedContent[]>(safeContent)
   const [autoHashtags, setAutoHashtags] = useState(true)
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, any>>({})
   const [isGenerating, setIsGenerating] = useState<Record<string, boolean>>({})
@@ -87,6 +94,23 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({})
 
   const currentItem = editedContent.find(item => item.id === selectedContent)
+
+  // Safety check to ensure currentItem has required properties
+  useEffect(() => {
+    if (currentItem && (!currentItem.platforms || !Array.isArray(currentItem.platforms))) {
+      console.warn('Invalid content item detected, fixing platforms array')
+      const fixedContent = editedContent.map(item => {
+        if (item.id === currentItem.id) {
+          return {
+            ...item,
+            platforms: (Array.isArray(item.platforms) ? item.platforms : ['instagram', 'x']) as Platform[]
+          }
+        }
+        return item
+      })
+      setEditedContent(fixedContent)
+    }
+  }, [currentItem])
 
   useEffect(() => {
     // Update parent when content changes
@@ -101,31 +125,33 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
     editedContent.forEach(item => {
       const itemErrors: string[] = []
       
-      item.platforms.forEach(platform => {
-        const platformData = item.platformContent[platform]
-        
-        if (!platformData?.caption || platformData.caption.length === 0) {
-          itemErrors.push(`Missing caption for ${platform}`)
-        }
-        
-        if (platformData && !platformData.isValid) {
-          platformData.validationErrors?.forEach(err => {
-            itemErrors.push(`${platform}: ${err}`)
-          })
-        }
-        
-        // Check required fields based on content type
-        if (item.type === 'image' || item.type === 'carousel') {
-          if (!platformData?.altText || platformData.altText.length === 0) {
-            itemErrors.push(`Missing alt text for ${platform}`)
+      if (item.platforms && Array.isArray(item.platforms)) {
+        item.platforms.forEach((platform: Platform) => {
+          const platformData = item.platformContent[platform]
+          
+          if (!platformData?.caption || platformData.caption.length === 0) {
+            itemErrors.push(`Missing caption for ${platform}`)
           }
-        }
-        
-        // Platform-specific validation
-        if (platform === 'instagram' && (!platformData?.hashtags || platformData.hashtags.length < 3)) {
-          itemErrors.push(`Instagram: Add at least 3 hashtags for better reach`)
-        }
-      })
+          
+          if (platformData && !platformData.isValid) {
+            platformData.validationErrors?.forEach(err => {
+              itemErrors.push(`${platform}: ${err}`)
+            })
+          }
+          
+          // Check required fields based on content type
+          if (item.type === 'image' || item.type === 'carousel') {
+            if (!platformData?.altText || platformData.altText.length === 0) {
+              itemErrors.push(`Missing alt text for ${platform}`)
+            }
+          }
+          
+          // Platform-specific validation
+          if (platform === 'instagram' && (!platformData?.hashtags || platformData.hashtags.length < 3)) {
+            itemErrors.push(`Instagram: Add at least 3 hashtags for better reach`)
+          }
+        })
+      }
       
       if (itemErrors.length > 0) {
         errors[item.id] = itemErrors
@@ -269,18 +295,24 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
       
       toast.success('Smart caption generated!')
     } catch (error) {
-      console.error('Error generating caption:', error)
-      toast.error('Failed to generate caption')
-      // Use fallback caption
+      // Don't log to console in production to avoid Next.js error handling
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error generating caption:', error)
+      }
+      
+      // Silently fall back to template captions
       const fallbackCaptions = getSmartCaptionFallback(currentItem?.type || 'clip', platform)
       handlePlatformContentUpdate(contentId, platform, 'caption', fallbackCaptions)
+      
+      // Show a more user-friendly message
+      toast.info('Using optimized caption template for ' + platform)
     } finally {
       setIsGenerating({ ...isGenerating, [key]: false })
     }
   }
 
   const getSmartCaptionFallback = (contentType: string, platform: Platform): string => {
-    const templates: Record<Platform, Record<string, string>> = {
+    const templates: Record<string, Record<string, string>> = {
       instagram: {
         clip: "🎬 Check out this amazing video!\n\nWhat do you think? Let me know in the comments! 👇\n\n#video #content #viral",
         blog: "📖 New article alert! Swipe up to read more about this fascinating topic.\n\nSave this post for later! 📌",
@@ -311,12 +343,27 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
         blog: "Blog post about this topic linked below 📝",
         image: "Visual content for your feed 🎨"
       },
+      'youtube-short': {
+        clip: "Wait for the end! 🤯 #shorts #viral",
+        blog: "Quick summary of my latest article 📚",
+        image: "Visual story time! 🎨"
+      },
       threads: {
         clip: "New video dropped 🎬\n\nThoughts?",
         blog: "Just wrote about this...\n\nLet's discuss 💬",
         image: "Visual storytelling at its finest 📸"
       }
     }
+    
+    // Add fallbacks for social and longform types
+    Object.keys(templates).forEach(platform => {
+      if (!templates[platform].social) {
+        templates[platform].social = templates[platform].clip || "Check out this content!"
+      }
+      if (!templates[platform].longform) {
+        templates[platform].longform = templates[platform].clip || "New video is live!"
+      }
+    })
     
     const platformTemplates = templates[platform]
     if (!platformTemplates) return "Check out this amazing content!"
@@ -325,14 +372,14 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
   }
 
   const copyToAllPlatforms = (sourceplatform: Platform, field: 'caption' | 'hashtags') => {
-    if (!currentItem) return
+    if (!currentItem || !currentItem.platforms) return
     
     const sourceContent = currentItem.platformContent[sourceplatform]
     if (!sourceContent) return
     
     const value = sourceContent[field]
     
-    currentItem.platforms.forEach(platform => {
+    currentItem.platforms.forEach((platform: Platform) => {
       if (platform !== sourceplatform) {
         handlePlatformContentUpdate(currentItem.id, platform, field, value)
       }
@@ -343,17 +390,18 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
 
   const suggestTrendingHashtags = async (contentId: string, platform: Platform) => {
     // In production, fetch from trending API
-    const trending = {
+    const trending: Record<string, string[]> = {
       instagram: ['trending', 'viral', 'instagood', 'photooftheday', 'instadaily'],
       tiktok: ['fyp', 'foryoupage', 'viral', 'trending', 'foryou'],
       linkedin: ['business', 'entrepreneur', 'leadership', 'innovation', 'professional'],
       x: ['breaking', 'trending', 'tech', 'news', 'viral'],
       facebook: ['trending', 'viral', 'sharethis', 'mustread', 'amazing'],
       youtube: ['youtube', 'youtuber', 'subscribe', 'video', 'vlog'],
+      'youtube-short': ['shorts', 'youtubeshorts', 'viral', 'trending', 'subscribe'],
       threads: ['threads', 'meta', 'conversation', 'discussion', 'community']
     }
     
-    const platformTrending = trending[platform] || []
+    const platformTrending = trending[platform] || ['trending', 'viral', 'content', 'share', 'new']
     const item = editedContent.find(i => i.id === contentId)
     const currentHashtags = item?.platformContent[platform]?.hashtags || []
     
@@ -367,7 +415,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
   }
 
   const isContentReady = (item: StagedContent) => {
-    return item.platforms.every(platform => {
+    return (item.platforms || []).every(platform => {
       const platformData = item.platformContent[platform]
       return platformData?.caption && 
              platformData.caption.length > 0 && 
@@ -402,10 +450,28 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
   const allContentReady = stats.ready === stats.total && stats.total > 0
 
   if (!currentItem && viewMode === 'detail') {
-    return <div>No content selected</div>
+    return <div className="text-center py-8 text-muted-foreground">No content selected</div>
+  }
+
+  // Additional safety check
+  if (viewMode === 'detail' && currentItem && (!currentItem.platforms || currentItem.platforms.length === 0)) {
+    return <div className="text-center py-8 text-muted-foreground">Invalid content format. Please go back and try again.</div>
   }
 
   const ContentTypeIcon = contentTypeIcons[currentItem?.type || 'clip']
+
+  // Check if there's no content at all
+  if (safeContent.length === 0 || editedContent.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+        <h3 className="text-lg font-medium mb-2">No Content Selected</h3>
+        <p className="text-muted-foreground">
+          Please go back and select content to publish.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <TooltipProvider>
@@ -499,7 +565,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
               <CardContent>
                 <div className="space-y-6">
                   {editedContent.map((item) => {
-                    const Icon = contentTypeIcons[item.type]
+                    const Icon = contentTypeIcons[item.type] || IconShare2
                     const ready = isContentReady(item)
                     const itemErrors = validationErrors[item.id] || []
                     
@@ -543,8 +609,8 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
 
                         {/* Platform Grid */}
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                          {item.platforms.map((platform) => {
-                            const PlatformIcon = platformIcons[platform]
+                          {(item.platforms || []).map((platform) => {
+                            const PlatformIcon = platformIcons[platform] || IconShare2
                             const platformData = item.platformContent[platform]
                             const hasCaption = platformData?.caption && platformData.caption.length > 0
                             const hasAltText = item.type === 'image' || item.type === 'carousel' 
@@ -650,10 +716,9 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                 </div>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-32">
-                  <div className="space-y-2">
-                    {editedContent.map((item) => {
-                      const Icon = contentTypeIcons[item.type]
+                <div className="space-y-2">
+                  {editedContent.map((item) => {
+                      const Icon = contentTypeIcons[item.type] || IconShare2
                       const ready = isContentReady(item)
                       const hasErrors = validationErrors[item.id]?.length > 0
                       
@@ -720,7 +785,6 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                       )
                     })}
                   </div>
-                </ScrollArea>
               </CardContent>
             </Card>
 
@@ -751,10 +815,10 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue={currentItem.platforms[0]} className="w-full">
-                    <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${currentItem.platforms.length}, 1fr)` }}>
-                      {currentItem.platforms.map((platform) => {
-                        const Icon = platformIcons[platform]
+                  <Tabs defaultValue={currentItem.platforms?.[0] || 'instagram'} className="w-full">
+                    <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${currentItem.platforms?.length || 1}, 1fr)` }}>
+                      {(currentItem.platforms || []).map((platform) => {
+                        const Icon = platformIcons[platform] || IconShare2
                         const platformData = currentItem.platformContent[platform]
                         const isValid = platformData?.isValid !== false
                         
@@ -777,7 +841,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                       })}
                     </TabsList>
 
-                    {currentItem.platforms.map((platform) => {
+                    {(currentItem.platforms || []).map((platform) => {
                       const platformData = currentItem.platformContent[platform] || {
                         caption: '',
                         hashtags: [],
@@ -1068,8 +1132,8 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                           <CardContent>
                             <ScrollArea className="h-48">
                               <div className="space-y-4">
-                                {currentItem.platforms.map(platform => {
-                                  const Icon = platformIcons[platform]
+                                {(currentItem.platforms || []).map(platform => {
+                                  const Icon = platformIcons[platform] || IconShare2
                                   const data = currentItem.platformContent[platform]
                                   
                                   return (
@@ -1082,7 +1146,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                         {data?.caption || <span className="text-muted-foreground">No caption</span>}
                                         {data?.hashtags && data.hashtags.length > 0 && (
                                           <div className="mt-2 text-primary">
-                                            {data.hashtags.map(tag => `#${tag}`).join(' ')}
+                                            {(data.hashtags || []).map(tag => `#${tag}`).join(' ')}
                                           </div>
                                         )}
                                       </div>
@@ -1108,7 +1172,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
 
 // Helper function for platform tips
 function getPlatformTips(platform: Platform): string[] {
-  const tips = {
+  const tips: Record<string, string[]> = {
     instagram: [
       "Use 5-10 relevant hashtags for best reach",
       "Include a clear call-to-action",
@@ -1138,6 +1202,11 @@ function getPlatformTips(platform: Platform): string[] {
       "Include timestamps for long videos",
       "Use SEO-friendly descriptions",
       "Add 5-15 relevant tags"
+    ],
+    'youtube-short': [
+      "Keep under 60 seconds",
+      "Vertical format performs best",
+      "Hook viewers in first 3 seconds"
     ],
     threads: [
       "Start conversations",

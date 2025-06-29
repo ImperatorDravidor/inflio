@@ -407,7 +407,9 @@ Return JSON with this structure:
       // Validate and enhance the generated content
       return this.validateAndEnhancePlatformContent(generated, contentType)
     } catch (error) {
-      console.error('Error generating platform content:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error generating platform content:', error)
+      }
       // Return enhanced default content as fallback
       return this.getDefaultPlatformContent(contentType, context)
     }
@@ -892,7 +894,9 @@ Return JSON array of optimal times:
         return parsed.times || parsed.optimalTimes || this.getDefaultOptimalTimes()
       }
     } catch (error) {
-      console.error('Error getting optimal times:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error getting optimal times:', error)
+      }
     }
     
     return this.getDefaultOptimalTimes()
@@ -1162,7 +1166,9 @@ Return JSON array of optimal times:
           .insert(postsToInsert)
         
         if (error) {
-          console.error('Error inserting posts:', error)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error inserting posts:', error)
+          }
           throw error
         }
       }
@@ -1177,7 +1183,9 @@ Return JSON array of optimal times:
         .eq('id', projectId)
         
     } catch (error) {
-      console.error('Error publishing scheduled content:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error publishing scheduled content:', error)
+      }
       throw error
     }
   }

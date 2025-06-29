@@ -8,6 +8,22 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'klap.app',
       },
+      {
+        protocol: 'https',
+        hostname: '*.fal.ai',
+      },
+      {
+        protocol: 'https',
+        hostname: 'fal.ai',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.fal.run',
+      },
+      {
+        protocol: 'https',
+        hostname: 'fal.run',
+      },
     ],
   },
   eslint: {

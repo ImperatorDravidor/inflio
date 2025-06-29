@@ -1,47 +1,35 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Progress } from "@/components/ui/progress"
 import {
   IconScissors,
   IconArticle,
   IconShare2,
   IconVideo,
-  IconCheck,
-  IconX,
-  IconEdit,
-  IconEye,
   IconPlayerPlay,
   IconClock,
-  IconBrandTwitter,
-  IconBrandLinkedin,
-  IconBrandInstagram,
-  IconBrandTiktok,
-  IconBrandYoutube,
-  IconBrandFacebook,
   IconPhoto,
-  IconTrendingUp,
   IconSparkles,
   IconAlertCircle,
   IconFileText,
-  IconTarget,
-  IconUsers,
-  IconCalendar,
-  IconDownload
+  IconRocket,
+  IconArrowRight,
+  IconX,
+  IconLoader2
 } from "@tabler/icons-react"
-import { Project, ClipData, BlogPost, SocialPost } from "@/lib/project-types"
+import { Project, ClipData, BlogPost } from "@/lib/project-types"
 import { formatDuration } from "@/lib/video-utils"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
+import { useClerkUser } from "@/hooks/use-clerk-user"
+import { toast } from "sonner"
+import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 
 interface ContentItem {
   id: string
@@ -51,9 +39,6 @@ interface ContentItem {
   selected: boolean
   ready: boolean
   metadata?: any
-  viralityScore?: number
-  estimatedReach?: number
-  platforms?: string[]
   preview?: string
 }
 
@@ -71,30 +56,54 @@ export function PublishingWorkflow({
   className 
 }: PublishingWorkflowProps) {
   const router = useRouter()
+  const { user } = useClerkUser()
   const [selectedContent, setSelectedContent] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState("all")
-  const [previewItem, setPreviewItem] = useState<ContentItem | null>(null)
+  const [selectedContentItems, setSelectedContentItems] = useState<ContentItem[]>([])
+  const [isHighlighted, setIsHighlighted] = useState(false)
+  const [isNavigating, setIsNavigating] = useState(false)
 
-  // Prepare enhanced content items
+  // Add effect to handle highlight animation when scrolled to
+  useEffect(() => {
+    const handleHighlight = () => {
+      setIsHighlighted(true)
+      setTimeout(() => setIsHighlighted(false), 2000)
+    }
+
+    // Check if we just scrolled to this element
+    const element = document.getElementById('publish-content-selection')
+    if (element) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            handleHighlight()
+          }
+        })
+      }, { threshold: 0.5 })
+
+      observer.observe(element)
+      return () => observer.disconnect()
+    }
+  }, [])
+
+  // Prepare content items without mock data
   const contentItems: ContentItem[] = [
-    // Long form video (only one per project)
+    // Long form video
     ...(project.video_url ? [{
       id: 'longform-main',
       type: 'longform' as const,
-      title: project.title || 'Long Form Video',
-      description: `Full video • ${project.transcription ? 'Transcribed' : 'No transcript'} • ${project.content_analysis ? 'Analyzed' : 'Not analyzed'}`,
+      title: project.title || 'Full Video',
+      description: `${formatDuration(project.metadata?.duration || 0)} • Original content`,
       selected: false,
       ready: true,
       metadata: {
         url: project.video_url,
+        duration: project.metadata?.duration,
+        thumbnail: project.thumbnail_url,
+        projectId: project.id,
         transcription: project.transcription,
-        analysis: project.content_analysis,
-        duration: project.transcription?.duration
+        contentAnalysis: project.content_analysis
       },
-      viralityScore: project.content_analysis ? calculateOverallScore(project.content_analysis) : 0,
-      estimatedReach: project.content_analysis ? estimateReach(project.content_analysis) : 0,
-      platforms: ['youtube', 'linkedin', 'facebook'],
-      preview: project.transcription?.text?.substring(0, 200) + '...'
+      preview: project.video_url
     }] : []),
 
     // Video clips
@@ -102,14 +111,15 @@ export function PublishingWorkflow({
       id: `clip-${clip.id}`,
       type: 'clip' as const,
       title: clip.title || 'Untitled Clip',
-      description: `${formatDuration(clip.duration)} • Virality: ${Math.round((clip.score || 0) * 10)}/10`,
+      description: formatDuration(clip.duration),
       selected: false,
       ready: !!clip.exportUrl,
-      metadata: clip,
-      viralityScore: clip.score || 0,
-      estimatedReach: Math.floor((clip.score || 0) * 10000),
-      platforms: determineBestPlatforms(clip),
-      preview: clip.transcript?.substring(0, 150) + '...'
+      metadata: {
+        ...clip,
+        projectId: project.id,
+        projectContext: project.content_analysis?.summary
+      },
+      preview: clip.exportUrl || undefined
     })),
 
     // Blog posts
@@ -117,12 +127,13 @@ export function PublishingWorkflow({
       id: `blog-${blog.id}`,
       type: 'blog' as const,
       title: blog.title,
-      description: `${blog.readingTime} min read • ${blog.tags.length} tags • ${blog.excerpt?.length || 0} chars`,
+      description: `${blog.readingTime} min read`,
       selected: false,
       ready: true,
-      metadata: blog,
-      estimatedReach: blog.readingTime * 1000, // Rough estimate
-      platforms: ['linkedin', 'x', 'facebook', 'threads'],
+      metadata: {
+        ...blog,
+        projectId: project.id
+      },
       preview: blog.excerpt || blog.content?.substring(0, 200) + '...'
     })),
 
@@ -131,52 +142,31 @@ export function PublishingWorkflow({
       id: `social-${index}`,
       type: 'social' as const,
       title: `Social Post ${index + 1}`,
-      description: `${post.platform || 'Multi-platform'} • ${post.content?.length || 0} chars`,
+      description: post.platform || 'Multi-platform',
       selected: false,
       ready: true,
-      metadata: post,
-      platforms: post.platform ? [post.platform] : ['instagram', 'x'],
+      metadata: {
+        ...post,
+        projectId: project.id,
+        index
+      },
       preview: post.content
     })),
 
-    // AI-generated images and carousels
-    ...(project.folders.images?.reduce((acc: ContentItem[], image: any) => {
-      if (image.type === 'carousel-slide') {
-        // Group carousel slides
-        const carouselId = `carousel-${image.carouselId || 'default'}`
-        const existing = acc.find(item => item.id === carouselId)
-        
-        if (existing) {
-          existing.description = `${(existing.metadata.slides?.length || 0) + 1} slides • ${image.style}`
-          existing.metadata.slides = [...(existing.metadata.slides || []), image]
-        } else {
-          acc.push({
-            id: carouselId,
-            type: 'carousel' as const,
-            title: `AI Carousel`,
-            description: `1 slide • ${image.style}`,
-            selected: false,
-            ready: true,
-            metadata: { slides: [image], style: image.style },
-            platforms: ['instagram', 'linkedin', 'facebook'],
-            preview: image.prompt
-          })
-        }
-      } else {
-        acc.push({
-          id: `image-${image.id}`,
-          type: 'image' as const,
-          title: 'AI Generated Image',
-          description: `${image.style} • ${image.size || '1024x1024'}`,
-          selected: false,
-          ready: true,
-          metadata: image,
-          platforms: ['instagram', 'facebook', 'linkedin', 'threads'],
-          preview: image.prompt
-        })
-      }
-      return acc
-    }, []) || [])
+    // AI-generated images
+    ...(project.folders.images?.map((image: any) => ({
+      id: `image-${image.id}`,
+      type: 'image' as const,
+      title: 'AI Generated Image',
+      description: image.style,
+      selected: false,
+      ready: true,
+      metadata: {
+        ...image,
+        projectId: project.id
+      },
+      preview: image.url
+    })) || [])
   ]
 
   const handleContentToggle = (itemId: string) => {
@@ -186,19 +176,17 @@ export function PublishingWorkflow({
     }))
   }
 
-  const handleSelectAll = (type?: string) => {
-    const itemsToSelect = type 
-      ? contentItems.filter(item => item.type === type)
-      : contentItems.filter(item => item.ready)
-
-    const newSelection = { ...selectedContent }
-    itemsToSelect.forEach(item => {
-      newSelection[item.id] = true
+  const handleSelectAll = () => {
+    const newSelection: Record<string, boolean> = {}
+    contentItems.forEach(item => {
+      if (item.ready) {
+        newSelection[item.id] = true
+      }
     })
     setSelectedContent(newSelection)
   }
 
-  const handleDeselectAll = () => {
+  const handleClearAll = () => {
     setSelectedContent({})
   }
 
@@ -214,411 +202,540 @@ export function PublishingWorkflow({
       case 'longform': return IconVideo
       case 'image': return IconPhoto
       case 'carousel': return IconPhoto
-      default: return IconCheck
+      default: return IconFileText
     }
   }
 
-  const getViralityColor = (score: number) => {
-    if (score >= 8) return 'text-green-600'
-    if (score >= 6) return 'text-yellow-600'
-    if (score >= 4) return 'text-orange-600'
-    return 'text-red-600'
-  }
-
-  const getContentCounts = () => {
-    const counts = {
-      all: contentItems.length,
-      clip: 0,
-      blog: 0,
-      social: 0,
-      longform: 0,
-      image: 0,
-      carousel: 0
+  const handleContinue = async () => {
+    if (!user?.id) {
+      toast.error('Please sign in to continue')
+      return
     }
 
-    contentItems.forEach(item => {
-      if (item.type in counts) {
-        counts[item.type]++
+    const selectedItems = getSelectedItems()
+    if (selectedItems.length === 0) return
+
+    setIsNavigating(true)
+    
+    try {
+      // Save staging session
+      const result = await StagingSessionsService.saveStagingSession(
+        user.id,
+        project.id,
+        {
+          ids: selectedItems.map(item => item.id),
+          items: selectedItems
+        }
+      )
+      
+      if (!result.success) {
+        toast.error(result.error || 'Failed to save staging data')
+        return
       }
-    })
-
-    return counts
+      
+      // Navigate to staging page
+      router.push(`/projects/${project.id}/stage`)
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error in handleContinue:', error)
+      }
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setIsNavigating(false)
+    }
   }
 
-  const counts = getContentCounts()
-  const selectedCount = Object.values(selectedContent).filter(v => v).length
-  const totalEstimatedReach = getSelectedItems().reduce((sum, item) => sum + (item.estimatedReach || 0), 0)
+  useEffect(() => {
+    const selected = getSelectedItems()
+    setSelectedContentItems(selected)
+  }, [selectedContent])
 
-  const filteredItems = activeTab === 'all' 
-    ? contentItems 
-    : contentItems.filter(item => item.type === activeTab)
+  const selectedCount = Object.values(selectedContent).filter(v => v).length
+
+  // Group content by type
+  const groupedContent = contentItems.reduce((acc, item) => {
+    if (!acc[item.type]) acc[item.type] = []
+    acc[item.type].push(item)
+    return acc
+  }, {} as Record<string, ContentItem[]>)
 
   return (
-    <TooltipProvider>
-      <Card className={className}>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <IconTarget className="h-5 w-5" />
-                Select Content for Social Publishing
-              </CardTitle>
-              <CardDescription>
-                Choose content to optimize and schedule across social media platforms
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              {selectedCount > 0 && (
+    <Card 
+      className={cn(
+        "border-0 transition-all duration-500",
+        isHighlighted && "ring-2 ring-primary ring-offset-2",
+        className
+      )} 
+      id="publish-content-selection"
+    >
+      <CardHeader className={cn(
+        "pb-4",
+        isHighlighted && "animate-pulse"
+      )}>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <IconRocket className="h-5 w-5" />
+              Select Content to Publish
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Choose the content you want to publish and continue to the staging tool
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            {selectedCount > 0 && (
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {selectedCount} selected
+              </Badge>
+            )}
+            <Button
+              onClick={handleContinue}
+              disabled={selectedCount === 0 || isNavigating}
+              className={cn(
+                "bg-gradient-to-r from-blue-600 to-purple-600",
+                "hover:from-blue-700 hover:to-purple-700",
+                (selectedCount === 0 || isNavigating) && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {isNavigating ? (
                 <>
-                  <div className="text-right text-sm">
-                    <Badge variant="secondary" className="mb-1">
-                      {selectedCount} selected
-                    </Badge>
-                    <p className="text-xs text-muted-foreground">
-                      Est. reach: {(totalEstimatedReach / 1000).toFixed(1)}k
-                    </p>
-                  </div>
+                  <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Preparing...
+                </>
+              ) : (
+                <>
+                  <IconSparkles className="h-4 w-4 mr-2" />
+                  Continue to Stage
+                  <IconArrowRight className="h-4 w-4 ml-1" />
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent>
+        {contentItems.length === 0 ? (
+          <div className="text-center py-16">
+            <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <h3 className="text-lg font-medium mb-2">No Content Available</h3>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Generate some content first (clips, blog posts, or images) to get started with publishing.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Quick Actions */}
+            {contentItems.length > 1 && (
+              <div className="flex items-center justify-between mb-6 pb-4 border-b">
+                <div className="text-sm text-muted-foreground">
+                  {selectedCount === 0 ? 
+                    "Select content to publish by clicking the cards below" : 
+                    `${selectedCount} of ${contentItems.length} items selected`
+                  }
+                </div>
+                <div className="flex gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleDeselectAll}
+                    onClick={handleSelectAll}
+                    disabled={selectedCount === contentItems.filter(item => item.ready).length}
                   >
-                    Clear
+                    Select All
                   </Button>
-                </>
-              )}
-              <Button
-                size="sm"
-                onClick={() => {
-                  const selectedIds = Object.keys(selectedContent).filter(id => selectedContent[id])
-                  router.push(`/projects/${project.id}/stage?content=${selectedIds.join(',')}`)
-                }}
-                disabled={selectedCount === 0}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              >
-                <IconSparkles className="h-4 w-4 mr-2" />
-                Continue to AI Staging
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-6 w-full">
-              <TabsTrigger value="all">
-                All ({counts.all})
-              </TabsTrigger>
-              <TabsTrigger value="longform" disabled={counts.longform === 0}>
-                Long Form ({counts.longform})
-              </TabsTrigger>
-              <TabsTrigger value="clip" disabled={counts.clip === 0}>
-                Clips ({counts.clip})
-              </TabsTrigger>
-              <TabsTrigger value="blog" disabled={counts.blog === 0}>
-                Articles ({counts.blog})
-              </TabsTrigger>
-              <TabsTrigger value="image" disabled={counts.image === 0}>
-                Images ({counts.image})
-              </TabsTrigger>
-              <TabsTrigger value="social" disabled={counts.social === 0}>
-                Social ({counts.social})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value={activeTab} className="mt-6">
-              <ScrollArea className="h-[500px] pr-4">
-                <div className="space-y-4">
-                  {filteredItems.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <IconAlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg font-medium">No {activeTab === 'all' ? 'content' : activeTab} available</p>
-                      <p className="text-sm">Create some content first to get started with social publishing</p>
-                    </div>
-                  ) : (
-                    <AnimatePresence>
-                      {filteredItems.map((item, index) => {
-                        const Icon = getContentIcon(item.type)
-                        const isSelected = selectedContent[item.id] || false
-                        
-                        return (
-                          <motion.div
-                            key={item.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            transition={{ delay: index * 0.05 }}
-                            className={cn(
-                              "group relative overflow-hidden rounded-lg border transition-all duration-200",
-                              isSelected && "border-primary bg-primary/5 shadow-md",
-                              !item.ready && "opacity-60",
-                              item.ready && "hover:shadow-sm hover:border-primary/50"
-                            )}
-                          >
-                            <div className="flex items-start gap-4 p-4">
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => handleContentToggle(item.id)}
-                                disabled={!item.ready}
-                                className="mt-1"
-                              />
-                              
-                              <div className="flex-1 space-y-2">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Icon className="h-5 w-5 text-muted-foreground" />
-                                    <Label className="font-medium cursor-pointer text-base" htmlFor={item.id}>
-                                      {item.title}
-                                    </Label>
-                                    {!item.ready && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Processing
-                                      </Badge>
-                                    )}
-                                    {item.type === 'longform' && (
-                                      <Badge className="text-xs bg-gradient-to-r from-blue-500 to-purple-500">
-                                        Master Content
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  
-                                  <div className="flex items-center gap-2">
-                                    {item.viralityScore !== undefined && (
-                                      <Tooltip>
-                                        <TooltipTrigger>
-                                          <div className="flex items-center gap-1">
-                                            <IconTrendingUp className={cn("h-4 w-4", getViralityColor(item.viralityScore * 10))} />
-                                            <span className={cn("text-sm font-medium", getViralityColor(item.viralityScore * 10))}>
-                                              {Math.round(item.viralityScore * 10)}/10
-                                            </span>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>Virality Score: {Math.round(item.viralityScore * 10)}/10</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                    
-                                    {item.estimatedReach && (
-                                      <Tooltip>
-                                        <TooltipTrigger>
-                                          <div className="flex items-center gap-1">
-                                            <IconUsers className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm text-muted-foreground">
-                                              {(item.estimatedReach / 1000).toFixed(1)}k
-                                            </span>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>Estimated reach: {item.estimatedReach.toLocaleString()}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                <p className="text-sm text-muted-foreground">
-                                  {item.description}
-                                </p>
-                                
-                                {item.preview && (
-                                  <div className="p-3 bg-muted/30 rounded-md">
-                                    <p className="text-xs text-muted-foreground italic line-clamp-2">
-                                      "{item.preview}"
-                                    </p>
-                                  </div>
-                                )}
-                                
-                                {item.platforms && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Best for:</span>
-                                    <div className="flex gap-1">
-                                      {item.platforms.slice(0, 3).map(platform => {
-                                        const PlatformIcon = getPlatformIcon(platform)
-                                        return (
-                                          <PlatformIcon key={platform} className="h-4 w-4 text-muted-foreground" />
-                                        )
-                                      })}
-                                      {item.platforms.length > 3 && (
-                                        <span className="text-xs text-muted-foreground">+{item.platforms.length - 3}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1">
-                                {item.type === 'clip' && item.metadata?.exportUrl && (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Button size="sm" variant="ghost" asChild>
-                                        <a href={item.metadata.exportUrl} target="_blank" rel="noopener noreferrer">
-                                          <IconPlayerPlay className="h-4 w-4" />
-                                        </a>
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Play video</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                
-                                {item.type === 'blog' && onEditBlog && (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Button 
-                                        size="sm" 
-                                        variant="ghost"
-                                        onClick={() => onEditBlog(item.metadata.id)}
-                                      >
-                                        <IconEdit className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Edit article</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                
-                                {(item.type === 'image' || item.type === 'carousel') && item.metadata?.url && (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Button size="sm" variant="ghost" asChild>
-                                        <a href={item.metadata.url || item.metadata.slides?.[0]?.url} target="_blank" rel="noopener noreferrer">
-                                          <IconEye className="h-4 w-4" />
-                                        </a>
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>View image</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <Button 
-                                      size="sm" 
-                                      variant="ghost"
-                                      onClick={() => setPreviewItem(item)}
-                                    >
-                                      <IconFileText className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Preview details</TooltipContent>
-                                </Tooltip>
-                              </div>
-                            </div>
-                            
-                            {/* Selection indicator */}
-                            {isSelected && (
-                              <div className="absolute inset-0 pointer-events-none">
-                                <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-1">
-                                  <IconCheck className="h-3 w-3" />
-                                </div>
-                              </div>
-                            )}
-                          </motion.div>
-                        )
-                      })}
-                    </AnimatePresence>
+                  {selectedCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleClearAll}
+                    >
+                      Clear
+                    </Button>
                   )}
                 </div>
-              </ScrollArea>
-
-              {filteredItems.length > 0 && (
-                <div className="mt-6 pt-4 border-t space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSelectAll(activeTab === 'all' ? undefined : activeTab)}
-                      >
-                        <IconCheck className="h-4 w-4 mr-2" />
-                        Select All {activeTab !== 'all' && activeTab}
-                      </Button>
-                      
-                      {selectedCount > 0 && (
-                        <div className="text-sm text-muted-foreground">
-                          {selectedCount} items selected • Est. {(totalEstimatedReach / 1000).toFixed(1)}k reach
-                        </div>
-                      )}
+              </div>
+            )}
+            
+            <ScrollArea className="h-[600px] pr-4">
+              <div className="space-y-6">
+                {/* Long Form Video */}
+                {groupedContent.longform && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                      <IconVideo className="h-4 w-4" />
+                      Long Form Video
+                    </h3>
+                    <div className="space-y-3">
+                      {groupedContent.longform.map(item => (
+                        <ContentCard
+                          key={item.id}
+                          item={item}
+                          isSelected={selectedContent[item.id] || false}
+                          onToggle={handleContentToggle}
+                        />
+                      ))}
                     </div>
-                    
-                    {selectedCount > 0 && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          const selectedIds = Object.keys(selectedContent).filter(id => selectedContent[id])
-                          router.push(`/projects/${project.id}/stage?content=${selectedIds.join(',')}`)
-                        }}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                      >
-                        <IconSparkles className="h-4 w-4 mr-2" />
-                        Stage Selected Content
-                      </Button>
-                    )}
                   </div>
+                )}
+
+                {/* Video Clips */}
+                {groupedContent.clip && groupedContent.clip.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                      <IconScissors className="h-4 w-4" />
+                      Video Clips ({groupedContent.clip.length})
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {groupedContent.clip.map(item => (
+                        <ContentCard
+                          key={item.id}
+                          item={item}
+                          isSelected={selectedContent[item.id] || false}
+                          onToggle={handleContentToggle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Blog Posts */}
+                {groupedContent.blog && groupedContent.blog.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                      <IconArticle className="h-4 w-4" />
+                      Blog Posts ({groupedContent.blog.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {groupedContent.blog.map(item => (
+                        <ContentCard
+                          key={item.id}
+                          item={item}
+                          isSelected={selectedContent[item.id] || false}
+                          onToggle={handleContentToggle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Images */}
+                {groupedContent.image && groupedContent.image.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                      <IconPhoto className="h-4 w-4" />
+                      AI Generated Images ({groupedContent.image.length})
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {groupedContent.image.map(item => (
+                        <ContentCard
+                          key={item.id}
+                          item={item}
+                          isSelected={selectedContent[item.id] || false}
+                          onToggle={handleContentToggle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social Posts */}
+                {groupedContent.social && groupedContent.social.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                      <IconShare2 className="h-4 w-4" />
+                      Social Posts ({groupedContent.social.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {groupedContent.social.map(item => (
+                        <ContentCard
+                          key={item.id}
+                          item={item}
+                          isSelected={selectedContent[item.id] || false}
+                          onToggle={handleContentToggle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+
+            {/* Bottom Action Bar */}
+            {selectedCount > 0 && (
+              <div className="mt-6 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-muted-foreground">Selected content:</span>
+                    <div className="flex items-center gap-2">
+                      {Object.entries(
+                        getSelectedItems().reduce((acc, item) => {
+                          acc[item.type] = (acc[item.type] || 0) + 1
+                          return acc
+                        }, {} as Record<string, number>)
+                      ).map(([type, count]) => {
+                        const Icon = getContentIcon(type)
+                        return (
+                          <Badge key={type} variant="secondary" className="gap-1">
+                            <Icon className="h-3 w-3" />
+                            {count} {type}{count > 1 ? 's' : ''}
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleContinue}
+                    disabled={isNavigating}
+                    className={cn(
+                      "bg-gradient-to-r from-blue-600 to-purple-600",
+                      "hover:from-blue-700 hover:to-purple-700",
+                      isNavigating && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    {isNavigating ? (
+                      <>
+                        <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Preparing...
+                      </>
+                    ) : (
+                      <>
+                        <IconSparkles className="h-4 w-4 mr-2" />
+                        Continue with {selectedCount} items
+                        <IconArrowRight className="h-4 w-4 ml-1" />
+                      </>
+                    )}
+                  </Button>
                 </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-    </TooltipProvider>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
-// Helper functions
-function calculateOverallScore(analysis: any): number {
-  if (!analysis) return 0
-  // Simple scoring based on available analysis
-  let score = 0.5 // Base score
-  if (analysis.keywords?.length > 5) score += 0.2
-  if (analysis.topics?.length > 3) score += 0.2
-  if (analysis.sentiment === 'positive') score += 0.1
-  return Math.min(score, 1)
+// Content Card Component
+function ContentCard({ 
+  item, 
+  isSelected, 
+  onToggle 
+}: { 
+  item: ContentItem
+  isSelected: boolean
+  onToggle: (id: string) => void 
+}) {
+  const Icon = getContentIcon(item.type)
+  
+  const renderPreview = () => {
+    switch (item.type) {
+      case 'clip':
+        return item.preview ? (
+          <div 
+            className="aspect-[9/16] bg-black rounded-lg overflow-hidden max-w-[160px] mx-auto relative"
+            style={{ isolation: 'isolate' }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <video
+                src={item.preview}
+                className="object-contain"
+                style={{ 
+                  position: 'absolute',
+                  top: '0',
+                  left: '0',
+                  width: '100%',
+                  height: '100%',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain'
+                }}
+                muted
+                playsInline
+                preload="metadata"
+                controls={false}
+                onMouseEnter={(e) => {
+                  const video = e.currentTarget
+                  video.style.zIndex = '1'
+                  video.play().catch(() => {})
+                }}
+                onMouseLeave={(e) => {
+                  const video = e.currentTarget
+                  video.style.zIndex = 'auto'
+                  video.pause()
+                  video.currentTime = 0
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="aspect-[9/16] bg-muted rounded-lg flex items-center justify-center max-w-[160px] mx-auto">
+            <IconVideo className="h-8 w-8 text-muted-foreground" />
+          </div>
+        )
+      
+      case 'longform':
+        return item.preview ? (
+          <div 
+            className="aspect-video bg-black rounded-lg overflow-hidden relative"
+            style={{ isolation: 'isolate' }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <video
+                src={item.preview}
+                className="object-contain"
+                style={{ 
+                  position: 'absolute',
+                  top: '0',
+                  left: '0',
+                  width: '100%',
+                  height: '100%',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain'
+                }}
+                muted
+                playsInline
+                preload="metadata"
+                controls={false}
+                poster={item.metadata?.thumbnail}
+                onMouseEnter={(e) => {
+                  const video = e.currentTarget
+                  video.style.zIndex = '1'
+                  video.play().catch(() => {})
+                }}
+                onMouseLeave={(e) => {
+                  const video = e.currentTarget
+                  video.style.zIndex = 'auto'
+                  video.pause()
+                  video.currentTime = 0
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+            <IconVideo className="h-8 w-8 text-muted-foreground" />
+          </div>
+        )
+      
+      case 'image':
+        return item.preview ? (
+          <div className="w-full h-full relative">
+            <img 
+              src={item.preview} 
+              alt={item.title}
+              className="absolute inset-0 w-full h-full object-cover rounded-lg"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full bg-muted rounded-lg flex items-center justify-center">
+            <IconPhoto className="h-8 w-8 text-muted-foreground" />
+          </div>
+        )
+      
+      case 'blog':
+      case 'social':
+        return null // These will be handled differently
+      
+      default:
+        return null
+    }
+  }
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className={cn(
+        "relative rounded-lg border cursor-pointer transition-all",
+        isSelected ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "hover:border-primary/50",
+        !item.ready && "opacity-50 cursor-not-allowed"
+      )}
+      onClick={() => item.ready && onToggle(item.id)}
+    >
+      <div className={cn(
+        "p-4",
+        item.type === 'image' && "p-2"
+      )}>
+        {/* Image type has a different layout */}
+        {item.type === 'image' ? (
+          <div className="space-y-2">
+            <div className="aspect-square relative bg-muted rounded-lg overflow-hidden">
+              {renderPreview()}
+            </div>
+            <div className="flex items-center gap-2 px-2">
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggle(item.id)}
+                disabled={!item.ready}
+                className="flex-shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-medium truncate">{item.title}</h4>
+                <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Default layout for other content types */
+          <div className="flex items-start gap-3">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggle(item.id)}
+              disabled={!item.ready}
+              className="mt-0.5"
+              onClick={(e) => e.stopPropagation()}
+            />
+            
+            <div className="flex-1 space-y-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    {item.title}
+                  </h4>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {item.description}
+                  </p>
+                </div>
+                {!item.ready && (
+                  <Badge variant="outline" className="text-xs">
+                    Processing
+                  </Badge>
+                )}
+              </div>
+              
+              {/* Preview for video content */}
+              {(item.type === 'clip' || item.type === 'longform') && (
+                <div className="mt-3">
+                  {renderPreview()}
+                </div>
+              )}
+              
+              {/* Text preview for blog/social */}
+              {(item.type === 'blog' || item.type === 'social') && item.preview && (
+                <div className="mt-2 p-3 bg-muted/30 rounded-lg text-sm text-muted-foreground">
+                  <p className="line-clamp-2">{item.preview}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
 }
 
-function estimateReach(analysis: any): number {
-  if (!analysis) return 1000
-  const baseReach = 5000
-  const keywordBonus = (analysis.keywords?.length || 0) * 100
-  const topicBonus = (analysis.topics?.length || 0) * 200
-  return baseReach + keywordBonus + topicBonus
-}
-
-function determineBestPlatforms(clip: ClipData): string[] {
-  const platforms: string[] = []
-  const duration = clip.duration || 0
-  const score = clip.score || 0
-  
-  // Short clips are good for TikTok and Instagram
-  if (duration <= 60) {
-    platforms.push('tiktok', 'instagram')
+function getContentIcon(type: string) {
+  switch (type) {
+    case 'clip': return IconScissors
+    case 'blog': return IconArticle
+    case 'social': return IconShare2
+    case 'longform': return IconVideo
+    case 'image': return IconPhoto
+    case 'carousel': return IconPhoto
+    default: return IconFileText
   }
-  
-  // Medium clips work well on Instagram and YouTube
-  if (duration <= 300) {
-    platforms.push('instagram', 'youtube')
-  }
-  
-  // High-scoring content works on all platforms
-  if (score > 0.7) {
-    platforms.push('x', 'linkedin', 'facebook')
-  }
-  
-  // Professional content for LinkedIn
-  if (clip.title?.toLowerCase().includes('business') || 
-      clip.title?.toLowerCase().includes('professional')) {
-    platforms.push('linkedin')
-  }
-  
-  return [...new Set(platforms)] // Remove duplicates
-}
-
-function getPlatformIcon(platform: string) {
-  const icons: Record<string, any> = {
-    instagram: IconBrandInstagram,
-    linkedin: IconBrandLinkedin,
-    tiktok: IconBrandTiktok,
-    youtube: IconBrandYoutube,
-    x: IconBrandTwitter,
-    facebook: IconBrandFacebook
-  }
-  return icons[platform] || IconShare2
 } 

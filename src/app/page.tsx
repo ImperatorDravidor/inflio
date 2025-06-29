@@ -423,13 +423,13 @@ export default function LandingPage() {
               © {new Date().getFullYear()} Inflio. All rights reserved.
             </p>
             <div className="flex space-x-6">
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground">
                 Privacy
               </Link>
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground">
                 Terms
               </Link>
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              <Link href="mailto:support@inflio.com" className="text-sm text-muted-foreground hover:text-foreground">
                 Contact
               </Link>
             </div>

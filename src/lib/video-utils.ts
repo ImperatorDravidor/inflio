@@ -98,7 +98,7 @@ export const extractVideoMetadata = async (file: File): Promise<VideoMetadata> =
 
 // Format duration in seconds to MM:SS format
 export const formatDuration = (seconds: number): string => {
-  if (!seconds || seconds < 0) return '0:00'
+  if (!seconds || seconds < 0 || isNaN(seconds)) return '0:00'
   
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)

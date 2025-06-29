@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
     const totalClips = klapResult.clips.length;
     let processedClips = 0;
     
-    for (const basicClip of klapResult.clips) {
+    for (let clipIndex = 0; clipIndex < klapResult.clips.length; clipIndex++) {
+      const basicClip = klapResult.clips[clipIndex];
       try {
         console.log(`[Klap Route] Processing clip ${basicClip.id}...`);
         
@@ -106,21 +107,55 @@ export async function POST(request: NextRequest) {
         let score = clip.virality_score || 0;
         if (score > 1) { score = score / 100; }
 
-        let duration = clip.duration || 0;
-        if (duration === 0 && clip.end_time && clip.start_time) {
+        // Calculate duration from various possible sources
+        let duration = 0;
+        
+        // Try direct duration field first
+        if (clip.duration && clip.duration > 0) {
+            duration = clip.duration;
+        } 
+        // Try calculating from end/start times
+        else if (clip.end_time !== undefined && clip.start_time !== undefined && clip.end_time > clip.start_time) {
             duration = clip.end_time - clip.start_time;
+        } 
+        // Try alternative field names
+        else if (clip.end !== undefined && clip.start !== undefined && clip.end > clip.start) {
+            duration = clip.end - clip.start;
         }
+        // Try length field
+        else if (clip.length && clip.length > 0) {
+            duration = clip.length;
+        }
+        // Try clip_length field
+        else if (clip.clip_length && clip.clip_length > 0) {
+            duration = clip.clip_length;
+        }
+        
+        console.log(`[Klap Route] Clip ${clip.id} duration calculation:`, {
+            direct_duration: clip.duration,
+            end_time: clip.end_time,
+            start_time: clip.start_time,
+            end: clip.end,
+            start: clip.start,
+            length: clip.length,
+            clip_length: clip.clip_length,
+            calculated_duration: duration,
+            raw_clip_data: clip
+        });
         
         const transcript = clip.transcript || clip.text || clip.caption || '';
 
+        const startTime = clip.start_time ?? clip.start ?? 0;
+        const endTime = clip.end_time ?? clip.end ?? (startTime + duration);
+        
         const clipToStore = {
           id: clip.id,
-          title: clip.name || clip.title || `Clip for ${project.title}`,
+          title: clip.name || clip.title || `Clip ${clipIndex + 1}`,
           description: clip.virality_score_explanation || transcript || '',
-          startTime: clip.start_time || clip.start || 0,
-          endTime: clip.end_time || clip.end || 0,
-          duration: duration,
-          thumbnail: `https://klap.app/player/${clip.id}/thumbnail`,
+          startTime: startTime,
+          endTime: endTime,
+          duration: duration || (endTime - startTime),
+          thumbnail: clip.thumbnail || `https://klap.app/player/${clip.id}/thumbnail`,
           tags: clip.tags || [],
           score: score,
           type: 'highlight' as const,

@@ -1,8 +1,23 @@
 "use client"
 
 import { UserButton } from "@clerk/nextjs"
+import { useEffect, useState } from "react"
 
 export function UserMenu() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Only render the UserButton after mounting to prevent hydration mismatches
+  if (!mounted) {
+    // Return a placeholder with the same dimensions to prevent layout shift
+    return (
+      <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+    )
+  }
+
   return (
     <UserButton 
       afterSignOutUrl="/sign-in"

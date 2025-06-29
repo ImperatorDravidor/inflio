@@ -3,30 +3,37 @@ import { toast } from 'sonner'
 export class AppError extends Error {
   constructor(
     message: string,
-    public code?: string,
-    public statusCode?: number
+    public code: string,
+    public statusCode: number = 500
   ) {
     super(message)
     this.name = 'AppError'
   }
 }
 
-export function handleError(error: unknown, context?: string): void {
-  console.error(`[${context || 'Error'}]:`, error)
-  
-  let message = 'An unexpected error occurred'
+export function handleError(error: unknown, context?: string) {
+  console.error(`[${context || 'Unknown Context'}] Error:`, error)
   
   if (error instanceof AppError) {
-    message = error.message
-  } else if (error instanceof Error) {
-    message = error.message
-  } else if (typeof error === 'string') {
-    message = error
+    return {
+      error: error.message,
+      code: error.code,
+      statusCode: error.statusCode
+    }
   }
   
-  // Only show toast on client side
-  if (typeof window !== 'undefined') {
-  toast.error(message)
+  if (error instanceof Error) {
+    return {
+      error: error.message,
+      code: 'UNKNOWN_ERROR',
+      statusCode: 500
+    }
+  }
+  
+  return {
+    error: 'An unexpected error occurred',
+    code: 'UNKNOWN_ERROR',
+    statusCode: 500
   }
 }
 

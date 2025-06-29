@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { motion, AnimatePresence } from "framer-motion"
+import { ThumbnailCreator } from "@/components/thumbnail-creator"
 import {
   IconSearch,
   IconSortDescending,
@@ -30,7 +31,8 @@ import {
   IconList,
   IconX,
   IconSparkles,
-  IconLoader2
+  IconLoader2,
+  IconPhoto
 } from "@tabler/icons-react"
 import {
   DropdownMenu,
@@ -90,11 +92,13 @@ const itemVariants = {
 function ProjectCard({ 
   project, 
   viewMode,
-  onDelete 
+  onDelete,
+  onThumbnailUpdate
 }: { 
   project: Project
   viewMode: ViewMode
-  onDelete: (id: string) => void 
+  onDelete: (id: string) => void
+  onThumbnailUpdate: () => void
 }) {
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
@@ -108,6 +112,19 @@ function ProjectCard({
       router.push(`/studio/processing/${project.id}`)
     } else {
       router.push(`/projects/${project.id}`)
+    }
+  }
+
+  // Handle thumbnail update
+  const handleThumbnailUpdate = async (newThumbnailUrl: string) => {
+    try {
+      // The ThumbnailCreator component already updates the database
+      // through the API routes, so we just need to refresh the projects list
+      onThumbnailUpdate()
+      toast.success('Thumbnail updated successfully!')
+    } catch (error) {
+      console.error('Failed to update thumbnail:', error)
+      toast.error('Failed to update thumbnail')
     }
   }
 
@@ -128,13 +145,21 @@ function ProjectCard({
             onClick={handleProjectClick}
           >
             {project.thumbnail_url ? (
-              <Image 
-                src={project.thumbnail_url} 
-                alt={project.title}
-                width={128}
-                height={80}
-                className="object-cover w-full h-full group-hover:scale-105 transition-transform"
-              />
+              project.thumbnail_url.startsWith('http') ? (
+                <img
+                  src={project.thumbnail_url}
+                  alt={project.title}
+                  className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <Image 
+                  src={project.thumbnail_url} 
+                  alt={project.title}
+                  width={128}
+                  height={80}
+                  className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                />
+              )
             ) : (
               <div className="flex items-center justify-center h-full">
                 <IconVideo className="h-8 w-8 text-muted-foreground" />
@@ -149,6 +174,16 @@ function ProjectCard({
               ) : (
                 <IconPlayerPlay className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
               )}
+            </div>
+            
+            {/* Thumbnail Generator Button for List View */}
+            <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ThumbnailCreator
+                projectId={project.id}
+                projectTitle={project.title}
+                currentThumbnail={project.thumbnail_url}
+                onThumbnailUpdate={handleThumbnailUpdate}
+              />
             </div>
           </div>
 
@@ -260,13 +295,21 @@ function ProjectCard({
         onClick={handleProjectClick}
       >
         {project.thumbnail_url ? (
-          <Image 
-            src={project.thumbnail_url} 
-            alt={project.title}
-            width={400}
-            height={225}
-            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
-          />
+          project.thumbnail_url.startsWith('http') ? (
+            <img
+              src={project.thumbnail_url}
+              alt={project.title}
+              className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+            />
+          ) : (
+            <Image 
+              src={project.thumbnail_url} 
+              alt={project.title}
+              width={400}
+              height={225}
+              className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+            />
+          )
         ) : (
           <div className="flex items-center justify-center h-full">
             <IconVideo className="h-12 w-12 text-muted-foreground" />
@@ -287,6 +330,17 @@ function ProjectCard({
             <IconPlayerPlay className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           )}
         </div>
+        
+        {/* Thumbnail Generator Button */}
+        <div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity">
+          <ThumbnailCreator
+            projectId={project.id}
+            projectTitle={project.title}
+            currentThumbnail={project.thumbnail_url}
+            onThumbnailUpdate={handleThumbnailUpdate}
+          />
+        </div>
+        
         <Badge 
           className={cn(
             "absolute top-4 right-4",
@@ -702,6 +756,7 @@ export default function ProjectsPage() {
                 project={project}
                 viewMode={viewMode}
                 onDelete={(id) => setDeleteId(id)}
+                onThumbnailUpdate={loadProjects}
               />
             ))}
           </AnimatePresence>

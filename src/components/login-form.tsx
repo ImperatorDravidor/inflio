@@ -198,11 +198,11 @@ export function LoginForm({
       {/* Terms */}
       <div className="text-center text-xs text-muted-foreground px-4">
         By continuing, you agree to our{" "}
-        <a href="#" className="underline underline-offset-4 hover:text-primary">
+        <a href="/terms" className="underline underline-offset-4 hover:text-primary">
           Terms
         </a>{" "}
         and{" "}
-        <a href="#" className="underline underline-offset-4 hover:text-primary">
+        <a href="/privacy" className="underline underline-offset-4 hover:text-primary">
           Privacy Policy
         </a>
       </div>

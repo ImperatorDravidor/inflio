@@ -24,6 +24,7 @@ import { ProjectService } from "@/lib/project-service"
 import { StagingService } from "@/lib/staging/staging-service"
 import { useClerkUser } from "@/hooks/use-clerk-user"
 import { cn } from "@/lib/utils"
+import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 
 interface StagingStep {
   id: string
@@ -80,11 +81,17 @@ export default function ProjectStagePage() {
   }, [projectId, user])
 
   const loadProjectAndContent = async () => {
+    if (!user?.id) {
+      toast.error('Please sign in to continue')
+      router.push('/signin')
+      return
+    }
+
     try {
       setLoading(true)
       
-      // Load project data with user ID for proper filtering
-      const projectData = await ProjectService.getProject(projectId, user?.id)
+      // Load project data
+      const projectData = await ProjectService.getProject(projectId)
       
       if (!projectData) {
         toast.error('Project not found')
@@ -94,25 +101,141 @@ export default function ProjectStagePage() {
       
       setProject(projectData)
       
-      // Initialize staged content from selected items
-      if (selectedContent.length > 0) {
-        const content = await StagingService.initializeStagedContent(
-          projectId,
-          selectedContent,
-          projectData
-        )
+      // Get content data from staging session
+      const { data: stagingSession, error: sessionError } = await StagingSessionsService.getStagingSession(
+        user.id,
+        projectId
+      )
+      
+      if (sessionError || !stagingSession) {
+        // Don't log errors in production
+        if (process.env.NODE_ENV === 'development' && sessionError) {
+          console.warn('Error loading staging session:', sessionError)
+        }
+        toast.error('No content selected for staging')
+        router.push(`/projects/${projectId}`)
+        return
+      }
+      
+      if (stagingSession) {
+        const { ids, items } = stagingSession
+        
+        // Initialize staged content from the stored data
+        const content = items.map((item: any) => {
+          // Ensure we have a type property
+          const contentType = item.type || 'clip'
+          
+          const platforms = determinePlatformsForContent({ ...item, type: contentType })
+          const platformContent: any = {}
+          
+          // Initialize platform content for each platform
+          platforms.forEach((platform: string) => {
+            platformContent[platform] = {
+              caption: '',
+              hashtags: [],
+              cta: '',
+              characterCount: 0,
+              isValid: true,
+              validationErrors: [],
+              altText: '',
+              link: ''
+            }
+          })
+          
+          // Extract media URLs based on content type
+          let mediaUrls: string[] = []
+          if (item.preview) {
+            mediaUrls = [item.preview]
+          } else if (item.metadata?.exportUrl) {
+            mediaUrls = [item.metadata.exportUrl]
+          } else if (item.metadata?.url) {
+            mediaUrls = [item.metadata.url]
+          }
+          
+          return {
+            id: item.id || Math.random().toString(36).substr(2, 9),
+            type: contentType,
+            title: item.title || 'Untitled',
+            description: item.description || '',
+            originalData: item.metadata || item,
+            platforms: platforms || ['instagram', 'x'], // Always ensure platforms is an array
+            platformContent,
+            mediaUrls,
+            thumbnailUrl: item.type === 'image' ? item.preview : undefined,
+            duration: item.metadata?.duration,
+            analytics: {
+              estimatedReach: item.metadata?.score ? Math.floor(item.metadata.score * 10000) : 5000
+            }
+          }
+        })
+        
+        setStagedContent(content)
+      } else if (selectedContent.length > 0) {
+        // Fallback: try to reconstruct from IDs if no stored content
+        const content = selectedContent.map(id => {
+          const [type, itemId] = id.split('-')
+          const platforms = ['instagram', 'x']
+          const platformContent: any = {}
+          
+          // Initialize platform content for each platform
+          platforms.forEach((platform: string) => {
+            platformContent[platform] = {
+              caption: '',
+              hashtags: [],
+              cta: '',
+              characterCount: 0,
+              isValid: true,
+              validationErrors: []
+            }
+          })
+          
+          return {
+            id,
+            type: type as any,
+            title: `${type.charAt(0).toUpperCase() + type.slice(1)} ${itemId}`,
+            description: '',
+            originalData: {},
+            platforms,
+            platformContent,
+            mediaUrls: [],
+            analytics: {
+              estimatedReach: 5000
+            }
+          }
+        })
         setStagedContent(content)
       } else {
-        // Redirect back if no content selected
+        // No content selected
+        toast.error('No content selected')
         router.push(`/projects/${projectId}`)
         return
       }
     } catch (error) {
-      console.error('Error loading project:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error loading project:', error)
+      }
       toast.error('Failed to load project data')
       router.push(`/projects/${projectId}`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Helper function to determine platforms based on content type
+  const determinePlatformsForContent = (item: any) => {
+    switch (item.type) {
+      case 'clip':
+        return ['instagram', 'tiktok', 'youtube-short']
+      case 'longform':
+        return ['youtube', 'facebook']
+      case 'blog':
+        return ['linkedin', 'x', 'facebook']
+      case 'image':
+        return ['instagram', 'facebook', 'linkedin', 'threads']
+      case 'social':
+        return ['instagram', 'x', 'threads']
+      default:
+        return ['instagram', 'x']
     }
   }
 
@@ -143,7 +266,9 @@ export default function ProjectStagePage() {
       // Redirect to social calendar
       router.push('/social/calendar')
     } catch (error) {
-      console.error('Error publishing content:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error publishing content:', error)
+      }
       toast.error('Failed to schedule content')
     } finally {
       setPublishing(false)

@@ -49,6 +49,16 @@ import {
   IconDots,
   IconClipboardCopy,
   IconRocket,
+  IconPlus,
+  IconShare,
+  IconCalendar,
+  IconUser,
+  IconAlertCircle,
+  IconFilePlus,
+  IconBrandMedium,
+  IconMail,
+  IconMessageCircle,
+  IconBrandReddit,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -73,6 +83,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { predefinedStyles, type ImageSuggestion } from "@/lib/ai-image-service"
 import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/blog-generation-dialog"
 import { ImageCarousel } from "@/components/image-carousel"
+import { ThumbnailCreator } from "@/components/thumbnail-creator"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { ContentStager } from "@/components/staging/content-stager"
+import { StagingReview } from "@/components/staging/staging-review"
+import type { StagedContent } from "@/lib/staging/staging-service"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { Platform } from "@/lib/social/types"
 
 const platformIcons = {
   twitter: IconBrandTwitter,
@@ -99,35 +117,62 @@ export default function ProjectDetailPage() {
   
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState<string>("overview")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
   const [showBlogDialog, setShowBlogDialog] = useState(false)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isExportingClips, setIsExportingClips] = useState(false)
   const [selectedClip, setSelectedClip] = useState<ClipData | null>(null)
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [expandedBlogId, setExpandedBlogId] = useState<string | null>(null)
-  const [showPublishingWorkflow, setShowPublishingWorkflow] = useState(false)
-  
-  // Image generation states
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [customPrompt, setCustomPrompt] = useState("")
+  const [selectedStyle, setSelectedStyle] = useState<string>("realistic")
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
+  const [generatedImages, setGeneratedImages] = useState<any[]>([])
   const [imageSuggestions, setImageSuggestions] = useState<ImageSuggestion[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
-  const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
-  const [customPrompt, setCustomPrompt] = useState("")
-  const [selectedStyle, setSelectedStyle] = useState("gradient")
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  
+  // Image generation states
   const [selectedQuality, setSelectedQuality] = useState("medium")
   const [selectedSize, setSelectedSize] = useState("1024x1024")
-  const [generatingImage, setGeneratingImage] = useState(false)
-  const [generatedImages, setGeneratedImages] = useState<any[]>([])
   const [streamingProgress, setStreamingProgress] = useState(0)
-  const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})  // Track slide count for each suggestion
+  const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
+  const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
+  
+  // Publishing Dialog States
+  const [showPublishDialog, setShowPublishDialog] = useState(false)
+  const [publishingStep, setPublishingStep] = useState<'select' | 'stage' | 'review'>('select')
+  const [selectedPublishContent, setSelectedPublishContent] = useState<any[]>([])
+  const [stagedContent, setStagedContent] = useState<StagedContent[]>([])
+  const [isPublishing, setIsPublishing] = useState(false)
 
   useEffect(() => {
     loadProject()
   }, [projectId])
+  
+
+  
+  // Update modal duration when selected clip changes
+  useEffect(() => {
+    if (showVideoModal && selectedClip?.exportUrl) {
+      const video = document.createElement('video')
+      video.src = selectedClip.exportUrl
+      video.addEventListener('loadedmetadata', () => {
+        const durationElement = document.querySelector(`[data-modal-clip-duration="${selectedClip.id}"]`)
+        if (durationElement && video.duration) {
+          durationElement.textContent = formatDuration(video.duration)
+        }
+      })
+      video.load()
+    }
+  }, [showVideoModal, selectedClip])
 
   // Load generated images when graphics tab is active
   useEffect(() => {
@@ -135,6 +180,43 @@ export default function ProjectDetailPage() {
       setGeneratedImages(project.folders.images)
     }
   }, [activeTab, project?.folders?.images])
+  
+  // Update durations after clips tab is active
+  useEffect(() => {
+    if (activeTab === 'clips' && project?.folders?.clips) {
+      // Give DOM time to render
+      const timer = setTimeout(() => {
+        project.folders.clips.forEach((clip: ClipData) => {
+          if (clip.exportUrl) {
+            const durationEl = document.querySelector(`[data-duration-id="${clip.id}"]`)
+            if (durationEl && durationEl.textContent === '--:--') {
+              const video = document.createElement('video')
+              video.src = clip.exportUrl
+              video.crossOrigin = 'anonymous'
+              
+              const handleMetadata = () => {
+                if (video.duration && !isNaN(video.duration)) {
+                  durationEl.textContent = formatDuration(video.duration)
+                } else {
+                  durationEl.textContent = '0:00'
+                }
+              }
+              
+              video.addEventListener('loadedmetadata', handleMetadata)
+              video.addEventListener('error', () => {
+                durationEl.textContent = '0:00'
+              })
+              
+              // Force load
+              video.load()
+            }
+          }
+        })
+      }, 300)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [activeTab, project?.folders?.clips])
 
   // Auto-redirect if processing
   useEffect(() => {
@@ -189,18 +271,6 @@ export default function ProjectDetailPage() {
         toast.error("Project not found")
         router.push("/projects")
         return
-      }
-      
-      // Debug clip durations
-      if (proj.folders.clips.length > 0) {
-        console.log("Clip durations:", proj.folders.clips.map(c => ({
-          id: c.id,
-          title: c.title,
-          duration: c.duration,
-          startTime: c.startTime,
-          endTime: c.endTime,
-          calculated: c.endTime - c.startTime
-        })))
       }
       
       setProject(proj)
@@ -474,7 +544,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   }
 
   const generateImage = async (prompt: string) => {
-    setGeneratingImage(true)
+    setIsGeneratingImage(true)
     setStreamingProgress(0)
     
     try {
@@ -519,7 +589,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         eventSource.onerror = () => {
           toast.error("Connection error during image generation")
           eventSource.close()
-          setGeneratingImage(false)
+          setIsGeneratingImage(false)
         }
       } else {
         // Regular POST request
@@ -552,7 +622,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
       toast.error(error instanceof Error ? error.message : "Failed to generate image")
       console.error("Image generation error:", error)
     } finally {
-      setGeneratingImage(false)
+      setIsGeneratingImage(false)
       setStreamingProgress(0)
     }
   }
@@ -567,7 +637,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     // If it's a carousel, generate multiple images
     if (suggestion.type === 'carousel') {
       const slides = carouselSlides[suggestion.id] || 3
-      setGeneratingImage(true)
+      setIsGeneratingImage(true)
       toast.info(`Generating ${slides}-slide carousel...`)
       
       try {
@@ -606,7 +676,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         toast.error("Failed to generate carousel")
         console.error("Carousel generation error:", error)
       } finally {
-        setGeneratingImage(false)
+        setIsGeneratingImage(false)
       }
     } else {
       // Single image generation
@@ -734,7 +804,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <Button 
                   size="lg"
                   className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
-                  onClick={() => setShowPublishingWorkflow(true)}
+                  onClick={() => setActiveTab('publish')}
                   disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
@@ -917,12 +987,97 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           <div className="lg:col-span-2 space-y-6">
             {/* Video Player */}
             <Card className="overflow-hidden border-primary/20 shadow-lg">
+              {/* Thumbnail Creator Button */}
+              <div className="p-4 border-b bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Video Preview</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {project.thumbnail_url ? 'Current thumbnail applied' : 'No thumbnail set'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Quick Thumbnail Actions */}
+                    {!project.thumbnail_url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={async () => {
+                          // Quick generate thumbnail from first frame
+                          try {
+                            const video = videoRef.current
+                            if (video) {
+                              video.currentTime = 5 // Seek to 5 seconds
+                              await new Promise(resolve => {
+                                video.addEventListener('seeked', resolve, { once: true })
+                              })
+                              
+                              const canvas = document.createElement('canvas')
+                              canvas.width = video.videoWidth
+                              canvas.height = video.videoHeight
+                              const ctx = canvas.getContext('2d')
+                              if (ctx) {
+                                ctx.drawImage(video, 0, 0)
+                                const dataUrl = canvas.toDataURL('image/png')
+                                
+                                // Update project with thumbnail
+                                const supabase = createSupabaseBrowserClient()
+                                await supabase
+                                  .from('projects')
+                                  .update({ thumbnail_url: dataUrl })
+                                  .eq('id', project.id)
+                                
+                                setThumbnailUrl(dataUrl)
+                                await loadProject()
+                                toast.success('Quick thumbnail generated!')
+                              }
+                            }
+                          } catch (error) {
+                            toast.error('Failed to generate quick thumbnail')
+                          }
+                        }}
+                      >
+                        <IconCamera className="h-4 w-4" />
+                        Quick Capture
+                      </Button>
+                    )}
+                    
+                  <ThumbnailCreator
+                    projectId={project.id}
+                    projectTitle={project.title}
+                    projectVideoUrl={project.video_url}
+                    contentAnalysis={project.content_analysis}
+                    currentThumbnail={project.thumbnail_url}
+                    onThumbnailUpdate={async (newThumbnailUrl: string) => {
+                      setThumbnailUrl(newThumbnailUrl)
+                      await loadProject()
+                      toast.success('Thumbnail updated successfully!')
+                    }}
+                  />
+                    
+                    {project.thumbnail_url && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1"
+                        onClick={() => window.open(project.thumbnail_url!, '_blank')}
+                      >
+                        <IconDownload className="h-4 w-4" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
               <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-accent/20">
                 {project.video_url ? (
                   <div className="aspect-video bg-black rounded-lg overflow-hidden">
                     <video
                       ref={videoRef}
                       src={project.video_url}
+                      poster={project.thumbnail_url || thumbnailUrl || undefined}  // Add poster image
                       className="w-full h-full object-contain"
                       controls
                       crossOrigin="anonymous"
@@ -1025,10 +1180,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       )}
                     </Button>
                     
-                    <Button size="sm" variant="outline" disabled>
-                      <IconBrandTwitter className="mr-2 h-4 w-4"/>
-                      Social Posts
-                      <Badge variant="secondary" className="ml-2 text-xs">Soon</Badge>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => setShowPublishDialog(true)}
+                      disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && (project.folders.images?.length || 0) === 0}
+                    >
+                      <IconRocket className="mr-2 h-4 w-4"/>
+                      Publish Content
                     </Button>
                     
                     <Button size="sm" variant="outline" disabled>
@@ -1042,11 +1201,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             </Card>
 
             {/* Content Tabs */}
-            <Card>
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="border-b">
+            <Card className="overflow-hidden h-[calc(100vh-400px)]">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+                <div className="border-b flex-shrink-0">
                   <div className="px-6 pt-6 pb-2">
-                    <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                    <TabsList className="grid w-full grid-cols-4 h-auto p-1">
                       <TabsTrigger value="overview" className="flex flex-col items-center gap-1 py-3">
                         <IconChartBar className="h-5 w-5" />
                         <span className="text-xs font-medium">Overview</span>
@@ -1067,26 +1226,12 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Blog Posts</span>
                         <span className="text-xs text-muted-foreground">{stats.totalBlogs > 0 ? `${stats.totalBlogs} created` : 'Generate'}</span>
                       </TabsTrigger>
-                      <TabsTrigger value="social" className="flex flex-col items-center gap-1 py-3">
-                        <IconShare2 className="h-5 w-5" />
-                        <span className="text-xs font-medium">Social Media</span>
-                        <span className="text-xs text-muted-foreground">{stats.totalSocialPosts > 0 ? `${stats.totalSocialPosts} posts` : 'Coming soon'}</span>
-                      </TabsTrigger>
                     </TabsList>
                   </div>
                 </div>
 
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="p-6"
-                  >
-                    <TabsContent value="overview" className="mt-0">
-                      <div className="space-y-6">
+                <div className="flex-1 overflow-y-auto p-6">
+                  <TabsContent value="overview" className="mt-0 space-y-6">
                         {/* Project Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                           <Card>
@@ -1191,17 +1336,21 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                         <>
                                           <video
                                             src={clip.exportUrl}
-                                            className="w-full h-full object-cover"
-                                            poster={clip.thumbnail || `${clip.exportUrl}#t=0.1`}
+                                        className="absolute inset-0 w-full h-full object-cover"
                                             muted
-                                            loop
                                             playsInline
                                             preload="metadata"
                                             controls={false}
+                                        crossOrigin="anonymous"
+                                        onLoadedMetadata={(e) => {
+                                          // Set initial frame to 1 second
+                                          const video = e.currentTarget
+                                          video.currentTime = 1
+                                        }}
                                             onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
                                             onMouseLeave={(e) => {
                                               e.currentTarget.pause()
-                                              e.currentTarget.currentTime = 0
+                                          e.currentTarget.currentTime = 1
                                             }}
                                           />
                                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
@@ -1440,12 +1589,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             </div>
                           </div>
                         )}
-                      </div>
                     </TabsContent>
 
                     <TabsContent value="clips" className="mt-0">
                       {project.folders.clips.length > 0 ? (
-                        <div className="space-y-6">
+                      <>
                           <div className="flex justify-between items-center mb-6">
                             <div>
                               <h2 className="text-2xl font-bold">
@@ -1477,285 +1625,210 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             </div>
                           </div>
                           
-                          {/* Virality Score Legend - Compact */}
-                          <Card className="bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
-                            <CardContent className="p-3">
-                              <div className="flex items-center gap-6 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <IconSparkles className="h-4 w-4 text-primary" />
-                                  <span className="font-medium">Score Guide:</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-red-500" />
-                                  <span><strong>90+</strong> Viral</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-orange-500" />
-                                  <span><strong>70-89</strong> High</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                                  <span><strong>50-69</strong> Good</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-gray-500" />
-                                  <span><strong>&lt;50</strong> Low</span>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-
-                          {/* Clips List - Large Format */}
-                          <div className="space-y-6 max-w-5xl mx-auto">
+                        {/* Clips List - Horizontal Layout */}
+                        <div className="space-y-4">
                             {[...project.folders.clips]
                               .sort((a, b) => (b.score || 0) - (a.score || 0))
-                              .map((clip: ClipData, index: number) => (
+                              .map((clip: ClipData, index: number) => {
+                                // More detailed scoring tiers
+                                const getScoreTier = (score: number) => {
+                                  const scorePercent = score * 100
+                                if (scorePercent >= 95) return { label: "🚀 Guaranteed Viral", color: "from-purple-600 to-pink-600", textColor: "text-purple-600", borderColor: "border-purple-500/50", bgColor: "bg-purple-50 dark:bg-purple-950/20" }
+                                if (scorePercent >= 90) return { label: "🔥 Viral Potential", color: "from-red-500 to-pink-500", textColor: "text-red-600", borderColor: "border-red-500/50", bgColor: "bg-red-50 dark:bg-red-950/20" }
+                                if (scorePercent >= 85) return { label: "💎 Exceptional", color: "from-orange-500 to-red-500", textColor: "text-orange-600", borderColor: "border-orange-500/50", bgColor: "bg-orange-50 dark:bg-orange-950/20" }
+                                if (scorePercent >= 80) return { label: "⭐ Outstanding", color: "from-yellow-500 to-orange-500", textColor: "text-yellow-700", borderColor: "border-yellow-500/50", bgColor: "bg-yellow-50 dark:bg-yellow-950/20" }
+                                if (scorePercent >= 75) return { label: "✨ Very Good", color: "from-green-500 to-yellow-500", textColor: "text-green-700", borderColor: "border-green-500/50", bgColor: "bg-green-50 dark:bg-green-950/20" }
+                                if (scorePercent >= 70) return { label: "👍 Good", color: "from-blue-500 to-green-500", textColor: "text-blue-700", borderColor: "border-blue-500/50", bgColor: "bg-blue-50 dark:bg-blue-950/20" }
+                                if (scorePercent >= 65) return { label: "📈 Above Average", color: "from-indigo-500 to-blue-500", textColor: "text-indigo-700", borderColor: "border-indigo-500/50", bgColor: "bg-indigo-50 dark:bg-indigo-950/20" }
+                                if (scorePercent >= 60) return { label: "✓ Decent", color: "from-gray-500 to-indigo-500", textColor: "text-gray-700", borderColor: "border-gray-500/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
+                                if (scorePercent >= 50) return { label: "💡 Has Potential", color: "from-gray-400 to-gray-500", textColor: "text-gray-600", borderColor: "border-gray-400/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
+                                return { label: "🔄 Needs Work", color: "from-gray-300 to-gray-400", textColor: "text-gray-500", borderColor: "border-gray-300/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
+                                }
+                                
+                                const tier = getScoreTier(clip.score || 0)
+                                
+                                return (
                               <motion.div
                                 key={clip.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
+                                  initial={{ opacity: 0, x: -20 }}
+                                  animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.05 }}
                               >
                                 <Card className={cn(
-                                  "overflow-hidden border-2 transition-all hover:shadow-xl",
-                                  (clip.score || 0) >= 0.9 ? "border-red-500/30 hover:border-red-500/50" :
-                                  (clip.score || 0) >= 0.7 ? "border-orange-500/30 hover:border-orange-500/50" :
-                                  (clip.score || 0) >= 0.5 ? "border-yellow-500/30 hover:border-yellow-500/50" :
-                                  "border-gray-500/30 hover:border-gray-500/50"
-                                )}>
-                                  <div className="flex flex-col lg:flex-row">
-                                    {/* Left: Video Player */}
-                                    <div className="lg:w-[300px] bg-black flex items-center justify-center p-4">
-                                      <div className="relative w-full max-w-[200px]">
-                                        <div 
-                                          className="aspect-[9/16] relative bg-black rounded-lg overflow-hidden cursor-pointer group"
-                                          onClick={() => {
-                                            setSelectedClip(clip)
-                                            setShowVideoModal(true)
+                                    "overflow-hidden transition-all hover:shadow-xl border-2",
+                                    tier.borderColor,
+                                    tier.bgColor
+                                  )}>
+                                    <div className="flex flex-col md:flex-row">
+                                      {/* Video Preview - Left Side */}
+                                      <div className="relative md:w-64 aspect-[9/16] md:aspect-auto bg-black cursor-pointer group"
+                                onClick={() => {
+                                  setSelectedClip(clip)
+                                  setShowVideoModal(true)
+                                }}>
+                                    {clip.exportUrl ? (
+                                      <>
+                                        <video
+                                          src={clip.exportUrl}
+                                          className="absolute inset-0 w-full h-full object-cover"
+                                          muted
+                                          playsInline
+                                          preload="metadata"
+                                          controls={false}
+                                          crossOrigin="anonymous"
+                                          onLoadedMetadata={(e) => {
+                                                // Set initial frame to 1 second
+                                            const video = e.currentTarget
+                                            video.currentTime = 1
+                                              }}
+                                              onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.pause()
+                                            e.currentTarget.currentTime = 1
                                           }}
-                                        >
-                                          {clip.exportUrl ? (
-                                            <>
-                                              <video
-                                                src={clip.exportUrl}
-                                                className="w-full h-full object-cover"
-                                                poster={clip.thumbnail || `${clip.exportUrl}#t=0.1`}
-                                                muted
-                                                loop
-                                                playsInline
-                                                preload="metadata"
-                                                controls={false}
-                                                onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
-                                                onMouseLeave={(e) => {
-                                                  e.currentTarget.pause()
-                                                  e.currentTarget.currentTime = 0
-                                                }}
-                                              />
-                                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                  <div className="bg-white/90 backdrop-blur-sm rounded-full p-3">
-                                                    <IconPlayerPlay className="h-8 w-8 text-black" />
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <div className="flex items-center justify-center h-full bg-gradient-to-b from-gray-900 to-gray-800">
-                                              <div className="text-center">
-                                                <IconVideoOff className="h-12 w-12 mx-auto mb-2 text-gray-600" />
-                                                <p className="text-xs text-gray-500">Processing...</p>
-                                              </div>
-                                            </div>
-                                          )}
-                                          
-                                          {/* Rank Badge */}
-                                          <div className="absolute top-3 left-3">
-                                            <Badge className={cn(
-                                              "font-bold text-sm px-3 py-1.5",
-                                              index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
-                                              index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
-                                              index === 2 ? "bg-gradient-to-r from-orange-400 to-orange-600 text-white" :
-                                              "bg-black/70 text-white"
-                                            )}>
-                                              #{index + 1}
-                                            </Badge>
-                                          </div>
-                                          
-                                          {/* Duration */}
-                                          <div className="absolute bottom-3 right-3">
-                                            <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
-                                              {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
-                                            </div>
-                                          </div>
-                                        </div>
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                                      </>
+                                    ) : (
+                                      <div className="flex items-center justify-center h-full">
+                                        <IconVideoOff className="h-12 w-12 text-gray-600" />
+                                      </div>
+                                    )}
+                                    
+                                    {/* Rank Badge */}
+                                    {index < 3 && (
+                                      <div className="absolute top-3 left-3">
+                                        <Badge className={cn(
+                                          "font-bold text-sm px-3 py-1.5 shadow-lg",
+                                          index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
+                                          index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
+                                          "bg-gradient-to-r from-orange-400 to-orange-600 text-white"
+                                        )}>
+                                          #{index + 1}
+                                        </Badge>
+                                      </div>
+                                    )}
+                                    
+                                        {/* Play overlay */}
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <div className="bg-white rounded-full p-3 shadow-xl">
+                                            <IconPlayerPlay className="h-8 w-8 text-black" />
                                       </div>
                                     </div>
                                     
-                                    {/* Right: Clip Details */}
-                                    <div className="flex-1 p-6 space-y-4">
-                                      {/* Header with Title and Actions */}
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                          <h3 className="text-xl font-bold mb-1">
-                                            {clip.title || `Clip ${index + 1}`}
-                                          </h3>
-                                          {clip.description && (
-                                            <p className="text-sm text-muted-foreground">{clip.description}</p>
+                                    {/* Duration */}
+                                    <div className="absolute bottom-3 right-3">
+                                      <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
+                                            {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                      {/* Clip Details - Right Side */}
+                                      <div className="flex-1 p-6 space-y-4">
+                                    <div>
+                                          <h3 className="text-xl font-semibold mb-2">
+                                        {clip.title || 'Untitled Clip'}
+                                      </h3>
+                                          <div className="flex items-center gap-3 mb-3">
+                                        <Badge className={cn(
+                                              "text-sm font-medium",
+                                          "bg-gradient-to-r", tier.color,
+                                          "text-white border-0"
+                                        )}>
+                                          {tier.label}
+                                        </Badge>
+                                            <span className={cn("text-2xl font-bold", tier.textColor)}>
+                                              {Math.round((clip.score || 0) * 100)}/100
+                                            </span>
+                                      </div>
+                                    </div>
+                                        
+                                        {/* Virality Score Explanation */}
+                                        {clip.viralityExplanation && (
+                                          <div className="bg-background rounded-lg p-4 border">
+                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                              <IconSparkles className="h-4 w-4 text-primary" />
+                                              AI Analysis
+                                            </h4>
+                                            <p className="text-sm text-muted-foreground">
+                                              {clip.viralityExplanation}
+                                            </p>
+                                          </div>
+                                        )}
+                                    
+                                    {/* Score Progress */}
+                                        <div className="space-y-2">
+                                          <div className="flex justify-between items-center text-sm">
+                                        <span className="text-muted-foreground">Virality Score</span>
+                                            <span className="font-medium">
+                                              {clip.score >= 0.8 ? "Excellent" :
+                                               clip.score >= 0.7 ? "Good" :
+                                               clip.score >= 0.6 ? "Fair" :
+                                               "Needs Improvement"}
+                                        </span>
+                                      </div>
+                                          <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                                        <motion.div
+                                          className={cn(
+                                            "absolute left-0 top-0 h-full rounded-full",
+                                            "bg-gradient-to-r", tier.color
                                           )}
-                                        </div>
-                                        <div className="flex gap-2 shrink-0">
+                                          initial={{ width: 0 }}
+                                          animate={{ width: `${(clip.score || 0) * 100}%` }}
+                                          transition={{ duration: 1, delay: index * 0.1 }}
+                                        />
+                                      </div>
+                                    </div>
+                                    
+                                        {/* Quick Actions */}
+                                        <div className="flex items-center gap-2 pt-2">
                                           <Button
                                             size="sm"
-                                            variant="outline"
+                                            variant="default"
                                             onClick={() => {
                                               setSelectedClip(clip)
                                               setShowVideoModal(true)
                                             }}
                                           >
-                                            <IconMaximize className="h-4 w-4" />
+                                            <IconPlayerPlay className="h-4 w-4 mr-2" />
+                                            Play
                                           </Button>
                                           <Button
                                             size="sm"
-                                            disabled={!clip.exportUrl}
-                                            onClick={() => {
+                                            variant="outline"
+                                            onClick={async () => {
                                               if (clip.exportUrl) {
-                                                const link = document.createElement('a')
-                                                link.href = clip.exportUrl
-                                                link.download = `${clip.title || 'clip'}.mp4`
-                                                document.body.appendChild(link)
-                                                link.click()
-                                                document.body.removeChild(link)
-                                                toast.success('Download started')
+                                                const a = document.createElement('a')
+                                                a.href = clip.exportUrl
+                                                a.download = `clip-${index + 1}.mp4`
+                                                a.click()
                                               }
                                             }}
                                           >
-                                            <IconDownload className="h-4 w-4 mr-1" />
+                                            <IconDownload className="h-4 w-4 mr-2" />
                                             Download
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => copyToClipboard(clip.title || 'Untitled Clip', clip.id)}
+                                          >
+                                            {copiedId === clip.id ? (
+                                              <IconCheck className="h-4 w-4 text-green-600" />
+                                            ) : (
+                                              <IconCopy className="h-4 w-4" />
+                                            )}
                                           </Button>
                                         </div>
                                       </div>
-                                      
-                                      {/* Virality Score Section */}
-                                      <div className={cn(
-                                        "p-4 rounded-lg border",
-                                        (clip.score || 0) >= 0.9 ? "bg-red-500/10 border-red-500/30" :
-                                        (clip.score || 0) >= 0.7 ? "bg-orange-500/10 border-orange-500/30" :
-                                        (clip.score || 0) >= 0.5 ? "bg-yellow-500/10 border-yellow-500/30" :
-                                        "bg-gray-500/10 border-gray-500/30"
-                                      )}>
-                                        <div className="flex items-center justify-between mb-3">
-                                          <div className="flex items-center gap-3">
-                                            <div className={cn(
-                                              "p-2 rounded-lg",
-                                              (clip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500 to-pink-500" :
-                                              (clip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500 to-yellow-500" :
-                                              (clip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500 to-green-500" :
-                                              "bg-gradient-to-br from-gray-500 to-gray-600"
-                                            )}>
-                                              <IconSparkles className="h-5 w-5 text-white" />
-                                            </div>
-                                            <div>
-                                              <p className="text-sm font-medium text-muted-foreground">Virality Score</p>
-                                              <div className="flex items-baseline gap-2">
-                                                <span className="text-3xl font-bold">{Math.round((clip.score || 0) * 100)}</span>
-                                                <span className="text-lg text-muted-foreground">/100</span>
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <Badge className={cn(
-                                            "text-sm px-3 py-1",
-                                            (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white" :
-                                            (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white" :
-                                            (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black" :
-                                            "bg-gradient-to-r from-gray-500 to-gray-600 text-white"
-                                          )}>
-                                            {(clip.score || 0) >= 0.9 ? "🔥 Viral Potential" :
-                                             (clip.score || 0) >= 0.7 ? "⚡ High Engagement" :
-                                             (clip.score || 0) >= 0.5 ? "✨ Good Content" :
-                                             "💡 Needs Improvement"}
-                                          </Badge>
-                                        </div>
-                                        
-                                        {/* Score Bar */}
-                                        <div className="relative h-2 bg-black/20 rounded-full overflow-hidden mb-3">
-                                          <motion.div
-                                            className={cn(
-                                              "absolute left-0 top-0 h-full rounded-full",
-                                              (clip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
-                                              (clip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
-                                              (clip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
-                                              "bg-gray-400"
-                                            )}
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${(clip.score || 0) * 100}%` }}
-                                            transition={{ duration: 0.8, delay: index * 0.05 }}
-                                          />
-                                        </div>
-                                        
-                                        {/* Virality Explanation */}
-                                        <div className="space-y-2">
-                                          <p className="text-sm font-medium">Why this score?</p>
-                                          {clip.viralityExplanation ? (
-                                            <p className="text-sm text-muted-foreground leading-relaxed">
-                                              {clip.viralityExplanation}
-                                            </p>
-                                          ) : (
-                                            <div className="grid grid-cols-2 gap-3 text-sm">
-                                              <div>
-                                                <p className="font-medium mb-1">✅ Strengths:</p>
-                                                <ul className="text-muted-foreground space-y-0.5 text-xs">
-                                                  <li>• Strong visual appeal</li>
-                                                  <li>• Optimal {formatDuration(clip.duration || (clip.endTime - clip.startTime))} duration</li>
-                                                  <li>• Engaging content hook</li>
-                                                </ul>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium mb-1">💡 To improve:</p>
-                                                <ul className="text-muted-foreground space-y-0.5 text-xs">
-                                                  <li>• Add trending audio</li>
-                                                  <li>• Include captions/text</li>
-                                                  <li>• Use hashtags wisely</li>
-                                                </ul>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      {/* Additional Info */}
-                                      <div className="flex items-center gap-4 text-sm">
-                                        {clip.type && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-muted-foreground">Type:</span>
-                                            <Badge variant="outline" className="capitalize">{clip.type}</Badge>
-                                          </div>
-                                        )}
-                                        {clip.tags && clip.tags.length > 0 && (
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-muted-foreground">Tags:</span>
-                                            <div className="flex gap-1">
-                                              {clip.tags.slice(0, 3).map(tag => (
-                                                <Badge key={tag} variant="secondary" className="text-xs">
-                                                  {tag}
-                                                </Badge>
-                                              ))}
-                                              {clip.tags.length > 3 && (
-                                                <Badge variant="secondary" className="text-xs">
-                                                  +{clip.tags.length - 3}
-                                                </Badge>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
                                     </div>
-                                  </div>
                                 </Card>
                               </motion.div>
-                            ))}
+                              )
+                            })}
                           </div>
-                          
-                        </div>
+                      </>
                       ) : (
                         <EmptyState
                           icon={<IconScissors className="h-16 w-16 text-primary/50" />}
@@ -2122,10 +2195,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
                             <Button
                               onClick={handleGenerateCustom}
-                              disabled={generatingImage || !customPrompt.trim()}
+                            disabled={isGeneratingImage || !customPrompt.trim()}
                               className="w-full"
                             >
-                              {generatingImage ? (
+                            {isGeneratingImage ? (
                                 <>
                                   <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
                                   Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
@@ -2396,8 +2469,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         )}
                       </div>
                     </TabsContent>
-                  </motion.div>
-                </AnimatePresence>
+
+                    <TabsContent value="publish" className="mt-0">
+                      <PublishingWorkflow
+                        project={project}
+                        onPublish={handlePublishContent}
+                        onEditBlog={handleEditBlog}
+                        className="border-0 shadow-none"
+                      />
+                    </TabsContent>
+                </div>
               </Tabs>
             </Card>
           </div>
@@ -2523,17 +2604,21 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             <div className="bg-background rounded-lg overflow-hidden shadow-2xl">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
                 {/* Left: Video Player */}
-                <div className="bg-black flex items-center justify-center">
+                <div className="bg-black relative flex items-center justify-center">
                   <div className="w-full max-w-sm">
-                    <div className="aspect-[9/16] relative">
+                    <div className="aspect-[9/16] relative flex items-center justify-center">
                       {selectedClip.exportUrl ? (
-                        <video
-                          src={selectedClip.exportUrl}
-                          className="w-full h-full object-contain"
-                          controls
-                          autoPlay
-                          playsInline
-                        />
+                                                  <video
+                            key={selectedClip.id}
+                            src={selectedClip.exportUrl}
+                            className="absolute inset-0 w-full h-full object-contain"
+                            style={{ maxWidth: '100%', maxHeight: '100%' }}
+                            controls
+                            autoPlay
+                            playsInline
+                            muted={false}
+                            crossOrigin="anonymous"
+                          />
                       ) : (
                         <div className="flex items-center justify-center h-full">
                           <div className="text-center">
@@ -2551,98 +2636,60 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   {/* Title and Stats */}
                   <div>
                     <h2 className="text-2xl font-bold mb-3">{selectedClip.title || 'Untitled Clip'}</h2>
-                    <div className="flex flex-wrap gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                          <IconClock className="h-4 w-4 text-primary" />
+                                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <IconClock className="h-4 w-4" />
+                            <span data-modal-clip-duration={selectedClip.id}>Loading...</span>
+                          </span>
+                          {selectedClip.type && (
+                            <>
+                              <span>•</span>
+                              <Badge variant="outline" className="capitalize">{selectedClip.type}</Badge>
+                            </>
+                          )}
                         </div>
-                        <div>
-                          <p className="text-muted-foreground text-xs">Duration</p>
-                          <p className="font-medium">{formatDuration(selectedClip.duration || selectedClip.endTime - selectedClip.startTime)}</p>
-                        </div>
-                      </div>
-                      {selectedClip.createdAt && (
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 rounded-lg bg-blue-500/10">
-                            <IconClock className="h-4 w-4 text-blue-500" />
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground text-xs">Created</p>
-                            <p className="font-medium">{new Date(selectedClip.createdAt).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                   
-                  {/* Prominent Virality Score Section */}
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <IconSparkles className="h-5 w-5 text-primary" />
-                      Virality Score Analysis
-                    </h3>
-                    
-                    {/* Large Visual Score Display */}
-                    <div className={cn(
-                      "relative p-6 rounded-xl",
-                      (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500/20 to-pink-500/20 border-red-500/30" :
-                      (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500/20 to-yellow-500/20 border-orange-500/30" :
-                      (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500/20 to-green-500/20 border-yellow-500/30" :
-                      "bg-gradient-to-br from-gray-500/20 to-gray-600/20 border-gray-500/30",
-                      "border-2"
-                    )}>
+                  {/* Enhanced Virality Score Details */}
+                  <div className={cn(
+                    "p-6 rounded-xl border-2 relative overflow-hidden",
+                    (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500/20 via-pink-500/10 to-transparent border-red-500/40" :
+                    (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500/20 via-yellow-500/10 to-transparent border-orange-500/40" :
+                    (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500/20 via-green-500/10 to-transparent border-yellow-500/40" :
+                    "bg-gradient-to-br from-gray-500/20 via-gray-600/10 to-transparent border-gray-500/40"
+                  )}>
+                    <div className="relative">
                       <div className="flex items-center justify-between mb-4">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-1">Overall Score</p>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-bold">{Math.round((selectedClip.score || 0) * 100)}</span>
-                            <span className="text-lg text-muted-foreground">/100</span>
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "p-3 rounded-xl shadow-lg",
+                            (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500 to-pink-500" :
+                            (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500 to-yellow-500" :
+                            (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500 to-green-500" :
+                            "bg-gradient-to-br from-gray-500 to-gray-600"
+                          )}>
+                            <IconSparkles className="h-6 w-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold">Virality Score Analysis</h3>
+                            <div className="flex items-baseline gap-2">
+                              <span className={cn(
+                                "text-3xl font-bold",
+                                (selectedClip.score || 0) >= 0.9 ? "text-red-600" :
+                                (selectedClip.score || 0) >= 0.7 ? "text-orange-600" :
+                                (selectedClip.score || 0) >= 0.5 ? "text-yellow-600" :
+                                "text-gray-600"
+                              )}>{Math.round((selectedClip.score || 0) * 100)}</span>
+                              <span className="text-lg text-muted-foreground">/100</span>
+                            </div>
                           </div>
                         </div>
-                        <div className={cn(
-                          "p-4 rounded-full",
-                          (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-br from-red-500 to-pink-500" :
-                          (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-br from-orange-500 to-yellow-500" :
-                          (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-br from-yellow-500 to-green-500" :
-                          "bg-gradient-to-br from-gray-500 to-gray-600"
-                        )}>
-                          <IconSparkles className="h-8 w-8 text-white" />
-                        </div>
-                      </div>
-                      
-                      {/* Score Bar */}
-                      <div className="space-y-2">
-                        <div className="relative h-2 bg-black/20 rounded-full overflow-hidden">
-                          <motion.div
-                            className={cn(
-                              "absolute left-0 top-0 h-full rounded-full",
-                              (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500" :
-                              (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500" :
-                              (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500" :
-                              "bg-gray-400"
-                            )}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(selectedClip.score || 0) * 100}%` }}
-                            transition={{ duration: 1, delay: 0.5 }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Poor</span>
-                          <span>Average</span>
-                          <span>Good</span>
-                          <span>Excellent</span>
-                          <span>Viral</span>
-                        </div>
-                      </div>
-                      
-                      {/* Performance Badge */}
-                      <div className="mt-4 flex items-center justify-center">
                         <Badge className={cn(
-                          "text-sm px-4 py-1",
-                          (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white" :
-                          (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white" :
-                          (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black" :
-                          "bg-gradient-to-r from-gray-500 to-gray-600 text-white"
+                          "text-sm px-4 py-1.5 font-semibold shadow-md",
+                          (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white border-0" :
+                          (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white border-0" :
+                          (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black border-0" :
+                          "bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0"
                         )}>
                           {(selectedClip.score || 0) >= 0.9 ? "🔥 Viral Potential" :
                            (selectedClip.score || 0) >= 0.7 ? "⚡ High Engagement" :
@@ -2650,33 +2697,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                            "💡 Needs Improvement"}
                         </Badge>
                       </div>
-                    </div>
-                    
-                    {/* Detailed Explanation */}
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium">Why this score?</p>
-                      {selectedClip.viralityExplanation ? (
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {selectedClip.viralityExplanation}
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="font-medium mb-1">✅ Strengths:</p>
-                            <ul className="text-muted-foreground space-y-0.5 text-xs">
-                              <li>• Strong visual appeal</li>
-                              <li>• Optimal {formatDuration(selectedClip.duration || selectedClip.endTime - selectedClip.startTime)} duration</li>
-                              <li>• Engaging content hook</li>
-                            </ul>
-                          </div>
-                          <div>
-                            <p className="font-medium mb-1">💡 To improve:</p>
-                            <ul className="text-muted-foreground space-y-0.5 text-xs">
-                              <li>• Add trending audio</li>
-                              <li>• Include captions/text</li>
-                              <li>• Use hashtags wisely</li>
-                            </ul>
-                          </div>
+                      
+                      {/* Score Bar */}
+                      <div className="mb-4">
+                        <div className="relative h-3 bg-black/10 rounded-full overflow-hidden">
+                          <motion.div
+                            className={cn(
+                              "absolute left-0 top-0 h-full rounded-full shadow-lg",
+                              (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 via-pink-500 to-red-400" :
+                              (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-400" :
+                              (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 via-green-500 to-yellow-400" :
+                              "bg-gradient-to-r from-gray-500 to-gray-400"
+                            )}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(selectedClip.score || 0) * 100}%` }}
+                            transition={{ duration: 1, ease: "easeOut" }}
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Detailed Explanation */}
+                      {selectedClip.viralityExplanation && (
+                        <div className="pt-4 border-t">
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            <span className="font-semibold text-foreground">Analysis:</span> {selectedClip.viralityExplanation}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -2695,42 +2740,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </div>
                   )}
                   
-                  {/* Tags */}
-                  {selectedClip.tags && selectedClip.tags.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Tags</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedClip.tags.map((tag, idx) => (
-                          <Badge key={idx} variant="secondary">{tag}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+
                   
                   {/* Actions */}
-                  <div className="flex gap-3 pt-4">
-                    <Button
-                      className="flex-1"
-                      size="lg"
-                      onClick={() => {
-                        if (selectedClip.exportUrl) {
-                          const link = document.createElement('a')
-                          link.href = selectedClip.exportUrl
-                          link.download = `${selectedClip.title || 'clip'}.mp4`
-                          document.body.appendChild(link)
-                          link.click()
-                          document.body.removeChild(link)
-                          toast.success('Download started')
-                        }
-                      }}
-                      disabled={!selectedClip.exportUrl}
-                    >
-                      <IconDownload className="h-5 w-5 mr-2" />
-                      Download Video
-                    </Button>
-                    {selectedClip.transcript && (
+                  {selectedClip.transcript && (
+                    <div className="pt-4">
                       <Button
-                        variant="outline"
+                        className="w-full"
                         size="lg"
                         onClick={() => {
                           copyToClipboard(selectedClip.transcript!, 'clip-transcript')
@@ -2740,8 +2756,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <IconCopy className="h-5 w-5 mr-2" />
                         Copy Transcript
                       </Button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2749,26 +2765,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         </div>
       )}
 
-      {/* Publishing Workflow Modal */}
-      {showPublishingWorkflow && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-5xl w-full">
-            <PublishingWorkflow
-              project={project}
-              onPublish={handlePublishContent}
-              onEditBlog={handleEditBlog}
-              className="shadow-2xl"
-            />
-            <Button
-              className="mt-4 w-full"
-              variant="outline"
-              onClick={() => setShowPublishingWorkflow(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+
       
       {/* Blog Generation Dialog */}
       <BlogGenerationDialog 
@@ -2777,6 +2774,158 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         onGenerate={handleGenerateBlog}
         isGenerating={isGeneratingBlog}
       />
+
+      {/* Copy Success Alert */}
+      {copiedId && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Alert>
+            <IconCheck className="h-4 w-4" />
+            <AlertDescription>Copied to clipboard!</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {/* Publishing Dialog */}
+      <Dialog open={showPublishDialog} onOpenChange={setShowPublishDialog}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              {publishingStep === 'select' && 'Select Content to Publish'}
+              {publishingStep === 'stage' && 'Stage Your Content'}
+              {publishingStep === 'review' && 'Review & Publish'}
+            </DialogTitle>
+            <DialogDescription>
+              {publishingStep === 'select' && 'Choose which content you want to publish and stage for distribution'}
+              {publishingStep === 'stage' && 'Configure captions and settings for each platform'}
+              {publishingStep === 'review' && 'Review your staged content before publishing'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto">
+            {publishingStep === 'select' && (
+              <PublishingWorkflow
+                project={project}
+                onPublish={(selectedContent) => {
+                  setSelectedPublishContent(selectedContent)
+                  setPublishingStep('stage')
+                }}
+                className="border-0 shadow-none"
+              />
+            )}
+
+            {publishingStep === 'stage' && (
+              <ContentStager
+                content={selectedPublishContent.map(item => {
+                  // Transform ContentItem to StagedContent format
+                  const platforms: Platform[] = ['instagram', 'x', 'linkedin', 'facebook']
+                  const platformContent: Record<Platform, any> = {} as Record<Platform, any>
+                  
+                  // Initialize platform content for each platform
+                  platforms.forEach(platform => {
+                    platformContent[platform] = {
+                      caption: '',
+                      hashtags: [],
+                      characterCount: 0,
+                      isValid: true,
+                      validationErrors: []
+                    }
+                  })
+                  
+                  // Map content type correctly
+                  let contentType: 'clip' | 'blog' | 'image' | 'carousel' = 'clip'
+                  if (item.type === 'blog') contentType = 'blog'
+                  else if (item.type === 'image') contentType = 'image'
+                  else if (item.type === 'carousel') contentType = 'carousel'
+                  else contentType = 'clip'
+                  
+                  return {
+                    id: item.id,
+                    type: contentType,
+                    title: item.title,
+                    description: item.description || '',
+                    originalData: {
+                      ...item.metadata,
+                      projectId: project?.id,
+                      score: item.metadata?.score,
+                      transcript: item.metadata?.transcript,
+                      viralityExplanation: item.metadata?.viralityExplanation
+                    },
+                    platforms,
+                    platformContent,
+                    mediaUrls: item.metadata?.exportUrl ? [item.metadata.exportUrl] : [],
+                    thumbnailUrl: item.preview || item.metadata?.thumbnail || item.metadata?.url,
+                    duration: item.metadata?.duration,
+                    analytics: {
+                      estimatedReach: 0,
+                      bestPostingTime: new Date()
+                    }
+                  }
+                })}
+                onUpdate={(updatedContent) => setStagedContent(updatedContent)}
+                onNext={() => setPublishingStep('review')}
+              />
+            )}
+
+            {publishingStep === 'review' && (
+              <StagingReview
+                scheduledPosts={stagedContent.map(content => ({
+                  stagedContent: content,
+                  scheduledDate: new Date(),
+                  platforms: content.platforms || [],
+                  optimizationReason: 'Optimal time for engagement',
+                  suggestedHashtags: content.platformContent[content.platforms[0]]?.hashtags || [],
+                  engagementPrediction: {
+                    score: 0.8,
+                    bestTime: true,
+                    reasoning: 'High engagement expected based on content type and timing'
+                  }
+                }))}
+                onPublish={async () => {
+                  setIsPublishing(true)
+                  try {
+                    // Here you would implement the actual publishing logic
+                    // For now, we'll simulate it
+                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    
+                    toast.success('Content published successfully!')
+                    setShowPublishDialog(false)
+                    setPublishingStep('select')
+                    setSelectedPublishContent([])
+                    setStagedContent([])
+                    
+                    // Refresh the project to show updated status
+                    await loadProject()
+                  } catch (error) {
+                    toast.error('Failed to publish content')
+                    console.error('Publishing error:', error)
+                  } finally {
+                    setIsPublishing(false)
+                  }
+                }}
+                onBack={() => setPublishingStep('stage')}
+                publishing={isPublishing}
+              />
+            )}
+          </div>
+
+          {publishingStep !== 'review' && (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (publishingStep === 'stage') {
+                    setPublishingStep('select')
+                  } else {
+                    setShowPublishDialog(false)
+                  }
+                }}
+              >
+                {publishingStep === 'stage' ? 'Back' : 'Cancel'}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

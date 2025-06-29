@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { auth as clerkAuth } from '@clerk/nextjs/server'
 import { generateOAuthUrl, validatePlatformConfig } from '@/lib/social/oauth-config'
-import { handleError, AppError } from '@/lib/error-handler'
 import { z } from 'zod'
+import { cookies } from 'next/headers'
+import crypto from 'crypto'
 
 const connectSchema = z.object({
   platform: z.enum(['instagram', 'facebook', 'x', 'linkedin', 'youtube', 'tiktok', 'threads'])
@@ -10,8 +11,8 @@ const connectSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check
-    const { userId } = await auth()
+    // Auth check with Clerk
+    const { userId } = await clerkAuth()
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -35,22 +36,31 @@ export async function POST(request: NextRequest) {
     // Check if platform is configured
     if (!validatePlatformConfig(platform)) {
       return NextResponse.json(
-        { 
-          error: 'Platform not configured',
-          message: `Missing OAuth credentials for ${platform}. Please add them to your environment variables.`
-        },
-        { status: 503 }
+        { error: `${platform} is not configured. Please add OAuth credentials to your environment variables.` },
+        { status: 400 }
       )
     }
 
-    // Generate state parameter for CSRF protection
-    const state = generateStateParam(userId, platform)
-    
-    // Store state in session/cache for validation
-    // In production, use Redis or similar
-    // await storeState(state, userId, platform)
+    // Generate state for CSRF protection
+    const state = crypto.randomBytes(32).toString('hex')
 
-    // Generate OAuth URL
+    // Store state and user info in cookies for the callback
+    const cookieStore = await cookies()
+    
+    // Set cookies with proper options
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      maxAge: 60 * 10, // 10 minutes
+      path: '/'
+    }
+    
+    cookieStore.set('oauth_state', state, cookieOptions)
+    cookieStore.set('clerk_user_id', userId, cookieOptions)
+    cookieStore.set('connecting_platform', platform, cookieOptions)
+
+    // Generate OAuth URL directly
     const authUrl = generateOAuthUrl(platform, state)
 
     return NextResponse.json({
@@ -59,27 +69,13 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    handleError(error, 'social-connect')
-    
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.statusCode || 500 }
-      )
-    }
-    
+    console.error('Social connect error:', error)
     return NextResponse.json(
-      { error: 'Failed to initiate connection' },
+      { 
+        error: 'Failed to initiate OAuth connection',
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      },
       { status: 500 }
     )
   }
-}
-
-function generateStateParam(userId: string, platform: string): string {
-  // In production, use a proper state generation method
-  const timestamp = Date.now()
-  const data = `${userId}:${platform}:${timestamp}`
-  
-  // Simple base64 encoding for demo - use proper encryption in production
-  return Buffer.from(data).toString('base64')
 } 
