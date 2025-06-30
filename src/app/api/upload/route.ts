@@ -38,8 +38,18 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Generate a unique file name
-    const fileName = `${uuidv4()}-${file.name}`
+    // Generate a unique file name with sanitization
+    // Remove special characters and replace with safe alternatives
+    const sanitizedName = file.name
+      .replace(/[｜|]/g, '-') // Replace pipe characters with dash
+      .replace(/[^\w\s.-]/g, '') // Remove any other special characters except word chars, space, dot, dash
+      .replace(/\s+/g, '-') // Replace spaces with dashes
+      .replace(/-+/g, '-') // Replace multiple dashes with single dash
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing dashes
+    
+    // Ensure we have a valid filename after sanitization
+    const finalName = sanitizedName || 'video.mp4'
+    const fileName = `${uuidv4()}-${finalName}`
 
     // Upload file to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage

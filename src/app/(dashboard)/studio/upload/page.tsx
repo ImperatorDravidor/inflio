@@ -42,7 +42,7 @@ export default function UploadPage() {
   const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
     transcription: true,
-    clips: true,
+    clips: false,  // Default to false - user must explicitly check it
     blog: false,
     social: false,
     podcast: false
@@ -148,7 +148,7 @@ export default function UploadPage() {
     setShowWorkflowSelection(false)
     setWorkflowOptions({
       transcription: true,
-      clips: true,
+      clips: false,  // Reset to false
       blog: false,
       social: false,
       podcast: false
@@ -168,15 +168,6 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     if (!file || !videoMetadata) return;
-
-    // For now, we're focusing on transcription and clips
-    const simplifiedOptions = {
-      transcription: true,
-      clips: true,
-      blog: false,
-      social: false,
-      podcast: false
-    };
 
     // Check usage limits before processing
     if (!UsageService.canProcessVideo()) {
@@ -214,7 +205,7 @@ export default function UploadPage() {
       toast.success("Video uploaded successfully!", { id: toastId });
       setUploadProgress(100);
 
-      // Step 2: Create the project with simplified workflow options
+      // Step 2: Create the project with selected workflow options
       toast.info("Creating project...");
       const project = await ProjectService.createProject(
         projectTitle || file.name.replace(/\.[^/.]+$/, ""),
@@ -222,7 +213,7 @@ export default function UploadPage() {
         supabaseVideoUrl,
         thumbnail,
         videoMetadata,
-        simplifiedOptions, // Use simplified options
+        workflowOptions,
         userId || undefined
       );
 
@@ -240,8 +231,12 @@ export default function UploadPage() {
         toast.warning("Usage limit reached. This may be your last video for this month.");
       }
       
-      // Step 3: Start the processing workflows (transcription and clips)
-      toast.info('Starting AI processing...');
+      // Step 3: Start the processing workflows
+      const processingWorkflows = [];
+      if (workflowOptions.transcription) processingWorkflows.push('transcript');
+      if (workflowOptions.clips) processingWorkflows.push('clips');
+      
+      toast.info(`Starting AI processing: ${processingWorkflows.join(' & ')}...`);
       await ProjectService.startProcessing(project.id);
       
       toast.success("Processing started! You'll be redirected to see the progress.");
@@ -267,7 +262,7 @@ export default function UploadPage() {
           Upload Your <span className="gradient-text">Video</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Transform your video content into transcriptions, clips, blog posts, and more with AI
+          Start with AI transcription and smart clips. Generate blog posts, images, and more after processing.
         </p>
       </div>
 
@@ -337,6 +332,7 @@ export default function UploadPage() {
                             src={videoPreview}
                             className="w-full rounded-xl bg-black shadow-2xl"
                             controls
+                            controlsList="nodownload"
                           />
                           <Button
                             size="icon"
@@ -379,7 +375,7 @@ export default function UploadPage() {
                                 className="w-full"
                                 disabled={!projectTitle.trim()}
                               >
-                                Next: Select Workflows
+                                Next: Processing Options
                                 <IconArrowRight className="h-4 w-4 ml-2" />
                               </Button>
                             </div>
@@ -395,14 +391,6 @@ export default function UploadPage() {
                               disabled={uploading}
                               variant="grid"
                             />
-                            
-                            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20">
-                              <IconSparkles className="h-4 w-4 text-blue-600" />
-                              <AlertDescription>
-                                <strong>Quick Start:</strong> We'll automatically generate transcriptions and smart clips from your video. 
-                                More features like blog posts and social media content are coming soon!
-                              </AlertDescription>
-                            </Alert>
                           </div>
                         )}
                         
@@ -481,7 +469,7 @@ export default function UploadPage() {
                         onClick={handleUpload} 
                         size="lg" 
                         className="gradient-premium hover:opacity-90 transition-opacity px-8"
-                        disabled={!projectTitle.trim() || !Object.values(workflowOptions).some(v => v)}
+                        disabled={!projectTitle.trim()}
                       >
                         <IconSparkles className="h-5 w-5 mr-2" />
                         Start Processing

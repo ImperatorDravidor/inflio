@@ -1073,13 +1073,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               
               <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-accent/20">
                 {project.video_url ? (
-                  <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                  <div className="video-container w-full h-full bg-black rounded-lg overflow-hidden">
                     <video
                       ref={videoRef}
                       src={project.video_url}
                       poster={project.thumbnail_url || thumbnailUrl || undefined}  // Add poster image
                       className="w-full h-full object-contain"
                       controls
+                      controlsList="nodownload"
                       crossOrigin="anonymous"
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget
@@ -1833,7 +1834,38 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <EmptyState
                           icon={<IconScissors className="h-16 w-16 text-primary/50" />}
                           title="No clips generated yet"
-                          description="Clips will appear here after processing"
+                          description="Generate short-form clips from your video content"
+                          action={{
+                            label: "Generate Clips",
+                            onClick: async () => {
+                              const toastId = toast.loading('Starting clip generation...')
+                              try {
+                                const response = await fetch(`/api/projects/${project.id}/process`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ 
+                                    workflow: 'clips',
+                                    projectId: project.id 
+                                  })
+                                })
+                                
+                                if (!response.ok) {
+                                  const error = await response.json()
+                                  throw new Error(error.error || 'Failed to start clip generation')
+                                }
+                                
+                                toast.success('Clip generation started! This may take 5-7 minutes.', { id: toastId })
+                                // Redirect to processing page
+                                router.push(`/studio/processing/${project.id}`)
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error ? error.message : 'Failed to generate clips', 
+                                  { id: toastId }
+                                )
+                                console.error('Clip generation error:', error)
+                              }
+                            }
+                          }}
                         />
                       )}
                     </TabsContent>
@@ -2606,19 +2638,19 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 {/* Left: Video Player */}
                 <div className="bg-black relative flex items-center justify-center">
                   <div className="w-full max-w-sm">
-                    <div className="aspect-[9/16] relative flex items-center justify-center">
+                    <div className="aspect-[9/16] relative bg-black rounded-lg overflow-hidden">
                       {selectedClip.exportUrl ? (
-                                                  <video
-                            key={selectedClip.id}
-                            src={selectedClip.exportUrl}
-                            className="absolute inset-0 w-full h-full object-contain"
-                            style={{ maxWidth: '100%', maxHeight: '100%' }}
-                            controls
-                            autoPlay
-                            playsInline
-                            muted={false}
-                            crossOrigin="anonymous"
-                          />
+                        <video
+                          key={selectedClip.id}
+                          src={selectedClip.exportUrl}
+                          className="w-full h-full object-contain"
+                          controls
+                          controlsList="nodownload"
+                          autoPlay
+                          playsInline
+                          muted={false}
+                          crossOrigin="anonymous"
+                        />
                       ) : (
                         <div className="flex items-center justify-center h-full">
                           <div className="text-center">

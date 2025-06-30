@@ -129,6 +129,9 @@ Run these only if you encounter specific issues:
 - Sets up proper policies for subtitle files
 - Run if subtitle functionality is not working properly
 
+**File:** `fix-project-deletion-cascade.sql`
+- Fixes foreign key constraints for proper deletion cascade
+
 ## Running Migrations
 
 ### Option 1: Supabase Dashboard (Recommended)

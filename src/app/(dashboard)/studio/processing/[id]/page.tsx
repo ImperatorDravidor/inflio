@@ -33,8 +33,8 @@ import { cn } from "@/lib/utils"
 const taskDetails = {
   transcription: {
     icon: IconFileText,
-    title: "AI Transcription",
-    description: "Converting speech to text using advanced AI",
+    title: "AI Content Analysis & Transcription",
+    description: "Converting speech to text and analyzing content using advanced AI",
     color: "from-violet-500 to-purple-500",
     estimatedTime: { min: 1, max: 3 }
   },
@@ -44,27 +44,6 @@ const taskDetails = {
     description: "Identifying and extracting key moments",
     color: "from-pink-500 to-rose-500",
     estimatedTime: { min: 5, max: 7 }
-  },
-  blog: {
-    icon: IconArticle,
-    title: "Blog Generation",
-    description: "Creating SEO-optimized blog posts",
-    color: "from-emerald-500 to-teal-500",
-    estimatedTime: { min: 3, max: 5 }
-  },
-  social: {
-    icon: IconBrandTwitter,
-    title: "Social Media",
-    description: "Crafting platform-specific content",
-    color: "from-blue-500 to-cyan-500",
-    estimatedTime: { min: 2, max: 3 }
-  },
-  podcast: {
-    icon: IconMicrophone,
-    title: "Podcast Optimization",
-    description: "Generating chapters and show notes",
-    color: "from-amber-500 to-orange-500",
-    estimatedTime: { min: 4, max: 6 }
   }
 }
 
@@ -510,8 +489,10 @@ export default function ProcessingPage() {
 
         {/* Processing Tasks */}
         <div className="grid gap-6 mb-8">
-          {project.tasks.map((task) => {
-            const detail = taskDetails[task.type]
+          {project.tasks
+            .filter(task => task.type === 'transcription' || task.type === 'clips')
+            .map((task) => {
+            const detail = taskDetails[task.type as 'transcription' | 'clips']
             const Icon = detail.icon
             const status = getTaskStatus(task)
             
@@ -646,7 +627,7 @@ export default function ProcessingPage() {
         </div>
 
         {/* Content Preview */}
-        {stats.totalClips > 0 || stats.totalBlogs > 0 || stats.totalSocialPosts > 0 ? (
+        {stats.totalClips > 0 ? (
           <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -658,26 +639,11 @@ export default function ProcessingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 rounded-lg bg-primary/5">
-                  <IconScissors className="h-8 w-8 text-primary mx-auto mb-2" />
-                  <div className="text-2xl font-bold">{stats.totalClips}</div>
-                  <div className="text-sm text-muted-foreground">Video Clips</div>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-primary/5">
-                  <IconArticle className="h-8 w-8 text-primary mx-auto mb-2" />
-                  <div className="text-2xl font-bold">{stats.totalBlogs}</div>
-                  <div className="text-sm text-muted-foreground">Blog Posts</div>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-primary/5">
-                  <IconBrandTwitter className="h-8 w-8 text-primary mx-auto mb-2" />
-                  <div className="text-2xl font-bold">{stats.totalSocialPosts}</div>
-                  <div className="text-sm text-muted-foreground">Social Posts</div>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-primary/5">
-                  <IconMicrophone className="h-8 w-8 text-primary mx-auto mb-2" />
-                  <div className="text-2xl font-bold">{stats.podcastChapters}</div>
-                  <div className="text-sm text-muted-foreground">Podcast Chapters</div>
+              <div className="flex justify-center">
+                <div className="text-center p-6 rounded-lg bg-primary/5">
+                  <IconScissors className="h-10 w-10 text-primary mx-auto mb-3" />
+                  <div className="text-3xl font-bold">{stats.totalClips}</div>
+                  <div className="text-sm text-muted-foreground">Video Clips Generated</div>
                 </div>
               </div>
             </CardContent>

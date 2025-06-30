@@ -55,6 +55,13 @@ export interface ClipData {
   createdAt?: string
   viralityExplanation?: string
   transcript?: string // Store the clip's transcript if available
+  publicationCaptions?: {
+    tiktok?: string
+    youtube?: string
+    instagram?: string
+    linkedin?: string
+    twitter?: string
+  }
 }
 
 export interface BlogPost {

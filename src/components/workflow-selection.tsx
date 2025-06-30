@@ -1,20 +1,17 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import {
   IconFileText,
   IconScissors,
-  IconArticle,
-  IconBrandTwitter,
-  IconMicrophone,
   IconSparkles,
-  IconBolt,
-  IconClock
+  IconClock,
+  IconLock,
+  IconCheck
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Switch } from "@/components/ui/switch"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
@@ -42,59 +39,31 @@ export function WorkflowSelection({
   const workflows = [
     {
       id: 'transcription',
-      name: 'AI Transcription',
-      description: 'Convert speech to text with speaker detection',
+      name: 'Transcript & AI Summary',
+      description: 'Convert speech to text and generate AI project insights',
       icon: IconFileText,
       color: 'from-blue-500 to-blue-600',
       estimatedTime: '2-3 minutes',
-      features: ['99% accuracy', 'Speaker labels', 'Timestamps'],
-      required: true // Always required
+      features: ['99% accuracy', 'Speaker detection', 'AI summary', 'Key insights'],
+      required: true,
+      checked: true
     },
     {
       id: 'clips',
-      name: 'Smart Clips',
-      description: 'AI extracts viral moments for social media',
+      name: 'Generate Short-Form Clips',
+      description: 'AI extracts the best moments for viral social media content',
       icon: IconScissors,
       color: 'from-purple-500 to-purple-600',
       estimatedTime: '5-7 minutes',
-      features: ['Viral detection', 'Auto-captions', 'Multiple formats'],
-      required: true // Always required for now
-    },
-    {
-      id: 'blog',
-      name: 'Blog Post',
-      description: 'Generate SEO-optimized blog content',
-      icon: IconArticle,
-      color: 'from-green-500 to-green-600',
-      estimatedTime: '3-5 minutes',
-      features: ['SEO optimized', 'Multiple sections', 'Meta tags'],
-      comingSoon: true
-    },
-    {
-      id: 'social',
-      name: 'Social Media',
-      description: 'Platform-specific posts with hashtags',
-      icon: IconBrandTwitter,
-      color: 'from-pink-500 to-pink-600',
-      estimatedTime: '2-3 minutes',
-      features: ['Multi-platform', 'Hashtags', 'Scheduling'],
-      comingSoon: true
-    },
-    {
-      id: 'podcast',
-      name: 'Podcast',
-      description: 'Chapters, show notes, and highlights',
-      icon: IconMicrophone,
-      color: 'from-amber-500 to-amber-600',
-      estimatedTime: '4-6 minutes',
-      features: ['Auto chapters', 'Show notes', 'Key quotes'],
-      comingSoon: true
+      features: ['Viral detection', 'Auto-captions', 'Multiple formats', '5-10 clips'],
+      required: false,
+      checked: options.clips
     }
   ]
 
   const handleToggle = (workflowId: string) => {
     const workflow = workflows.find(w => w.id === workflowId)
-    if (workflow?.required || workflow?.comingSoon) return
+    if (workflow?.required) return
     
     onChange({
       ...options,
@@ -102,33 +71,28 @@ export function WorkflowSelection({
     })
   }
 
-  const selectedCount = Object.values(options).filter(v => v).length
-
   return (
     <Card className="overflow-hidden">
       <div className="h-1.5 gradient-premium" />
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Select AI Workflows</CardTitle>
+            <CardTitle>Processing Options</CardTitle>
             <CardDescription className="mt-1">
-              Choose how you want to transform your video content
+              Choose what to generate from your video
             </CardDescription>
           </div>
-          <Badge variant="secondary" className="text-sm">
-            {selectedCount} selected
-          </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <div className={cn(
           variant === 'grid' 
-            ? "grid grid-cols-1 md:grid-cols-2 gap-4"
-            : "space-y-3"
+            ? "grid grid-cols-1 gap-4"
+            : "space-y-4"
         )}>
           {workflows.map((workflow, index) => {
             const Icon = workflow.icon
-            const isSelected = options[workflow.id as keyof typeof options]
+            const isSelected = workflow.required || options[workflow.id as keyof typeof options]
             
             return (
               <motion.div
@@ -140,20 +104,11 @@ export function WorkflowSelection({
                 <div
                   className={cn(
                     "group relative overflow-hidden rounded-xl border-2 transition-all duration-300",
-                    isSelected && !workflow.comingSoon && "border-primary shadow-lg",
-                    !isSelected && !workflow.comingSoon && "border-muted hover:border-primary/50",
-                    workflow.comingSoon && "border-muted opacity-60",
+                    isSelected && "border-primary shadow-lg bg-primary/5",
+                    !isSelected && "border-muted hover:border-primary/50",
                     disabled && "pointer-events-none opacity-60"
                   )}
                 >
-                  {/* Gradient background for selected items */}
-                  {isSelected && !workflow.comingSoon && (
-                    <div className={cn(
-                      "absolute inset-0 opacity-5 bg-gradient-to-br",
-                      workflow.color
-                    )} />
-                  )}
-                  
                   <div className="relative p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-start gap-3">
@@ -163,14 +118,14 @@ export function WorkflowSelection({
                         )}>
                           <Icon className="h-5 w-5" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <h3 className="font-semibold text-base flex items-center gap-2">
                             {workflow.name}
                             {workflow.required && (
-                              <Badge variant="secondary" className="text-xs">Required</Badge>
-                            )}
-                            {workflow.comingSoon && (
-                              <Badge variant="outline" className="text-xs">Coming Soon</Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                <IconLock className="h-3 w-3 mr-1" />
+                                Required
+                              </Badge>
                             )}
                           </h3>
                           <p className="text-sm text-muted-foreground mt-0.5">
@@ -179,14 +134,20 @@ export function WorkflowSelection({
                         </div>
                       </div>
                       
-                      {!workflow.comingSoon && (
-                        <Switch
-                          checked={isSelected}
-                          onCheckedChange={() => handleToggle(workflow.id)}
-                          disabled={disabled || workflow.required}
-                          className="data-[state=checked]:bg-primary"
-                        />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {workflow.required ? (
+                          <div className="p-1 rounded-full bg-primary text-primary-foreground">
+                            <IconCheck className="h-4 w-4" />
+                          </div>
+                        ) : (
+                          <Switch
+                            checked={isSelected}
+                            onCheckedChange={() => handleToggle(workflow.id)}
+                            disabled={disabled || workflow.required}
+                            className="data-[state=checked]:bg-primary"
+                          />
+                        )}
+                      </div>
                     </div>
                     
                     <div className="space-y-2">
@@ -208,7 +169,7 @@ export function WorkflowSelection({
                             variant="secondary"
                             className={cn(
                               "text-xs font-normal",
-                              isSelected && !workflow.comingSoon && "bg-primary/10 text-primary"
+                              isSelected && "bg-primary/10 text-primary"
                             )}
                           >
                             {feature}
@@ -223,13 +184,21 @@ export function WorkflowSelection({
           })}
         </div>
         
-        <Alert className="mt-4 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
-          <IconBolt className="h-4 w-4 text-amber-600" />
+        <Alert className="mt-6 border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20">
+          <IconSparkles className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-sm">
-            <strong>Focus Mode:</strong> Transcription and Smart Clips are currently available. 
-            Blog posts, social media content, and podcast features are coming soon!
+            <strong>More features available after processing:</strong> Once your video is processed, you can generate blog posts, 
+            social media content, images, thumbnails, and more from your project dashboard.
           </AlertDescription>
         </Alert>
+        
+        {!options.clips && (
+          <Alert className="mt-3 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+            <AlertDescription className="text-sm">
+              <strong>Note:</strong> You can generate clips later from your project if you skip this step.
+            </AlertDescription>
+          </Alert>
+        )}
       </CardContent>
     </Card>
   )

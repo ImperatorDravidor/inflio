@@ -67,7 +67,7 @@ export function PlatformFields({ platform, content, platformData, onUpdate }: Pl
               className={cn(
                 "h-2",
                 isOverLimit && "bg-red-100",
-                isNearLimit && "bg-orange-100"
+                isNearLimit && "bg-amber-100 dark:bg-amber-900/20"
               )}
             />
             

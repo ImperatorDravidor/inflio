@@ -44,7 +44,8 @@ import {
   IconGripVertical,
   IconPlayerPlay,
   IconCopy,
-  IconSend
+  IconSend,
+  IconShare2
 } from "@tabler/icons-react"
 import { AnimatedBackground } from "@/components/animated-background"
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addWeeks, subWeeks, addMonths, subMonths, isToday, isSameMonth, parseISO, addHours } from "date-fns"
@@ -355,6 +356,18 @@ export default function SocialCalendarPage() {
     const Icon = platformIcons[firstPlatform as keyof typeof platformIcons]
     const bgColor = platformColors[firstPlatform as keyof typeof platformColors]
     
+    // Get content type icon
+    const contentType: string = post.metadata?.type || post.type || 'video'
+    let ContentTypeIcon = IconShare2
+    
+    if (contentType === 'video' || contentType === 'clip' || contentType === 'longform') {
+      ContentTypeIcon = IconVideo
+    } else if (contentType === 'blog' || contentType === 'article') {
+      ContentTypeIcon = IconArticle
+    } else if (contentType === 'image' || contentType === 'carousel') {
+      ContentTypeIcon = IconPhoto
+    }
+    
     const content = (
       <div className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all cursor-pointer group">
         {isDraggable && (
@@ -363,18 +376,41 @@ export default function SocialCalendarPage() {
           </div>
         )}
         
-        <div className={`p-2 rounded-lg ${bgColor} text-white flex-shrink-0`}>
-          <Icon className="h-4 w-4" />
+        {/* Platform Icons */}
+        <div className="flex -space-x-2">
+          {platforms.slice(0, 3).map((platform: string, idx: number) => {
+            const PlatformIcon = platformIcons[platform as keyof typeof platformIcons] || IconShare2
+            const platformBg = platformColors[platform as keyof typeof platformColors] || 'bg-gray-500'
+            
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm",
+                  platformBg
+                )}
+                style={{ zIndex: 3 - idx }}
+              >
+                <PlatformIcon className="h-4 w-4" />
+              </div>
+            )
+          })}
+          {platforms.length > 3 && (
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium shadow-sm">
+              +{platforms.length - 3}
+            </div>
+          )}
         </div>
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">{post.content}</span>
-            {post.type && (
-              <Badge variant={post.type === 'video' ? 'default' : 'secondary'} className="text-xs">
-                {post.type}
-              </Badge>
-            )}
+            <span className="font-medium text-sm truncate">
+              {post.metadata?.title || post.content}
+            </span>
+            <Badge variant="secondary" className="text-xs flex items-center gap-1">
+              <ContentTypeIcon className="h-3 w-3" />
+              {contentType}
+            </Badge>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
             {showDate && (
@@ -388,10 +424,16 @@ export default function SocialCalendarPage() {
               {format(new Date(post.publish_date), "h:mm a")}
             </span>
             {post.projectName && (
-              <span className="truncate max-w-[100px]">{post.projectName}</span>
+              <span className="truncate max-w-[100px] flex items-center gap-1">
+                <IconPlayerPlay className="h-3 w-3" />
+                {post.projectName}
+              </span>
             )}
-            {platforms.length > 1 && (
-              <span className="text-primary">+{platforms.length - 1}</span>
+            {post.metadata?.engagementPrediction && (
+              <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                <IconSparkles className="h-3 w-3" />
+                {post.metadata.engagementPrediction.score}%
+              </span>
             )}
           </div>
         </div>
@@ -400,7 +442,8 @@ export default function SocialCalendarPage() {
           variant={
             post.state === 'published' ? 'default' : 
             post.state === 'failed' ? 'destructive' : 
-            'secondary'
+            post.state === 'publishing' ? 'secondary' :
+            'outline'
           }
           className="text-xs"
         >
@@ -413,10 +456,14 @@ export default function SocialCalendarPage() {
               <IconDotsVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={() => handleEdit(post)}>
               <IconEdit className="h-4 w-4 mr-2" />
               Edit Caption
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSelectedPost(post)} onSelect={() => setEditDialogOpen(true)}>
+              <IconEye className="h-4 w-4 mr-2" />
+              View Details
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleDuplicate(post)}>
               <IconCopy className="h-4 w-4 mr-2" />
@@ -529,7 +576,7 @@ export default function SocialCalendarPage() {
               </SelectContent>
             </Select>
             
-            <Button onClick={() => toast.info('Coming soon: Create new post')}>
+            <Button onClick={() => router.push('/social/compose')}>
               <IconPlus className="h-4 w-4 mr-2" />
               Schedule Post
             </Button>

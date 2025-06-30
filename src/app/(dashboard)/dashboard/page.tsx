@@ -71,6 +71,8 @@ import {
   YAxis, 
   CartesianGrid
 } from 'recharts'
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
 
 const MotionCard = motion(Card)
 
@@ -87,13 +89,24 @@ interface DashboardStats {
 
 interface ScheduledPost {
   id: string
-  date: Date
-  time: string
+  publish_date: Date
   platform: string
   content: string
-  status: 'scheduled' | 'published' | 'draft'
-  type: 'video' | 'image' | 'blog' | 'story'
-  projectId?: string
+  state: 'scheduled' | 'published' | 'draft' | 'failed' | 'publishing'
+  metadata?: {
+    type?: 'video' | 'image' | 'blog' | 'story' | 'clip' | 'longform' | 'carousel' | 'article'
+    platforms?: string[]
+    title?: string
+    thumbnail?: string
+    duration?: number
+    engagementPrediction?: {
+      score: number
+    }
+  }
+  project?: {
+    id: string
+    title: string
+  }
 }
 
 const platformIcons = {
@@ -132,63 +145,117 @@ export default function DashboardPage() {
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [viewMode, setViewMode] = useState<'overview' | 'calendar' | 'analytics'>('overview')
-  
-  // Mock scheduled posts - in production, fetch from backend
-  const [scheduledPosts] = useState<ScheduledPost[]>([
-    {
-      id: '1',
-      date: new Date(),
-      time: '10:00 AM',
-      platform: 'instagram',
-      content: 'New product launch video',
-      status: 'scheduled',
-      type: 'video'
-    },
-    {
-      id: '2',
-      date: new Date(),
-      time: '2:00 PM',
-      platform: 'tiktok',
-      content: 'Behind the scenes clip',
-      status: 'scheduled',
-      type: 'video'
-    },
-    {
-      id: '3',
-      date: addDays(new Date(), 1),
-      time: '9:00 AM',
-      platform: 'youtube',
-      content: 'Tutorial: How to Create Viral Shorts',
-      status: 'scheduled',
-      type: 'video'
-    },
-    {
-      id: '4',
-      date: addDays(new Date(), 2),
-      time: '6:00 PM',
-      platform: 'linkedin',
-      content: 'Industry insights blog post',
-      status: 'draft',
-      type: 'blog'
-    }
-  ])
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([])
+  const [postsLoading, setPostsLoading] = useState(true)
 
-  // Performance data
+  // Load scheduled posts from database
+  const loadScheduledPosts = async () => {
+    if (!userId) return
+    
+    try {
+      setPostsLoading(true)
+      const supabase = createSupabaseBrowserClient()
+      
+      // Fetch scheduled posts for the current week
+      const weekStart = startOfWeek(new Date())
+      const weekEnd = addDays(weekStart, 7)
+      
+      const { data: posts, error } = await supabase
+        .from('social_posts')
+        .select(`
+          *,
+          project:projects!social_posts_project_id_fkey (
+            id,
+            title
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('publish_date', weekStart.toISOString())
+        .lte('publish_date', weekEnd.toISOString())
+        .order('publish_date', { ascending: true })
+
+      if (error) {
+        console.error('Error loading scheduled posts:', error)
+        return
+      }
+
+      // Transform posts to match our interface
+      const transformedPosts: ScheduledPost[] = posts?.map(post => ({
+        ...post,
+        publish_date: new Date(post.publish_date),
+        platform: post.metadata?.platforms?.[0] || 'instagram', // First platform as primary
+      })) || []
+
+      setScheduledPosts(transformedPosts)
+    } catch (error) {
+      console.error('Error loading posts:', error)
+    } finally {
+      setPostsLoading(false)
+    }
+  }
+
+  // Performance data based on real stats
   const performanceData = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(startOfWeek(new Date()), i)
     return {
       day: format(date, 'EEE'),
-      views: 2000 + (i * 500), // Consistent values instead of random
-      engagement: 40 + (i * 10), // Consistent values instead of random
-      posts: scheduledPosts.filter(p => isSameDay(p.date, date)).length
+      views: 0, // Will be populated when we integrate analytics
+      engagement: 0, // Will be populated when we integrate analytics
+      posts: scheduledPosts.filter(p => isSameDay(new Date(p.publish_date), date)).length
     }
   })
 
-  // Current streak calculation
-  const currentStreak = 7 // Fixed value instead of random
+  // Current streak calculation based on actual posting history
+  const [currentStreak, setCurrentStreak] = useState(0)
 
-  // Mock achievements
-  const [achievements] = useState([
+  const calculateStreak = async () => {
+    if (!userId) return
+    
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { data: posts } = await supabase
+        .from('social_posts')
+        .select('publish_date')
+        .eq('user_id', userId)
+        .eq('state', 'published')
+        .order('publish_date', { ascending: false })
+        .limit(30) // Check last 30 days
+
+      if (!posts || posts.length === 0) {
+        setCurrentStreak(0)
+        return
+      }
+
+      // Calculate consecutive days
+      let streak = 0
+      let currentDate = new Date()
+      currentDate.setHours(0, 0, 0, 0)
+
+      for (let i = 0; i < 30; i++) {
+        const dateToCheck = new Date(currentDate)
+        dateToCheck.setDate(currentDate.getDate() - i)
+        
+        const hasPost = posts.some(post => {
+          const postDate = new Date(post.publish_date)
+          postDate.setHours(0, 0, 0, 0)
+          return postDate.getTime() === dateToCheck.getTime()
+        })
+
+        if (hasPost) {
+          streak++
+        } else if (i > 0) { // Allow today to be empty
+          break
+        }
+      }
+
+      setCurrentStreak(streak)
+    } catch (error) {
+      console.error('Error calculating streak:', error)
+    }
+  }
+
+  // Dynamic achievements based on real data
+  const achievements = [
     {
       id: '1',
       title: 'Content Creator',
@@ -198,7 +265,7 @@ export default function DashboardPage() {
       progress: stats.totalClips,
       maxProgress: 10,
       reward: '250 credits',
-      claimed: false,
+      claimed: stats.totalClips >= 10,
       rarity: 'rare' as const
     },
     {
@@ -210,7 +277,7 @@ export default function DashboardPage() {
       progress: Math.min(currentStreak, 7),
       maxProgress: 7,
       reward: '500 credits',
-      claimed: false,
+      claimed: currentStreak >= 7,
       rarity: 'epic' as const
     },
     {
@@ -219,17 +286,13 @@ export default function DashboardPage() {
       description: 'Post on 4+ platforms',
       icon: IconRocket,
       color: 'bg-gradient-to-br from-blue-500 to-purple-500',
-      progress: 3,
+      progress: 0, // Will be calculated from actual platform usage
       maxProgress: 4,
       reward: 'Pro Badge',
       claimed: false,
       rarity: 'legendary' as const
     }
-  ])
-
-  const generateSparkline = () => [45, 52, 48, 62, 58, 71, 65] // Fixed values for consistent rendering
-
-
+  ]
 
   useEffect(() => {
     const fetchData = async () => {
@@ -260,6 +323,12 @@ export default function DashboardPage() {
           activeProjects,
           completedProjects
         })
+
+        // Load scheduled posts and calculate streak
+        await Promise.all([
+          loadScheduledPosts(),
+          calculateStreak()
+        ])
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -271,7 +340,7 @@ export default function DashboardPage() {
   }, [userId])
 
   const getPostsForDate = (date: Date) => {
-    return scheduledPosts.filter(post => isSameDay(post.date, date))
+    return scheduledPosts.filter(post => isSameDay(new Date(post.publish_date), date))
   }
 
   const renderContentCalendar = () => {
@@ -302,70 +371,80 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-7 gap-2">
-            {weekDays.map((date, index) => {
-              const posts = getPostsForDate(date)
-              const isCurrentDay = isToday(date)
-              
-              return (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className={cn(
-                    "min-h-[120px] p-3 rounded-lg border",
-                    isCurrentDay && "border-primary bg-primary/5",
-                    "hover:shadow-md transition-all cursor-pointer"
-                  )}
-                  onClick={() => setSelectedDate(date)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {format(date, 'EEE')}
-                      </p>
-                      <p className={cn(
-                        "text-lg font-bold",
-                        isCurrentDay && "text-primary"
-                      )}>
-                        {format(date, 'd')}
-                      </p>
+          {postsLoading ? (
+            <div className="grid grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <Skeleton key={i} className="h-[120px]" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-2">
+              {weekDays.map((date, index) => {
+                const posts = getPostsForDate(date)
+                const isCurrentDay = isToday(date)
+                
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className={cn(
+                      "min-h-[120px] p-3 rounded-lg border",
+                      isCurrentDay && "border-primary bg-primary/5",
+                      "hover:shadow-md transition-all cursor-pointer"
+                    )}
+                    onClick={() => setSelectedDate(date)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {format(date, 'EEE')}
+                        </p>
+                        <p className={cn(
+                          "text-lg font-bold",
+                          isCurrentDay && "text-primary"
+                        )}>
+                          {format(date, 'd')}
+                        </p>
+                      </div>
+                      {posts.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {posts.length}
+                        </Badge>
+                      )}
                     </div>
-                    {posts.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {posts.length}
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-1">
-                    {posts.slice(0, 2).map((post) => {
-                      const Icon = platformIcons[post.platform as keyof typeof platformIcons]
-                      return (
-                        <div key={post.id} className="flex items-center gap-1">
-                          <div className={cn(
-                            "p-1 rounded",
-                            platformColors[post.platform as keyof typeof platformColors]
-                          )}>
-                            <Icon className="h-3 w-3 text-white" />
+                    
+                    <div className="space-y-1">
+                      {posts.slice(0, 2).map((post) => {
+                        const platforms = post.metadata?.platforms || [post.platform]
+                        const firstPlatform = platforms[0]
+                        const Icon = platformIcons[firstPlatform as keyof typeof platformIcons] || IconShare
+                        return (
+                          <div key={post.id} className="flex items-center gap-1">
+                            <div className={cn(
+                              "p-1 rounded",
+                              platformColors[firstPlatform as keyof typeof platformColors] || 'bg-gray-500'
+                            )}>
+                              <Icon className="h-3 w-3 text-white" />
+                            </div>
+                            <span className="text-xs truncate flex-1">
+                              {format(new Date(post.publish_date), "h:mm a")}
+                            </span>
                           </div>
-                          <span className="text-xs truncate flex-1">
-                            {post.time}
-                          </span>
-                        </div>
-                      )
-                    })}
-                    {posts.length > 2 && (
-                      <p className="text-xs text-muted-foreground">
-                        +{posts.length - 2} more
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
+                        )
+                      })}
+                      {posts.length > 2 && (
+                        <p className="text-xs text-muted-foreground">
+                          +{posts.length - 2} more
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Selected Date Posts */}
           {selectedDate && (
@@ -376,27 +455,40 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 {getPostsForDate(selectedDate).length > 0 ? (
                   getPostsForDate(selectedDate).map((post) => {
-                    const Icon = platformIcons[post.platform as keyof typeof platformIcons]
+                    const platforms = post.metadata?.platforms || [post.platform]
+                    const firstPlatform = platforms[0]
+                    const Icon = platformIcons[firstPlatform as keyof typeof platformIcons] || IconShare
                     return (
                       <div key={post.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                         <div className={cn(
                           "p-2 rounded-lg text-white",
-                          platformColors[post.platform as keyof typeof platformColors]
+                          platformColors[firstPlatform as keyof typeof platformColors] || 'bg-gray-500'
                         )}>
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium">{post.content}</p>
-                          <p className="text-xs text-muted-foreground">{post.time}</p>
+                          <p className="text-sm font-medium">{post.metadata?.title || post.content}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{format(new Date(post.publish_date), "h:mm a")}</span>
+                            {post.project && <span>• {post.project.title}</span>}
+                          </div>
                         </div>
                         <Badge variant={
-                          post.status === 'published' ? 'default' :
-                          post.status === 'scheduled' ? 'secondary' :
+                          post.state === 'published' ? 'default' :
+                          post.state === 'scheduled' ? 'secondary' :
+                          post.state === 'failed' ? 'destructive' :
                           'outline'
                         }>
-                          {post.status}
+                          {post.state}
                         </Badge>
-                        <Button variant="ghost" size="icon">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push('/social/calendar')
+                          }}
+                        >
                           <IconDots className="h-4 w-4" />
                         </Button>
                       </div>
@@ -406,7 +498,12 @@ export default function DashboardPage() {
                   <div className="text-center py-8 text-muted-foreground">
                     <IconCalendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No posts scheduled for this day</p>
-                    <Button variant="outline" size="sm" className="mt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => router.push('/social/compose')}
+                    >
                       <IconPlus className="h-3 w-3 mr-1" />
                       Schedule Post
                     </Button>
@@ -427,8 +524,6 @@ export default function DashboardPage() {
       {/* Celebration Overlay */}
       <CelebrationOverlay show={showCelebration} />
 
-
-
       {/* Enhanced Header with Streak */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
@@ -446,7 +541,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-muted-foreground">
-                You have {scheduledPosts.filter(p => isToday(p.date) && p.status === 'scheduled').length} posts scheduled for today
+                You have {scheduledPosts.filter(p => isToday(new Date(p.publish_date)) && p.state === 'scheduled').length} posts scheduled for today
               </p>
             </div>
             <div className="flex gap-3">
@@ -467,7 +562,11 @@ export default function DashboardPage() {
                 <IconEye className="h-4 w-4 text-blue-500" />
                 <div>
                   <p className="text-2xl font-bold">
-                    {(stats.totalVideos * 487).toLocaleString()}
+                    {loading ? (
+                      <Skeleton className="h-6 w-16" />
+                    ) : (
+                      0
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">Total Views</p>
                 </div>
@@ -478,7 +577,11 @@ export default function DashboardPage() {
                 <IconUsers className="h-4 w-4 text-purple-500" />
                 <div>
                   <p className="text-2xl font-bold">
-                    {(4664).toLocaleString()}
+                    {loading ? (
+                      <Skeleton className="h-6 w-16" />
+                    ) : (
+                      0
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">Followers</p>
                 </div>
@@ -499,7 +602,13 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <IconTrendingUp className="h-4 w-4 text-orange-500" />
                 <div>
-                  <p className="text-2xl font-bold">+23%</p>
+                  <p className="text-2xl font-bold">
+                    {loading ? (
+                      <Skeleton className="h-6 w-12" />
+                    ) : (
+                      '0%'
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">Growth Rate</p>
                 </div>
               </div>
@@ -537,28 +646,55 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <IconTarget className="h-5 w-5 text-primary" />
-                Today's Focus
+                Today's Schedule
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10">
-                <IconVideo className="h-5 w-5 text-primary" />
-                <div className="flex-1">
-                  <p className="font-medium text-sm">Complete video editing</p>
-                  <p className="text-xs text-muted-foreground">Due in 2 hours</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                <IconEdit className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <p className="font-medium text-sm">Write blog post</p>
-                  <p className="text-xs text-muted-foreground">Due today</p>
-                </div>
-              </div>
-              <Button className="w-full" variant="outline" size="sm">
-                View All Tasks
-                <IconArrowRight className="h-4 w-4 ml-2" />
-              </Button>
+              {postsLoading ? (
+                <>
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </>
+              ) : (
+                <>
+                  {scheduledPosts
+                    .filter(p => isToday(new Date(p.publish_date)) && p.state === 'scheduled')
+                    .slice(0, 3)
+                    .map((post) => {
+                      const platforms = post.metadata?.platforms || [post.platform]
+                      const firstPlatform = platforms[0]
+                      const Icon = platformIcons[firstPlatform as keyof typeof platformIcons] || IconShare
+                      const bgColor = platformColors[firstPlatform as keyof typeof platformColors] || 'bg-gray-500'
+                      
+                      return (
+                        <div key={post.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent/50 transition-all cursor-pointer"
+                          onClick={() => router.push('/social/calendar')}
+                        >
+                          <div className={cn("p-2 rounded-lg text-white", bgColor)}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{post.metadata?.title || post.content}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(post.publish_date), "h:mm a")}
+                              {platforms.length > 1 && ` • ${platforms.length} platforms`}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
+                  {scheduledPosts.filter(p => isToday(new Date(p.publish_date)) && p.state === 'scheduled').length === 0 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <p className="text-sm">No posts scheduled for today</p>
+                    </div>
+                  )}
+                  <Button className="w-full" variant="outline" size="sm" onClick={() => router.push('/social/calendar')}>
+                    View Full Calendar
+                    <IconArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -592,19 +728,31 @@ export default function DashboardPage() {
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-blue-500">
-                    {(23541).toLocaleString()}
+                    {loading ? (
+                      <Skeleton className="h-6 w-16 mx-auto" />
+                    ) : (
+                      0
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">Views</p>
                 </div>
                 <div className="text-center">
                   <p className="text-2xl font-bold text-green-500">
-                    {(1243).toLocaleString()}
+                    {loading ? (
+                      <Skeleton className="h-6 w-16 mx-auto" />
+                    ) : (
+                      0
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">Likes</p>
                 </div>
                 <div className="text-center">
                   <p className="text-2xl font-bold text-purple-500">
-                    {(342).toLocaleString()}
+                    {loading ? (
+                      <Skeleton className="h-6 w-16 mx-auto" />
+                    ) : (
+                      0
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">Comments</p>
                 </div>

@@ -32,6 +32,8 @@ export interface StagedContent {
       hashtags: string[]
       mentions?: string[]
       // Platform-specific fields
+      title?: string // For YouTube, LinkedIn articles
+      description?: string // For longer form content
       altText?: string // For images
       cta?: string // Call to action
       link?: string // For link posts
@@ -218,15 +220,58 @@ export class StagingService {
   }
 
   private static async prepareClipContent(clip: ClipData, project: Project): Promise<StagedContent> {
-    // Generate AI-powered captions for different platforms
-    const platformContent = await this.generatePlatformContent('clip', {
-      title: clip.title || 'Video Clip',
-      description: clip.description,
-      duration: clip.duration,
-      transcript: clip.transcript,
-      viralityScore: clip.score,
-      projectContext: project.description || project.content_analysis?.summary
-    })
+    // Check if clip already has publication captions from Klap
+    let platformContent: StagedContent['platformContent'] = {}
+    
+    if (clip.publicationCaptions) {
+      // Use existing captions from Klap and format them for our system
+      const captionPlatformMap: Record<string, Platform> = {
+        'tiktok': 'tiktok',
+        'youtube': 'youtube',
+        'instagram': 'instagram',
+        'linkedin': 'linkedin',
+        'twitter': 'x'
+      }
+      
+      for (const [klapPlatform, caption] of Object.entries(clip.publicationCaptions)) {
+        const platform = captionPlatformMap[klapPlatform]
+        if (platform && caption) {
+          // Extract hashtags from caption
+          const hashtagRegex = /#\w+/g
+          const hashtags = (caption.match(hashtagRegex) || []).map(tag => tag.slice(1))
+          const captionWithoutTags = caption.replace(hashtagRegex, '').trim()
+          
+          platformContent[platform] = {
+            caption: captionWithoutTags,
+            hashtags,
+            characterCount: caption.length,
+            isValid: true
+          }
+        }
+      }
+    }
+    
+    // Generate AI-powered captions for platforms not covered by Klap
+    const missingPlatforms = this.determineBestPlatforms('clip', clip.duration)
+      .filter(platform => !platformContent[platform])
+    
+    if (missingPlatforms.length > 0) {
+      const generatedContent = await this.generatePlatformContent('clip', {
+        title: clip.title || 'Video Clip',
+        description: clip.description,
+        duration: clip.duration,
+        transcript: clip.transcript,
+        viralityScore: clip.score,
+        projectContext: project.description || project.content_analysis?.summary
+      })
+      
+      // Merge generated content for missing platforms
+      for (const platform of missingPlatforms) {
+        if (generatedContent[platform]) {
+          platformContent[platform] = generatedContent[platform]
+        }
+      }
+    }
 
     // Determine best platforms based on clip duration
     const platforms = this.determineBestPlatforms('clip', clip.duration)
@@ -1103,90 +1148,81 @@ Return JSON array of optimal times:
   ): Promise<void> {
     const supabase = createSupabaseBrowserClient()
     
-    try {
-      // Get user's social integrations
-      const { data: integrations, error: intError } = await supabase
-        .from('social_integrations')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('disabled', false)
+    // Prepare posts for insertion with comprehensive metadata
+    const postsToInsert = scheduledPosts.flatMap(scheduledPost => {
+      const { stagedContent } = scheduledPost
       
-      if (intError) throw intError
-      
-      // Group integrations by platform
-      const integrationsByPlatform = (integrations || []).reduce((acc: Record<string, any>, int: any) => {
-        acc[int.platform] = int
-        return acc
-      }, {} as Record<string, any>)
-      
-      // Prepare posts for database insertion
-      const postsToInsert = []
-      
-      for (const scheduled of scheduledPosts) {
-        // Create a post for each platform
-        for (const platform of scheduled.platforms) {
-          const integration = integrationsByPlatform[platform]
-          const platformData = scheduled.stagedContent.platformContent[platform]
-          
-          if (!platformData) continue
-          
-          const post = {
-            user_id: userId,
-            integration_id: integration?.id,
-            content: platformData.caption || '',
-            media_urls: scheduled.stagedContent.mediaUrls,
-            publish_date: scheduled.scheduledDate.toISOString(),
-            state: 'scheduled' as const,
-            hashtags: platformData.hashtags,
-            project_id: projectId,
-            metadata: {
-              type: scheduled.stagedContent.type,
-              thumbnail: scheduled.stagedContent.thumbnailUrl,
-              duration: scheduled.stagedContent.duration,
-              platform,
-              originalContentId: scheduled.stagedContent.id,
-              engagementPrediction: scheduled.engagementPrediction,
-              optimizationReason: scheduled.optimizationReason,
-              cta: platformData.cta,
-              link: platformData.link,
-              altText: platformData.altText
-            },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-          
-          postsToInsert.push(post)
-        }
-      }
-      
-      // Batch insert all posts
-      if (postsToInsert.length > 0) {
-        const { error } = await supabase
-          .from('social_posts')
-          .insert(postsToInsert)
+      // Create a post for each platform
+      return stagedContent.platforms.map(platform => {
+        const platformContent = stagedContent.platformContent[platform]
         
-        if (error) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('Error inserting posts:', error)
-          }
-          throw error
+        if (!platformContent) return null
+        
+        // Build comprehensive metadata
+        const metadata: Record<string, any> = {
+          type: stagedContent.type,
+          contentId: stagedContent.id,
+          title: stagedContent.title,
+          description: stagedContent.description,
+          thumbnail: stagedContent.thumbnailUrl,
+          duration: stagedContent.duration,
+          platforms: [platform], // Single platform per post for better tracking
+          
+          // AI optimization data
+          engagementPrediction: scheduledPost.engagementPrediction,
+          optimizationReason: scheduledPost.optimizationReason,
+          suggestedHashtags: scheduledPost.suggestedHashtags,
+          
+          // Original content reference
+          originalData: {
+            projectId,
+            ...stagedContent.originalData
+          },
+          
+          // Platform-specific fields
+          ...platformContent,
+          
+          // Media and analytics
+          mediaUrls: stagedContent.mediaUrls,
+          analytics: stagedContent.analytics
         }
-      }
-      
-      // Update project status
-      await supabase
-        .from('projects')
-        .update({ 
-          status: 'published',
+        
+        // Build the social post record
+        return {
+          user_id: userId,
+          project_id: projectId,
+          content: platformContent.caption || platformContent.title || platformContent.description || '',
+          media_urls: stagedContent.mediaUrls || [],
+          publish_date: scheduledPost.scheduledDate.toISOString(),
+          state: 'scheduled' as const,
+          hashtags: platformContent.hashtags || [],
+          metadata,
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        })
-        .eq('id', projectId)
-        
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Error publishing scheduled content:', error)
-      }
-      throw error
+        }
+      }).filter(Boolean)
+    })
+    
+    // Filter out any null posts
+    const validPosts = postsToInsert.filter(post => post !== null)
+    
+    if (validPosts.length === 0) {
+      throw new AppError('No valid posts to schedule', 'NO_VALID_POSTS', 400)
+    }
+    
+    // Insert all posts in a batch
+    const { error } = await supabase
+      .from('social_posts')
+      .insert(validPosts)
+    
+    if (error) {
+      handleError(error, 'publishScheduledContent')
+      throw new AppError('Failed to schedule posts', 'SCHEDULE_FAILED', 500)
+    }
+    
+    // Log successful scheduling
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Successfully scheduled ${validPosts.length} posts for user ${userId}`)
     }
   }
 } 

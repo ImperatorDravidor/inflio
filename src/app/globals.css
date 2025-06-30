@@ -402,6 +402,31 @@
 /* Video Player Subtitle Styles */
 video {
   position: relative;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Ensure video controls are visible and properly positioned */
+video::-webkit-media-controls {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  z-index: 10;
+}
+
+video::-webkit-media-controls-enclosure {
+  position: relative;
+  bottom: 0;
+  width: 100%;
+}
+
+/* Fix video controls bar positioning */
+video::-webkit-media-controls-panel {
+  position: relative;
+  bottom: 0;
+  width: 100%;
+  padding: 5px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
 }
 
 /* Style the subtitle track */
@@ -499,6 +524,35 @@ video::-webkit-media-controls-panel {
 
 .subtitle-settings-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.5);
+}
+
+/* Video container fixes */
+.video-container {
+  position: relative;
+  width: 100%;
+  background: #000;
+}
+
+.video-container video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Aspect ratio containers */
+.aspect-video {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+}
+
+.aspect-video > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* END: Video Player Subtitle Styles */

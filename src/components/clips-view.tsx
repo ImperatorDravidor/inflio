@@ -803,6 +803,7 @@ export function ClipsView({ clips, loading = false, onClipSelect, onBulkAction }
                   poster={previewClip.thumbnail}
                   className="w-full h-full object-contain"
                   controls
+                  controlsList="nodownload"
                   autoPlay
                 />
               </div>

@@ -411,8 +411,6 @@ export default function StudioVideosPage() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [sortOption, setSortOption] = useState<SortOption>('recent')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [selectedClip, setSelectedClip] = useState<Clip | null>(null)
-  const [showVideoModal, setShowVideoModal] = useState(false)
 
   const loadProjects = async () => {
     if (!userId) return

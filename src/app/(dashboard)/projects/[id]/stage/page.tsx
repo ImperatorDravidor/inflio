@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AnimatedBackground } from "@/components/animated-background"
-import { ContentStager } from "@/components/staging/content-stager"
+import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { SchedulingWizard } from "@/components/staging/scheduling-wizard"
 import { StagingReview } from "@/components/staging/staging-review"
 import { 
@@ -381,7 +381,7 @@ export default function ProjectStagePage() {
         {/* Step Content */}
         <div className="space-y-6">
           {currentStep === 0 && (
-            <ContentStager
+            <EnhancedContentStager
               content={stagedContent}
               onUpdate={handleContentUpdate}
               onNext={handleNext}

@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
           createdAt: clip.created_at || new Date().toISOString(),
           viralityExplanation: clip.virality_score_explanation || '',
           transcript: transcript,
+          publicationCaptions: clip.publication_captions || undefined,
         };
 
         // 5. Store the fully processed clip

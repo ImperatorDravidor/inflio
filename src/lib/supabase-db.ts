@@ -295,29 +295,73 @@ export class SupabaseProjectService {
 
   // Delete project
   static async deleteProject(projectId: string): Promise<boolean> {
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', projectId)
+    try {
+      // 1. Delete all AI-generated images for this project
+      try {
+        const { data: imageFiles } = await supabase.storage
+          .from('ai-generated-images')
+          .list(projectId)
+          
+        if (imageFiles && imageFiles.length > 0) {
+          const imagePaths = imageFiles.map(file => `${projectId}/${file.name}`)
+          await supabase.storage
+            .from('ai-generated-images')
+            .remove(imagePaths)
+        }
+      } catch (error) {
+        console.error('Error deleting AI images:', error)
+        // Continue with deletion even if this fails
+      }
+      
+      // 2. Delete all video files and subtitles for this project
+      try {
+        const { data: videoFiles } = await supabase.storage
+          .from('videos')
+          .list(projectId)
+          
+        if (videoFiles && videoFiles.length > 0) {
+          const videoPaths = videoFiles.map(file => `${projectId}/${file.name}`)
+          await supabase.storage
+            .from('videos')
+            .remove(videoPaths)
+        }
+      } catch (error) {
+        console.error('Error deleting videos:', error)
+        // Continue with deletion even if this fails
+      }
+      
+      // 3. Delete all social posts that reference this project
+      // Since they have ON DELETE SET NULL, we need to manually delete them
+      const { error: socialPostsError } = await supabase
+        .from('social_posts')
+        .delete()
+        .eq('project_id', projectId)
+        
+      if (socialPostsError) {
+        console.error('Error deleting social posts:', socialPostsError)
+      }
+      
+      // 4. Delete staging sessions (these cascade automatically)
+      // No action needed - ON DELETE CASCADE handles this
+      
+      // 5. Delete the project record itself
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
 
-    if (error) {
-      console.error('Error deleting project:', error)
+      if (error) {
+        console.error('Error deleting project:', error)
+        return false
+      }
+
+      // Dispatch update event
+      dispatchProjectUpdate()
+      return true
+    } catch (error) {
+      console.error('Failed to delete project:', error)
       return false
     }
-
-    // Delete associated video from storage
-    const { error: storageError } = await supabase.storage
-      .from('videos')
-      .remove([`${projectId}/video`])
-
-    if (storageError) {
-      console.error('Error deleting video:', storageError)
-    }
-
-    // Dispatch update event
-    dispatchProjectUpdate()
-
-    return true
   }
 
   // Search projects

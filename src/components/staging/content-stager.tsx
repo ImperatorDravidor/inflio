@@ -68,7 +68,8 @@ const platformColors = {
   youtube: 'from-red-500 to-red-600',
   x: 'from-gray-900 to-black',
   facebook: 'from-blue-500 to-blue-600',
-  threads: 'from-gray-800 to-black'
+  threads: 'from-gray-800 to-black',
+  'youtube-short': 'from-red-500 to-red-600'
 }
 
 const contentTypeIcons: Record<string, any> = {
@@ -479,7 +480,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
         {/* Progress Overview with Action Buttons */}
         <Card className={cn(
           "border-2 transition-all",
-          !allContentReady && "border-orange-500/50 bg-orange-50/5"
+                                    !allContentReady && "border-amber-500/50 bg-amber-50/5 dark:bg-amber-950/10"
         )}>
           <CardContent className="py-4">
             <div className="flex items-center justify-between mb-4">
@@ -522,15 +523,15 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
               value={stats.percentage} 
               className={cn(
                 "h-3 transition-all",
-                stats.percentage === 100 ? "bg-green-100" : "bg-orange-100"
+                                        stats.percentage === 100 ? "bg-emerald-100 dark:bg-emerald-900/20" : "bg-muted"
               )}
             />
             {!allContentReady && Object.keys(validationErrors).length > 0 && (
-              <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800">
-                <p className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
-                  ⚠️ Required fields missing:
-                </p>
-                <ul className="text-xs text-orange-700 dark:text-orange-300 space-y-1">
+                                <div className="mt-4 p-3 bg-amber-50/50 dark:bg-amber-950/10 rounded-lg border border-amber-200 dark:border-amber-800/30">
+                                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                    ⚠️ Required fields missing:
+                  </p>
+                  <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
                   {Object.entries(validationErrors).slice(0, 3).map(([contentId, errors]) => {
                     const content = editedContent.find(c => c.id === contentId)
                     return (
@@ -576,7 +577,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                         animate={{ opacity: 1, y: 0 }}
                         className={cn(
                           "border rounded-lg p-4 transition-all",
-                          !ready && "border-orange-500 bg-orange-50/5",
+                                                        !ready && "border-amber-500/30 bg-muted/50",
                           selectedContent === item.id && "ring-2 ring-primary"
                         )}
                       >
@@ -585,7 +586,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                           <div className="flex items-center gap-3">
                             <div className={cn(
                               "p-2 rounded-full",
-                              ready ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                              ready ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-muted text-muted-foreground"
                             )}>
                               <Icon className="h-5 w-5" />
                             </div>
@@ -644,7 +645,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                   <div className="flex items-center gap-2">
                                     <span className={cn(
                                       "inline-block w-2 h-2 rounded-full",
-                                      hasCaption ? "bg-green-500" : "bg-orange-500"
+                                      hasCaption ? "bg-primary" : "bg-muted-foreground"
                                     )} />
                                     <span className="text-muted-foreground">Caption</span>
                                   </div>
@@ -652,7 +653,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                     <div className="flex items-center gap-2">
                                       <span className={cn(
                                         "inline-block w-2 h-2 rounded-full",
-                                        hasAltText ? "bg-green-500" : "bg-orange-500"
+                                        hasAltText ? "bg-primary" : "bg-muted-foreground"
                                       )} />
                                       <span className="text-muted-foreground">Alt Text</span>
                                     </div>
@@ -676,11 +677,11 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
 
                         {/* Errors */}
                         {itemErrors.length > 0 && (
-                          <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
-                            <p className="text-xs font-medium text-orange-800 dark:text-orange-200 mb-1">
-                              Issues to fix:
-                            </p>
-                            <ul className="text-xs text-orange-700 dark:text-orange-300 space-y-0.5">
+                          <div className="mt-3 p-3 bg-amber-50/50 dark:bg-amber-950/10 rounded-lg">
+                                                          <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">
+                                Issues to fix:
+                              </p>
+                              <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-0.5">
                               {itemErrors.map((error, idx) => (
                                 <li key={idx}>• {error}</li>
                               ))}
@@ -735,23 +736,23 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                               selectedContent === item.id 
                                 ? "border-primary bg-primary/10 shadow-sm" 
                                 : "hover:bg-accent/50",
-                              hasErrors && "border-orange-500 bg-orange-50/5"
+                              hasErrors && "border-amber-500/30 bg-amber-50/5 dark:bg-amber-950/10"
                             )}
                           >
                             <div className={cn(
                               "p-2 rounded-full",
-                              ready ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                              ready ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20" : "bg-muted text-muted-foreground"
                             )}>
                               <Icon className="h-5 w-5" />
                             </div>
                             <div className="flex-1">
                               <p className="font-medium">{item.title}</p>
                               <p className="text-sm text-muted-foreground line-clamp-1">{item.description}</p>
-                              {hasErrors && (
-                                <p className="text-xs text-orange-600 mt-1">
-                                  {validationErrors[item.id][0]}
-                                </p>
-                              )}
+                                                          {hasErrors && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                {validationErrors[item.id][0]}
+                              </p>
+                            )}
                             </div>
                             <div className="flex items-center gap-2">
                               {item.analytics?.estimatedReach && (
@@ -768,11 +769,11 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                 </Tooltip>
                               )}
                               {ready ? (
-                                <IconCheck className="h-5 w-5 text-green-500" />
+                                <IconCheck className="h-5 w-5 text-emerald-500" />
                               ) : (
                                 <Tooltip>
                                   <TooltipTrigger>
-                                    <IconAlertCircle className="h-5 w-5 text-orange-500" />
+                                    <IconAlertCircle className="h-5 w-5 text-amber-500" />
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p className="text-xs">Incomplete fields</p>

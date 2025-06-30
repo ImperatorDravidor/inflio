@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { platform: string } }
+  { params }: { params: Promise<{ platform: string }> }
 ) {
   try {
     // Auth check
@@ -16,7 +16,7 @@ export async function GET(
       )
     }
 
-    const { platform } = params
+    const { platform } = await params
     const supabase = createSupabaseBrowserClient()
 
     // Get integration for the platform
