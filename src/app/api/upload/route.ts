@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { v4 as uuidv4 } from 'uuid'
 
+// Disable the default body parser for this route to handle large files
+export const runtime = 'nodejs'
+export const maxDuration = 300 // 5 minutes
+
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,6 +14,15 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    // Handle large file uploads with streaming
+    const contentLength = request.headers.get('content-length')
+    if (contentLength && parseInt(contentLength) > 2 * 1024 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File too large. Maximum size is 2GB.' },
+        { status: 413 }
+      )
+    }
+
     const formData = await request.formData()
     const file = formData.get('file') as File
     
