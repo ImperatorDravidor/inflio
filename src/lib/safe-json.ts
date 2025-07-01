@@ -1,78 +1,69 @@
-/**
- * Safe JSON parsing utilities
- * These functions handle JSON parsing errors gracefully and prevent crashes
- */
+import { z } from "zod";
 
 /**
- * Safely parse JSON with error handling
- * @param jsonString - The JSON string to parse
- * @param fallback - Optional fallback value if parsing fails
- * @returns Parsed value or fallback
+ * A safe JSON parser that can handle and validate complex nested objects.
+ * It ensures that even if parts of the JSON are malformed or missing,
+ * the application can still proceed with the valid parts.
+ *
+ * @template T - A Zod schema for validation.
  */
-export function safeJsonParse<T = any>(
-  jsonString: string | null | undefined,
-  fallback?: T
-): T | null {
-  if (!jsonString) {
-    return fallback ?? null
+export class SafeJsonParser<T extends z.ZodType<any, any>> {
+  private schema: T;
+
+  constructor(schema: T) {
+    this.schema = schema;
   }
 
-  try {
-    return JSON.parse(jsonString)
-  } catch (error) {
-    console.error('JSON parse error:', error)
-    return fallback ?? null
+  /**
+   * Parses a JSON string and validates it against the schema.
+   * If parsing or validation fails, it returns a default value.
+   *
+   * @param jsonString - The JSON string to parse.
+   * @param defaultValue - The value to return on failure.
+   * @returns The parsed and validated data, or the default value.
+   */
+  parse(jsonString: string | null | undefined, defaultValue: z.infer<T>): z.infer<T> {
+    if (!jsonString) {
+      return defaultValue;
+    }
+    try {
+      const data = JSON.parse(jsonString);
+      const validation = this.schema.safeParse(data);
+      if (validation.success) {
+        return validation.data;
+      } else {
+        console.warn("JSON validation failed:", validation.error.errors);
+        return defaultValue;
+      }
+    } catch (error) {
+      console.warn("JSON parsing failed:", error);
+      return defaultValue;
+    }
+  }
+
+  /**
+   * A static method to safely get a value from a nested object.
+   *
+   * @param obj - The object to search within.
+   * @param path - The path to the desired value (e.g., 'a.b.c').
+   * @param defaultValue - The value to return if the path is not found.
+   * @returns The value at the specified path, or the default value.
+   */
+  static get<U>(obj: any, path: string, defaultValue: U): U {
+    if (typeof obj !== 'object' || obj === null) {
+      return defaultValue;
+    }
+
+    const keys = path.split('.');
+    let current = obj;
+
+    for (const key of keys) {
+      if (typeof current !== 'object' || current === null || !key || !(key in current)) {
+        return defaultValue;
+      }
+      current = current[key];
+    }
+    
+    return current !== undefined ? current : defaultValue;
   }
 }
-
-/**
- * Safely parse JSON from localStorage
- * @param key - The localStorage key
- * @param fallback - Optional fallback value if parsing fails
- * @returns Parsed value or fallback
- */
-export function safeLocalStorageGet<T = any>(
-  key: string,
-  fallback?: T
-): T | null {
-  try {
-    const item = localStorage.getItem(key)
-    return safeJsonParse(item, fallback)
-  } catch (error) {
-    console.error('localStorage access error:', error)
-    return fallback ?? null
-  }
-}
-
-/**
- * Safely set JSON to localStorage
- * @param key - The localStorage key
- * @param value - The value to stringify and store
- * @returns Success boolean
- */
-export function safeLocalStorageSet(
-  key: string,
-  value: any
-): boolean {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-    return true
-  } catch (error) {
-    console.error('localStorage set error:', error)
-    return false
-  }
-}
-
-/**
- * Check if a string is valid JSON
- * @param str - The string to check
- * @returns Boolean indicating if string is valid JSON
- */
-export function isValidJson(str: string): boolean {
-  try {
-    JSON.parse(str)
-    return true
-  } catch {
-    return false
-  }
-} 

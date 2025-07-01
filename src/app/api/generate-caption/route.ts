@@ -6,6 +6,7 @@ import { handleError, AppError } from '@/lib/error-handler'
 import { z } from 'zod'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { SafeJsonParser } from '@/lib/safe-json'
 
 // Request validation schema - updated to accept more context
 const requestSchema = z.object({
@@ -235,30 +236,26 @@ Return JSON in this format:
 
         const parsed = JSON.parse(response)
         
-        // Validate AI response
-        if (!validateAIResponse(parsed, {
-          required: ['caption', 'hashtags'],
-          properties: {
-            caption: 'string',
-            hashtags: 'array',
-            cta: 'string',
-            hook: 'string',
-            suggestions: 'object'
-          }
-        })) {
-          throw new Error('Invalid AI response format')
+        // Validate and extract AI response safely
+        const caption = SafeJsonParser.get(parsed, 'caption', 'No caption generated.')
+        const hashtags = SafeJsonParser.get(parsed, 'hashtags', [])
+        const cta = SafeJsonParser.get(parsed, 'cta', 'Read more.')
+        const hook = SafeJsonParser.get(parsed, 'hook', '')
+        const suggestions = SafeJsonParser.get(parsed, 'suggestions', { tip: 'Review and edit before posting.' })
+
+        // Basic validation after safe extraction
+        if (typeof caption !== 'string' || !Array.isArray(hashtags)) {
+          console.error('Core AI response fields are invalid', { caption, hashtags })
+          throw new Error('Invalid core AI response format')
         }
 
         // Type assertion after validation
-        const typedResponse = parsed as {
-          caption: string
-          hashtags: string[]
-          cta?: string
-          hook?: string
-          suggestions?: {
-            tip?: string
-            optimalPostTime?: string
-          }
+        const typedResponse = {
+          caption: caption as string,
+          hashtags: hashtags as string[],
+          cta: cta as string | undefined,
+          hook: hook as string | undefined,
+          suggestions: suggestions as { tip?: string; optimalPostTime?: string } | undefined,
         }
 
         // Ensure caption fits within limits
