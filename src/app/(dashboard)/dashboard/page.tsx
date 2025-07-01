@@ -561,14 +561,14 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <IconEye className="h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-2xl font-bold">
+                  <p className="text-xs text-muted-foreground">Views</p>
+                  <div className="text-2xl font-bold">
                     {loading ? (
                       <Skeleton className="h-6 w-16" />
                     ) : (
                       0
                     )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Total Views</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -576,14 +576,14 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <IconUsers className="h-4 w-4 text-purple-500" />
                 <div>
-                  <p className="text-2xl font-bold">
+                  <p className="text-xs text-muted-foreground">Followers</p>
+                  <div className="text-2xl font-bold">
                     {loading ? (
                       <Skeleton className="h-6 w-16" />
                     ) : (
                       0
                     )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Followers</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -591,10 +591,10 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <IconVideo className="h-4 w-4 text-green-500" />
                 <div>
-                  <p className="text-2xl font-bold">
-                    {stats.totalClips}
-                  </p>
                   <p className="text-xs text-muted-foreground">Clips Created</p>
+                  <div className="text-2xl font-bold">
+                    {stats.totalClips}
+                  </div>
                 </div>
               </div>
             </div>
@@ -602,14 +602,14 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <IconTrendingUp className="h-4 w-4 text-orange-500" />
                 <div>
-                  <p className="text-2xl font-bold">
+                  <p className="text-xs text-muted-foreground">Growth Rate</p>
+                  <div className="text-2xl font-bold">
                     {loading ? (
                       <Skeleton className="h-6 w-12" />
                     ) : (
                       '0%'
                     )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Growth Rate</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -727,34 +727,34 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-blue-500">
-                    {loading ? (
-                      <Skeleton className="h-6 w-16 mx-auto" />
-                    ) : (
-                      0
-                    )}
-                  </p>
                   <p className="text-xs text-muted-foreground">Views</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-green-500">
+                  <div className="text-2xl font-bold">
                     {loading ? (
                       <Skeleton className="h-6 w-16 mx-auto" />
                     ) : (
                       0
                     )}
-                  </p>
+                  </div>
+                </div>
+                <div className="text-center">
                   <p className="text-xs text-muted-foreground">Likes</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-purple-500">
+                  <div className="text-2xl font-bold">
                     {loading ? (
                       <Skeleton className="h-6 w-16 mx-auto" />
                     ) : (
                       0
                     )}
-                  </p>
+                  </div>
+                </div>
+                <div className="text-center">
                   <p className="text-xs text-muted-foreground">Comments</p>
+                  <div className="text-2xl font-bold">
+                    {loading ? (
+                      <Skeleton className="h-6 w-16 mx-auto" />
+                    ) : (
+                      0
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>

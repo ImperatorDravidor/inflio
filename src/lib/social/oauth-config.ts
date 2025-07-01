@@ -36,8 +36,8 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     icon: 'instagram',
     color: '#E4405F',
     oauth: {
-      clientId: process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_APP_ID!,
-      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET!,
+      clientId: process.env.INSTAGRAM_CLIENT_ID || process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!,
+      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET!,
       redirectUri: getRedirectUri('instagram'),
       authorizationUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
       tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token',
@@ -98,8 +98,8 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     icon: 'twitter',
     color: '#000000',
     oauth: {
-      clientId: process.env.TWITTER_CLIENT_ID!,
-      clientSecret: process.env.TWITTER_CLIENT_SECRET!,
+      clientId: process.env.TWITTER_CLIENT_ID || process.env.X_API_KEY!,
+      clientSecret: process.env.TWITTER_CLIENT_SECRET || process.env.X_API_SECRET!,
       redirectUri: getRedirectUri('x'),
       authorizationUrl: 'https://twitter.com/i/oauth2/authorize',
       tokenUrl: 'https://api.twitter.com/2/oauth2/token',
@@ -198,8 +198,8 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     icon: 'threads',
     color: '#000000',
     oauth: {
-      clientId: process.env.THREADS_CLIENT_ID!,
-      clientSecret: process.env.THREADS_CLIENT_SECRET!,
+      clientId: process.env.THREADS_CLIENT_ID || process.env.FACEBOOK_APP_ID!,
+      clientSecret: process.env.THREADS_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET!,
       redirectUri: getRedirectUri('threads'),
       authorizationUrl: 'https://www.threads.net/oauth/authorize',
       tokenUrl: 'https://graph.threads.net/oauth/access_token',

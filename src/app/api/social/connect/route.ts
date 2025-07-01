@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Check if platform is configured
     if (!validatePlatformConfig(platform)) {
       return NextResponse.json(
-        { error: `${platform} is not configured. Please add OAuth credentials to your environment variables.` },
+        { error: `${platform} OAuth is not configured. Please add OAuth credentials to your environment variables.` },
         { status: 400 }
       )
     }
