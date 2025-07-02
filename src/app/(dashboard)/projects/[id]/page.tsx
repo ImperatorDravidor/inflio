@@ -238,7 +238,8 @@ export default function ProjectDetailPage() {
     if (!videoRef.current || !project?.transcription) return
 
     const handleTimeUpdate = () => {
-      const time = videoRef.current!.currentTime
+      if (!videoRef.current) return; // Add null check
+      const time = videoRef.current.currentTime
       
       const activeSegment = TranscriptionService.getSegmentAtTime(
         project.transcription!.segments,
@@ -258,9 +259,10 @@ export default function ProjectDetailPage() {
       }
     }
 
-    videoRef.current.addEventListener('timeupdate', handleTimeUpdate)
+    const video = videoRef.current; // Store reference
+    video.addEventListener('timeupdate', handleTimeUpdate)
     return () => {
-      videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate)
+      video?.removeEventListener('timeupdate', handleTimeUpdate)
     }
   }, [project?.transcription, activeSegmentId])
 

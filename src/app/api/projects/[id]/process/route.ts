@@ -33,6 +33,9 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
+    // Update project status first
+    await ProjectService.updateProject(projectId, { status: 'processing' });
+
     // If specific workflow is requested, only run that
     if (workflow === 'clips') {
       // Add clips task if not already present
@@ -48,24 +51,27 @@ export async function POST(
         await ProjectService.updateProject(projectId, { tasks: updatedTasks });
       }
 
-      // Start clip generation
-      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/process-klap`, {
+      // Start clip generation without waiting for response
+      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-klap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
         })
+      }).catch(error => {
+        console.error('Failed to start Klap processing:', error);
+        ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
       });
 
-      await ProjectService.updateProject(projectId, { status: 'processing' });
       return NextResponse.json({ message: "Clip generation started" });
     }
 
     // Default behavior: process all pending tasks
     const hasTranscriptionTask = project.tasks.some(task => task.type === 'transcription' && task.status === 'pending');
     if (hasTranscriptionTask) {
-      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/process-transcription`, {
+      // Start transcription without waiting
+      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-transcription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,26 +79,35 @@ export async function POST(
           videoUrl: project.video_url,
           language: 'en'
         })
+      }).catch(error => {
+        console.error('Failed to start transcription:', error);
+        ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
       });
     }
 
     const hasClipsTask = project.tasks.some(task => task.type === 'clips' && task.status === 'pending');
     if (hasClipsTask) {
-        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/process-klap`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                projectId: project.id,
-                videoUrl: project.video_url,
-            })
-        });
+      // Start clips generation without waiting
+      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-klap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.id,
+          videoUrl: project.video_url,
+        })
+      }).catch(error => {
+        console.error('Failed to start Klap processing:', error);
+        ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+      });
     }
-    
-    // The individual processing routes will update the status of their respective tasks.
-    // We'll update the main project status to 'processing'.
-    await ProjectService.updateProject(projectId, { status: 'processing' });
 
-    return NextResponse.json({ message: "Processing started" });
+    return NextResponse.json({ 
+      message: "Processing started",
+      tasks: {
+        transcription: hasTranscriptionTask,
+        clips: hasClipsTask
+      }
+    });
   } catch (error) {
     const errorResult = handleError(error, "Failed to start processing");
     return NextResponse.json({ error: errorResult.error }, { status: errorResult.statusCode });

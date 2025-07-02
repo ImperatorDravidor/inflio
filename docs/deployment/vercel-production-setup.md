@@ -249,3 +249,46 @@ If issues occur in production:
    - Reduce file size limits
    - Disable problematic features
    - Switch to fallback services 
+
+## Production Optimizations
+
+1. **Database Connection Pooling**
+   - Supabase automatically handles connection pooling
+   - Use the pooler URL for serverless functions if needed
+
+2. **Video Processing Optimization**
+   - Add `SKIP_KLAP_VIDEO_REUPLOAD=true` to skip re-uploading Klap videos to your storage
+   - This significantly reduces processing time and bandwidth usage
+   - Klap URLs remain accessible for 30 days
+
+3. **Function Timeouts**
+   - All processing functions are configured with 5-minute timeouts
+   - Monitor for 504 errors and adjust video length recommendations
+
+## Monitoring
+
+### Enable Logging
+```typescript
+// Add to your API routes for debugging
+console.log('Upload attempt:', {
+  fileSize: file.size,
+  fileName: file.name,
+  contentType: file.type
+});
+```
+
+### Sentry Configuration
+```typescript
+// In sentry.server.config.ts
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+  tracesSampleRate: 0.1,
+  debug: false,
+});
+```
+
+### Error Boundaries
+Ensure error boundaries are in place for upload components. 

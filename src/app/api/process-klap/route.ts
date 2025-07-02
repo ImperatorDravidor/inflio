@@ -4,6 +4,10 @@ import { ProjectService } from '@/lib/services'
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Increase timeout for this route
+export const maxDuration = 300; // 5 minutes
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const { projectId, videoUrl } = await request.json()
 
@@ -26,6 +30,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Klap Route] Starting Klap processing for project: ${projectId}`)
     
+    // Update task status to processing
+    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+    
     // The single public method handles the entire workflow: task creation, polling, and result fetching.
     const klapResult = await KlapAPIService.processVideo(videoUrl, project.title)
 
@@ -37,9 +44,10 @@ export async function POST(request: NextRequest) {
       klap_folder_id: klapResult.klapFolderId,
     });
 
-    // Process each clip individually to get all details and export URL
+    // Process each clip individually to get all details
     const totalClips = klapResult.clips.length;
     let processedClips = 0;
+    const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true';
     
     for (let clipIndex = 0; clipIndex < klapResult.clips.length; clipIndex++) {
       const basicClip = klapResult.clips[clipIndex];
@@ -54,51 +62,54 @@ export async function POST(request: NextRequest) {
           basicClip.id
         );
 
-        // 2. Export the clip to get a direct video URL from Klap
+        // 2. Export the clip to get a direct video URL from Klap (optional)
         let klapExportUrl: string | null = null;
-        try {
-          const exportedData = await KlapAPIService.exportMultipleClips(
-            klapResult.klapFolderId,
-            [clip.id]
-          );
-          if (exportedData.length > 0 && exportedData[0].url) {
-            klapExportUrl = exportedData[0].url;
-          }
-        } catch (exportError) {
-          console.error(`[Klap Route] Could not export clip ${clip.id}:`, exportError);
-        }
-
-        // 3. Download from Klap and re-upload to our Supabase storage
         let ownStorageUrl: string | undefined = undefined;
-        if (klapExportUrl) {
-            try {
-                const videoResponse = await fetch(klapExportUrl);
-                if (!videoResponse.ok) throw new Error('Failed to download video from Klap URL');
-                
-                const videoBlob = await videoResponse.blob();
-                
-                const supabaseAdmin = createClient(
-                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                    process.env.SUPABASE_SERVICE_ROLE_KEY!
-                );
-                
-                const filePath = `${project.id}/clips/${clip.id}.mp4`;
-                
-                const { error: uploadError } = await supabaseAdmin.storage
-                    .from('videos')
-                    .upload(filePath, videoBlob, {
-                        contentType: 'video/mp4',
-                        upsert: true
-                    });
-                    
-                if (uploadError) throw uploadError;
-                
-                const { data: publicUrlData } = supabaseAdmin.storage.from('videos').getPublicUrl(filePath);
-                ownStorageUrl = publicUrlData.publicUrl;
-                
-            } catch (reuploadError) {
-                console.error(`[Klap Route] Failed to re-upload clip ${clip.id} to own storage:`, reuploadError);
+        
+        if (!skipVideoReupload) {
+          try {
+            const exportedData = await KlapAPIService.exportMultipleClips(
+              klapResult.klapFolderId,
+              [clip.id]
+            );
+            if (exportedData.length > 0 && exportedData[0].url) {
+              klapExportUrl = exportedData[0].url;
             }
+          } catch (exportError) {
+            console.error(`[Klap Route] Could not export clip ${clip.id}:`, exportError);
+          }
+
+          // 3. Download from Klap and re-upload to our Supabase storage (optional)
+          if (klapExportUrl) {
+            try {
+              const videoResponse = await fetch(klapExportUrl);
+              if (!videoResponse.ok) throw new Error('Failed to download video from Klap URL');
+              
+              const videoBlob = await videoResponse.blob();
+              
+              const supabaseAdmin = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY!
+              );
+              
+              const filePath = `${project.id}/clips/${clip.id}.mp4`;
+              
+              const { error: uploadError } = await supabaseAdmin.storage
+                .from('videos')
+                .upload(filePath, videoBlob, {
+                  contentType: 'video/mp4',
+                  upsert: true
+                });
+                
+              if (uploadError) throw uploadError;
+              
+              const { data: publicUrlData } = supabaseAdmin.storage.from('videos').getPublicUrl(filePath);
+              ownStorageUrl = publicUrlData.publicUrl;
+              
+            } catch (reuploadError) {
+              console.error(`[Klap Route] Failed to re-upload clip ${clip.id} to own storage:`, reuploadError);
+            }
+          }
         }
 
         // 4. Sanitize and structure the data for storage
@@ -148,8 +159,8 @@ export async function POST(request: NextRequest) {
           klapProjectId: clip.id,
           klapFolderId: klapResult.klapFolderId,
           previewUrl: `https://klap.app/player/${clip.id}`,
-          exportUrl: ownStorageUrl,
-          exported: !!ownStorageUrl,
+          exportUrl: ownStorageUrl || klapExportUrl,
+          exported: !!ownStorageUrl || !!klapExportUrl,
           rawKlapData: clip,
           createdAt: clip.created_at || new Date().toISOString(),
           viralityExplanation: clip.virality_score_explanation || '',
@@ -179,7 +190,8 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: `Successfully processed and stored ${klapResult.clips.length} clips.`
+      message: `Successfully processed and stored ${klapResult.clips.length} clips.`,
+      clips: klapResult.clips.length
     });
 
   } catch (error) {
@@ -188,9 +200,25 @@ export async function POST(request: NextRequest) {
         await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
     }
     
+    // Return appropriate error status based on error type
+    let status = 500;
+    let errorMessage = 'An unknown error occurred while processing with Klap.';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+        status = 504;
+        errorMessage = 'Processing timed out. Please try again with a shorter video.';
+      } else if (error.message.includes('not found')) {
+        status = 404;
+      } else if (error.message.includes('unauthorized') || error.message.includes('Unauthorized')) {
+        status = 401;
+      }
+    }
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'An unknown error occurred while processing with Klap.' },
-      { status: 500 }
+      { error: errorMessage },
+      { status }
     )
   }
 }
