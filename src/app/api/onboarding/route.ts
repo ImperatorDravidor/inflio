@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { OpenAI } from "openai"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!
-})
 
 export async function POST(request: Request) {
   try {
@@ -39,38 +34,41 @@ export async function POST(request: Request) {
       preferredTimes
     } = body
 
-    // Create or update user profile
+    // Create or update user profile with provided data and defaults
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .upsert({
         clerk_user_id: clerkUserId,
-        email,
-        full_name: fullName,
-        company_name: companyName,
-        industry,
-        company_size: companySize,
-        role,
-        content_types: contentTypes,
+        email: email || "",
+        full_name: fullName || "",
+        company_name: companyName || "",
+        industry: industry || "Other",
+        company_size: companySize || "1-10",
+        role: role || "Content Creator",
+        content_types: contentTypes || ["video"],
         target_audience: {
-          age_groups: targetAge,
-          interests: targetInterests.split(",").map((i: string) => i.trim()),
-          description: audienceDescription
+          age_groups: targetAge || ["25-34"],
+          interests: typeof targetInterests === 'string' 
+            ? targetInterests.split(",").map((i: string) => i.trim()) 
+            : ["General"],
+          description: audienceDescription || "General audience"
         },
-        content_goals: contentGoals,
-        brand_colors: brandColors,
-        brand_fonts: brandFonts,
-        brand_voice: brandVoice,
-        brand_assets: { logo_url: logoUrl },
-        video_style: videoStyle,
-        transition_style: transitionStyle,
-        music_preference: musicPreference,
-        primary_platforms: primaryPlatforms,
+        content_goals: contentGoals || ["Brand Awareness"],
+        brand_colors: brandColors || { primary: "#6366F1", accent: "#EC4899" },
+        brand_fonts: brandFonts || { heading: "Inter", body: "Roboto" },
+        brand_voice: brandVoice || "Professional",
+        brand_assets: { logo_url: logoUrl || "" },
+        video_style: videoStyle || "modern",
+        transition_style: transitionStyle || "smooth",
+        music_preference: musicPreference || "upbeat",
+        primary_platforms: primaryPlatforms || ["youtube"],
         posting_schedule: {
-          frequency: postingFrequency,
-          preferred_times: preferredTimes
+          frequency: postingFrequency || "weekly",
+          preferred_times: preferredTimes || ["morning"]
         },
         onboarding_completed: true,
-        onboarding_step: 8
+        onboarding_step: 8,
+        updated_at: new Date().toISOString()
       })
       .select()
       .single()
@@ -78,87 +76,24 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error("Profile error:", profileError)
       return NextResponse.json(
-        { error: "Failed to create user profile" },
+        { error: "Failed to create user profile", details: profileError.message },
         { status: 500 }
       )
     }
 
-    // Generate embeddings for the user profile
-    const profileSummary = `
-      ${fullName} works as ${role} at ${companyName} in the ${industry} industry.
-      Company size: ${companySize}.
-      Target audience: ${audienceDescription}. Age groups: ${targetAge.join(", ")}.
-      Interests: ${targetInterests}.
-      Content types: ${contentTypes.join(", ")}.
-      Brand voice: ${brandVoice}.
-      Video style: ${videoStyle}.
-      Platforms: ${primaryPlatforms.join(", ")}.
-      Goals: ${contentGoals.join(", ")}.
-    `
-
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: profileSummary,
-    })
-
-    const embedding = embeddingResponse.data[0].embedding
-
-    // Store the embedding
-    const { error: embeddingError } = await supabase
-      .from("user_embeddings")
-      .insert({
-        user_profile_id: profile.id,
-        embedding_type: "profile",
-        embedding: embedding,
-        metadata: {
-          summary: profileSummary,
-          created_from: "onboarding"
-        }
-      })
-
-    if (embeddingError) {
-      console.error("Embedding error:", embeddingError)
-      // Don't fail the onboarding if embedding fails
-    }
-
-    // Generate brand voice embedding
-    const brandVoiceText = `
-      Brand: ${companyName}
-      Voice: ${brandVoice}
-      Industry: ${industry}
-      Style: ${videoStyle}
-      Content types: ${contentTypes.join(", ")}
-    `
-
-    const brandEmbeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: brandVoiceText,
-    })
-
-    const brandEmbedding = brandEmbeddingResponse.data[0].embedding
-
-    // Store brand voice embedding
-    await supabase
-      .from("user_embeddings")
-      .insert({
-        user_profile_id: profile.id,
-        embedding_type: "brand_voice",
-        embedding: brandEmbedding,
-        metadata: {
-          brand_voice: brandVoice,
-          video_style: videoStyle
-        }
-      })
+    // Skip embeddings for now - they can be generated later
+    // This removes the OpenAI dependency from onboarding
 
     return NextResponse.json({
       success: true,
-      profile: profile
+      profile: profile,
+      message: "Onboarding completed successfully"
     })
 
   } catch (error) {
     console.error("Onboarding error:", error)
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     )
   }
