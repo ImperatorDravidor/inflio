@@ -67,18 +67,31 @@ The `vercel.json` file is configured with extended timeouts for processing:
 
 ## 3. Common Production Issues & Fixes
 
-### Issue 1: 413 Request Entity Too Large
-**Symptoms:**
-```
-/api/upload:1 Failed to load resource: the server responded with a status of 413 ()
+### 1. Large Video Uploads
+
+**Solution**: All videos now upload directly to Supabase Storage from the browser, bypassing server limitations entirely.
+
+- **How it works**: Videos are uploaded directly from the user's browser to Supabase Storage
+- **Benefits**: No server timeouts, no request size limits, faster uploads
+- **Maximum size**: 2GB (configured in Supabase)
+
+**Supabase Configuration**:
+```sql
+-- Ensure your videos bucket supports 2GB files
+UPDATE storage.buckets 
+SET file_size_limit = 2147483648  -- 2GB in bytes
+WHERE name = 'videos';
 ```
 
-**Solutions:**
-1. **Upgrade Vercel Plan**: Free tier has 100MB limit
-2. **Check Environment Variables**: Ensure `NEXT_PUBLIC_MAX_FILE_SIZE` is set
-3. **Verify Supabase Plan**: Ensure storage plan supports large files
+### 2. Long-Running Processing (504 Gateway Timeout)
 
-### Issue 2: Clerk Development Keys Warning
+**Solution**: All processing routes are configured with extended timeouts and proper handling:
+- `maxDuration = 300` (5 minutes) on all processing routes
+- Internal API calls are fire-and-forget to avoid waiting
+- Background processing continues even if the initial request times out
+
+### 3. Clerk Development Keys Warning
+
 **Symptoms:**
 ```
 Clerk: Clerk has been loaded with development keys
@@ -90,7 +103,8 @@ Replace development keys with production keys:
 2. Switch to production instance
 3. Copy production keys to Vercel environment variables
 
-### Issue 3: Sentry Blocked by Ad Blockers
+### 4. Sentry Blocked by Ad Blockers
+
 **Symptoms:**
 ```
 net::ERR_BLOCKED_BY_CLIENT
@@ -108,20 +122,6 @@ net::ERR_BLOCKED_BY_CLIENT
    # Remove or comment out in environment variables
    # SENTRY_DSN=...
    ```
-
-### Issue 4: Missing /help Route
-**Symptoms:**
-```
-/help?_rsc=1onzy:1 Failed to load resource: 404
-```
-
-**Solution:**
-The `vercel.json` includes a rewrite rule. Create the docs page:
-```bash
-# Create the missing page
-mkdir -p src/app/docs
-echo "export default function DocsPage() { return <div>Documentation</div> }" > src/app/docs/page.tsx
-```
 
 ## 4. Performance Optimizations
 
@@ -265,30 +265,4 @@ If issues occur in production:
    - All processing functions are configured with 5-minute timeouts
    - Monitor for 504 errors and adjust video length recommendations
 
-## Monitoring
-
-### Enable Logging
-```typescript
-// Add to your API routes for debugging
-console.log('Upload attempt:', {
-  fileSize: file.size,
-  fileName: file.name,
-  contentType: file.type
-});
-```
-
-### Sentry Configuration
-```typescript
-// In sentry.server.config.ts
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: 0.1,
-  debug: false,
-});
-```
-
-### Error Boundaries
-Ensure error boundaries are in place for upload components. 
+ 

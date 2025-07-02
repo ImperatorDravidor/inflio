@@ -179,85 +179,53 @@ export default function UploadPage() {
 
     setUploading(true);
     setUploadProgress(0);
-    const toastId = toast.loading("Uploading video... Please wait.");
+    const toastId = toast.loading("Uploading video to cloud storage...");
 
     try {
-      let supabaseVideoUrl: string;
-
-      // For files larger than 50MB, use direct Supabase upload with chunking
-      if (file.size > 50 * 1024 * 1024) {
-        toast.info("Large file detected. Using optimized upload...", { id: toastId });
-        
-        // Import Supabase client
-        const { createSupabaseBrowserClient } = await import('@/lib/supabase/client');
-        const supabase = createSupabaseBrowserClient();
-        
-        // Generate unique filename
-        const timestamp = Date.now();
-        const sanitizedName = file.name
-          .replace(/[｜|]/g, '-')
-          .replace(/[^\w\s.-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        const fileName = `${timestamp}-${sanitizedName || 'video.mp4'}`;
-        
-        // Upload directly to Supabase with progress tracking
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('videos')
-          .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('Supabase upload error:', uploadError);
-          
-          // Handle specific error cases
-          if (uploadError.message.includes('row size exceeds maximum')) {
-            throw new Error('File is too large. Please try a smaller video or compress it first.');
-          } else if (uploadError.message.includes('Bucket not found')) {
-            throw new Error('Storage configuration error. Please contact support.');
-          } else {
-            throw new Error(`Upload failed: ${uploadError.message}`);
-          }
-        }
-
-        // Get public URL
-        const { data: publicUrlData } = supabase.storage
-          .from('videos')
-          .getPublicUrl(fileName);
-          
-        supabaseVideoUrl = publicUrlData.publicUrl;
-        
-      } else {
-        // For smaller files, use the existing API route
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
+      // Always use direct Supabase upload
+      const { createSupabaseBrowserClient } = await import('@/lib/supabase/client');
+      const supabase = createSupabaseBrowserClient();
+      
+      // Generate unique filename
+      const timestamp = Date.now();
+      const sanitizedName = file.name
+        .replace(/[｜|]/g, '-')
+        .replace(/[^\w\s.-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      const fileName = `${timestamp}-${sanitizedName || 'video.mp4'}`;
+      
+      // Upload directly to Supabase
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
         });
 
-        const result = await response.json();
-
-        if (!response.ok) {
-          // Handle specific error cases
-          if (response.status === 413) {
-            throw new Error('File too large. Please try a smaller video (max 2GB).');
-          } else if (response.status === 400) {
-            throw new Error(result.error || 'Invalid file format.');
-          } else {
-            throw new Error(result.error || 'Upload failed. Please try again.');
-          }
+      if (uploadError) {
+        console.error('Supabase upload error:', uploadError);
+        
+        // Handle specific error cases
+        if (uploadError.message.includes('row size exceeds maximum')) {
+          throw new Error('File is too large. Maximum size is 2GB.');
+        } else if (uploadError.message.includes('Bucket not found')) {
+          throw new Error('Storage configuration error. Please contact support.');
+        } else {
+          throw new Error(`Upload failed: ${uploadError.message}`);
         }
-
-        supabaseVideoUrl = result.url;
       }
+
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('videos')
+        .getPublicUrl(fileName);
+        
+      const supabaseVideoUrl = publicUrlData.publicUrl;
       
       if (!supabaseVideoUrl) {
-        throw new Error("Failed to get video URL from server.");
+        throw new Error("Failed to get video URL from storage.");
       }
       
       toast.success("Video uploaded successfully!", { id: toastId });

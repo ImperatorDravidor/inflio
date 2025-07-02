@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { v4 as uuidv4 } from 'uuid'
+import { auth } from '@clerk/nextjs/server'
 
 // Disable the default body parser for this route to handle large files
 export const runtime = 'nodejs'
@@ -14,17 +15,28 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    // Check authentication
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Handle large file uploads with streaming
     const contentLength = request.headers.get('content-length')
-    if (contentLength && parseInt(contentLength) > 2 * 1024 * 1024 * 1024) {
+    if (contentLength && parseInt(contentLength) > 50 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 2GB.' },
+        { error: 'File too large. Maximum size is 50MB for non-video files.' },
         { status: 413 }
       )
     }
 
     const formData = await request.formData()
     const file = formData.get('file') as File
+    const type = formData.get('type') as string || 'image'
+    const projectId = formData.get('projectId') as string
     
     if (!file) {
       return NextResponse.json(
@@ -33,70 +45,82 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file type
-    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm']
+    // Determine storage bucket and validate file type based on upload type
+    let bucket = 'videos'
+    let validTypes: string[] = []
+    
+    if (type === 'thumbnail' || type === 'image') {
+      bucket = 'videos' // Using same bucket for images
+      validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+    } else if (type === 'personal-photo') {
+      bucket = 'videos' // Using same bucket for personal photos
+      validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    } else {
+      // Default to image types for other cases
+      bucket = 'videos'
+      validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+    }
+
     if (!validTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: 'Invalid file type. Please upload MP4, MOV, AVI, or WebM files.' },
+        { error: `Invalid file type. Please upload ${validTypes.join(', ')} files.` },
         { status: 400 }
       )
     }
 
-    // Validate file size (2GB limit)
-    const maxSize = 2 * 1024 * 1024 * 1024 // 2GB
+    // Validate file size based on type
+    const maxSize = type === 'thumbnail' || type === 'image' ? 10 * 1024 * 1024 : 50 * 1024 * 1024 // 10MB for images, 50MB for others
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 2GB.' },
+        { error: `File too large. Maximum size is ${maxSize / (1024 * 1024)}MB.` },
         { status: 400 }
       )
     }
     
     // Generate a unique file name with sanitization
-    // Remove special characters and replace with safe alternatives
     const sanitizedName = file.name
-      .replace(/[｜|]/g, '-') // Replace pipe characters with dash
-      .replace(/[^\w\s.-]/g, '') // Remove any other special characters except word chars, space, dot, dash
-      .replace(/\s+/g, '-') // Replace spaces with dashes
-      .replace(/-+/g, '-') // Replace multiple dashes with single dash
-      .replace(/^-+|-+$/g, '') // Remove leading/trailing dashes
+      .replace(/[｜|]/g, '-')
+      .replace(/[^\w\s.-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
     
-    // Ensure we have a valid filename after sanitization
-    const finalName = sanitizedName || 'video.mp4'
-    const fileName = `${uuidv4()}-${finalName}`
+    const finalName = sanitizedName || 'file'
+    const timestamp = Date.now()
+    const fileName = `${type}/${timestamp}-${uuidv4()}-${finalName}`
 
     // Upload file to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('videos')
-      .upload(fileName, file)
+      .from(bucket)
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
 
     if (uploadError) {
       console.error('Supabase upload error:', uploadError)
-      throw new Error(`Supabase Storage error: ${uploadError.message}`)
+      throw new Error(`Storage error: ${uploadError.message}`)
     }
 
     // Get the public URL of the uploaded file
     const { data: publicUrlData } = supabase.storage
-      .from('videos')
+      .from(bucket)
       .getPublicUrl(fileName)
 
     const publicUrl = publicUrlData.publicUrl
 
-    // Extract basic file metadata
-    const metadata = {
+    // Return response based on type
+    return NextResponse.json({
+      id: `${type}_${timestamp}`,
+      url: publicUrl,
+      type,
       fileName: file.name,
       fileSize: formatFileSize(file.size),
-      format: file.type.split('/')[1].toUpperCase(),
-    }
-
-    return NextResponse.json({
-      id: `video_${Date.now()}`,
-      ...metadata,
-      url: publicUrl,
-      message: 'Video uploaded successfully',
+      message: `${type} uploaded successfully`,
     })
   } catch (error) {
     console.error('Upload error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Failed to upload video'
+    const errorMessage = error instanceof Error ? error.message : 'Failed to upload file'
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
