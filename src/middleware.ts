@@ -29,7 +29,7 @@ export default clerkMiddleware(async (auth, req) => {
 
   // If the user is not logged in and tries to access a protected route, redirect to sign-in
   if (!userId) {
-    return (await auth()).redirectToSignIn({ returnBackUrl: req.url })
+    return auth().redirectToSignIn({ returnBackUrl: req.url })
   }
   
   // If the user is logged in, check if their onboarding is complete

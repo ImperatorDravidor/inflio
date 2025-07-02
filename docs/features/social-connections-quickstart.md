@@ -36,7 +36,6 @@ Once connected, you'll see:
 
 ### Connection fails silently
 - Check browser console for errors
-- Ensure NEXTAUTH_SECRET is set
 - Try clearing cookies and reconnecting
 
 ## 📝 Test Your Configuration
@@ -49,7 +48,6 @@ node scripts/test-oauth-config.js
 
 This will check:
 - ✅ All required environment variables
-- ✅ NextAuth configuration
 - ✅ Platform credentials
 
 ## 🎯 What's Next?

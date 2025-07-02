@@ -39,14 +39,13 @@ Inflio is a comprehensive video content platform that leverages cutting-edge AI 
 
 ### Backend
 - **API**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL)
-- **Storage**: Supabase Storage
-- **Authentication**: Clerk + NextAuth
-- **AI Services**:
-  - OpenAI GPT-4.1 (Content Analysis)
-  - OpenAI Whisper (Transcription)
-  - Klap AI (Video Clips)
-  - Google Gemini (Content Generation)
+- **Database**: Supabase (PostgreSQL + Storage)
+- **Authentication**: Clerk
+- **AI**:
+  - Transcription: OpenAI Whisper
+  - Content Analysis: OpenAI GPT-4.1
+  - Video Clips: Klap AI
+  - Content Generation: Google Gemini
 
 ### Infrastructure
 - **Error Tracking**: Sentry

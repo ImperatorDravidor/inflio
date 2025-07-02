@@ -12,10 +12,6 @@ This guide will help you set up OAuth for all supported social media platforms i
 Add these to your `.env.local` file:
 
 ```bash
-# NextAuth Configuration
-NEXTAUTH_URL=http://localhost:3000  # Change to your production URL
-NEXTAUTH_SECRET=your-secret-key  # Generate with: openssl rand -base64 32
-
 # App URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000  # Change to your production URL
 ```
@@ -142,12 +138,11 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000  # Change to your production URL
 Before going to production:
 
 1. ✅ Update all redirect URIs to use HTTPS and your production domain
-2. ✅ Update NEXTAUTH_URL to your production URL
-3. ✅ Ensure NEXTAUTH_SECRET is a secure random string
-4. ✅ Submit apps for review (Facebook/Instagram)
-5. ✅ Enable production mode in all developer consoles
-6. ✅ Set up proper privacy policy and terms of service pages
-7. ✅ Test the complete OAuth flow on production
+2. ✅ Set `NEXT_PUBLIC_APP_URL` to your production URL
+3. ✅ Submit apps for review (Facebook/Instagram)
+4. ✅ Enable production mode in all developer consoles
+5. ✅ Set up proper privacy policy and terms of service pages
+6. ✅ Test the complete OAuth flow on production
 
 ## Security Best Practices
 
