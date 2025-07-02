@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
   },
   // Configure server external packages (moved from experimental)
   serverExternalPackages: [],
+  // Increase body size limit for video uploads
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2gb',
+    },
+  },
 };
 
 export default withSentryConfig(nextConfig, {

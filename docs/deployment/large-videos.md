@@ -113,3 +113,72 @@ The system now automatically:
 - **Error Logs**: Browser Console + Server Logs
 - **File Compression**: Use HandBrake or FFmpeg
 - **API Limits**: Check respective dashboards 
+
+# Handling Large Video Uploads
+
+## Issue
+When uploading large videos (>50MB), you may encounter a 413 error (Request Entity Too Large) due to server limitations.
+
+## Root Cause
+Vercel has a default request body size limit of 4.5MB for serverless functions. While we've configured the app to handle up to 2GB files, the platform hosting limits may override this.
+
+## Solutions
+
+### 1. Direct Browser Upload (Implemented)
+The app now automatically detects files larger than 50MB and uploads them directly from the browser to Supabase Storage, bypassing the API route entirely.
+
+### 2. Vercel Configuration
+We've added the following configurations:
+- `next.config.ts`: Set `bodySizeLimit: '2gb'` in experimental.serverActions
+- `vercel.json`: Increased maxDuration for all processing routes
+
+### 3. Platform Limits
+Different hosting platforms have different limits:
+- **Vercel Hobby**: 4.5MB body size limit
+- **Vercel Pro**: 4.5MB body size limit (same as hobby)
+- **Vercel Enterprise**: Custom limits available
+- **Self-hosted**: No limits
+
+## Recommendations
+
+### For Production Deployment
+
+1. **Use Direct Upload**: The app automatically uses direct browser-to-Supabase upload for files >50MB
+2. **Set Supabase Limits**: Ensure your Supabase project allows large file uploads:
+   ```sql
+   -- Check current settings
+   SELECT * FROM storage.buckets WHERE name = 'videos';
+   
+   -- Update if needed (requires admin access)
+   UPDATE storage.buckets 
+   SET file_size_limit = 2147483648  -- 2GB in bytes
+   WHERE name = 'videos';
+   ```
+
+3. **Alternative Solutions**:
+   - Use presigned URLs for direct S3/Cloudinary uploads
+   - Implement chunked uploads with resumable support
+   - Use a dedicated media server for large files
+
+### For Users
+
+If you encounter upload errors:
+1. **Check file size**: Maximum supported is 2GB
+2. **Check file format**: MP4, MOV, AVI, or WebM only
+3. **Try compressing**: Use HandBrake or similar to reduce file size
+4. **Check connection**: Large uploads need stable internet
+
+### Error Messages
+
+- **"File too large. Maximum size is 2GB"**: File exceeds app limit
+- **"Request Entity Too Large"**: File exceeds server limit (use smaller file)
+- **"Failed to upload"**: Network or server error (retry)
+
+## Technical Details
+
+The upload flow works as follows:
+1. Files ≤50MB: Upload through API route to Supabase
+2. Files >50MB: Direct browser upload to Supabase Storage
+3. All files: Create project record and start processing
+
+This ensures reliable uploads regardless of file size while working within platform constraints. 
