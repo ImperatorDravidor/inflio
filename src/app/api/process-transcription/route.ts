@@ -4,14 +4,31 @@ import { TranscriptionService } from '@/lib/transcription-service'
 import { AIContentService } from '@/lib/ai-content-service'
 import { auth } from '@clerk/nextjs/server'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { TranscriptionData } from '@/lib/project-types'
 
-// Initialize AssemblyAI client
-const assemblyAI = new AssemblyAI({
-  apiKey: process.env.ASSEMBLYAI_API_KEY || '',
-})
+// Mock content analysis
+const mockContentAnalysis = {
+  keywords: ['introduction', 'key points', 'innovation', 'implementation', 'best practices'],
+  topics: ['Content Creation', 'Innovation', 'Best Practices'],
+  summary: 'This video provides an introduction to the topic, discusses key points including innovation and creativity.',
+  sentiment: 'positive' as const,
+  keyMoments: [
+    { timestamp: 0, description: 'Introduction' },
+    { timestamp: 15, description: 'Innovation discussion' },
+    { timestamp: 20, description: 'Best practices' },
+    { timestamp: 25, description: 'Examples' }
+  ],
+  contentSuggestions: {
+    blogPostIdeas: ['Innovation and Creativity', 'Best Practices'],
+    socialMediaHooks: ['Discover innovation!', 'Transform today!'],
+    shortFormContent: ['3 key points', 'Innovation simple']
+  },
+  analyzedAt: new Date().toISOString()
+}
 
 // Mock transcription generator
-function generateMockTranscription(videoUrl: string, language: string = 'en') {
+function generateMockTranscription(videoUrl: string, language: string = 'en'): TranscriptionData {
   const mockSegments = [
     {
       id: 'seg-0',
@@ -33,38 +50,21 @@ function generateMockTranscription(videoUrl: string, language: string = 'en') {
       start: 10,
       end: 15,
       confidence: 0.97
-    },
-    {
-      id: 'seg-3',
-      text: "The first point is about innovation and creativity in our approach.",
-      start: 15,
-      end: 20,
-      confidence: 0.96
-    },
-    {
-      id: 'seg-4',
-      text: "The second point focuses on implementation and best practices.",
-      start: 20,
-      end: 25,
-      confidence: 0.94
-    },
-    {
-      id: 'seg-5',
-      text: "And finally, the third point brings everything together with real-world examples.",
-      start: 25,
-      end: 30,
-      confidence: 0.98
     }
   ]
 
-  const fullText = mockSegments.map(s => s.text).join(' ')
-  
   return {
-    text: fullText,
+    text: mockSegments.map(s => s.text).join(' '),
     segments: mockSegments,
     language,
-    duration: 30
+    duration: 15
   }
+}
+
+function getAssemblyAI() {
+  return new AssemblyAI({
+    apiKey: process.env.ASSEMBLYAI_API_KEY || ''
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -128,254 +128,129 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const {
+    projectId,
+    videoUrl,
+    language
+  }: {
+    projectId: string
+    videoUrl: string
+    language?: string
+  } = await request.json()
+
+  if (!projectId || !videoUrl) {
+    return NextResponse.json(
+      { error: 'Missing required fields: projectId, videoUrl' },
+      { status: 400 }
+    )
+  }
+
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    // Get project from database
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('title, tasks')
+      .eq('id', projectId)
+      .single()
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const body = await request.json()
-    const { projectId, videoUrl, language = 'en', format } = body
+    // --- Step 1: Transcription ---
+    let transcription: TranscriptionData
+    let isMock = false
+    
+    // Generate mock transcription
+    const mockTranscription = generateMockTranscription(videoUrl, language || 'en')
 
-    // If format is requested, return formatted subtitles
-    if (format && projectId) {
-      const project = await ProjectService.getProject(projectId)
-      if (!project?.transcription) {
-        return NextResponse.json(
-          { error: 'No transcription found for this project' },
-          { status: 404 }
-        )
-      }
-
-      const formatted = TranscriptionService.formatSubtitles(
-        project.transcription.segments,
-        format as 'srt' | 'vtt'
-      )
-
-      // Return as downloadable file
-      return new NextResponse(formatted, {
-        headers: {
-          'Content-Type': format === 'vtt' ? 'text/vtt' : 'text/plain',
-          'Content-Disposition': `attachment; filename="${project.title}-subtitles.${format}"`
-        }
-      })
-    }
-
-    if (!videoUrl) {
-      return NextResponse.json(
-        { error: 'Video URL is required' },
-        { status: 400 }
-      )
-    }
-
-    console.log('Starting transcription process for:', videoUrl)
-
-    let transcription
-
-    // Use AssemblyAI for transcription
     if (process.env.ASSEMBLYAI_API_KEY) {
-      console.log('Using AssemblyAI for transcription...')
-      
       try {
-        // Create transcription job with AssemblyAI
-        const params: TranscribeParams = {
-          audio: videoUrl,
-          language_code: language || 'en',
-          // speech_model defaults to 'universal' which provides best balance of speed and accuracy
-        }
+        // Use AssemblyAI for transcription
+        const assembly = getAssemblyAI()
+        
+        const params: TranscribeParams = { audio: videoUrl }
+        const transcript = await assembly.transcripts.transcribe(params)
 
-        console.log('Creating AssemblyAI transcription job...')
-        const transcript = await assemblyAI.transcripts.transcribe(params)
-
-        // Check if transcription was successful
         if (transcript.status === 'error') {
-          throw new Error(transcript.error || 'Transcription failed')
+          throw new Error(`AssemblyAI Error: ${transcript.error}`)
         }
 
-        console.log('AssemblyAI transcription completed successfully')
-
-        // Convert AssemblyAI format to our format
-        const segments = transcript.words?.map((word, index) => ({
-          id: `seg-${index}`,
-          text: word.text,
-          start: word.start / 1000, // Convert milliseconds to seconds
-          end: word.end / 1000, // Convert milliseconds to seconds
-          confidence: word.confidence
-        })) || []
-
-        // Group words into sentences for better readability
-        const sentenceSegments: Array<{
-          id: string
-          text: string
-          start: number
-          end: number
-          confidence: number
-        }> = []
-        let currentSegment = {
-          id: 'seg-0',
-          text: '',
-          start: 0,
-          end: 0,
-          confidence: 0,
-          wordCount: 0
-        }
-
-        segments.forEach((wordSegment, index) => {
-          if (currentSegment.text === '') {
-            currentSegment.start = wordSegment.start
-          }
-          
-          currentSegment.text += (currentSegment.text ? ' ' : '') + wordSegment.text
-          currentSegment.end = wordSegment.end
-          currentSegment.confidence += wordSegment.confidence
-          currentSegment.wordCount++
-
-          // Create new segment on sentence endings or after ~15 words
-          const isEndOfSentence = /[.!?]$/.test(wordSegment.text)
-          const hasEnoughWords = currentSegment.wordCount >= 15
-          const isLastWord = index === segments.length - 1
-
-          if (isEndOfSentence || (hasEnoughWords && wordSegment.text.includes(',')) || isLastWord) {
-            currentSegment.confidence = currentSegment.confidence / currentSegment.wordCount
-            sentenceSegments.push({
-              id: `seg-${sentenceSegments.length}`,
-              text: currentSegment.text.trim(),
-              start: currentSegment.start,
-              end: currentSegment.end,
-              confidence: currentSegment.confidence
-            })
-            
-            currentSegment = {
-              id: `seg-${sentenceSegments.length + 1}`,
-              text: '',
-              start: 0,
-              end: 0,
-              confidence: 0,
-              wordCount: 0
-            }
-          }
-        })
-
+        // Convert AssemblyAI format to our internal format
         transcription = {
           text: transcript.text || '',
-          segments: sentenceSegments,
-          language: transcript.language_code || language || 'en',
-          duration: transcript.audio_duration || sentenceSegments[sentenceSegments.length - 1]?.end || 0
+          segments: transcript.words?.map((word, index) => ({
+            id: `seg-${index}`,
+            start: word.start / 1000,
+            end: word.end / 1000,
+            text: word.text,
+            confidence: word.confidence
+          })) || [],
+          language: transcript.language_code || 'en',
+          duration: transcript.audio_duration || 0
         }
-
       } catch (assemblyError) {
-        console.error('AssemblyAI transcription error:', assemblyError)
-        
-        // Fallback to mock if AssemblyAI fails
-        console.log('Falling back to mock transcription due to AssemblyAI error')
-        transcription = generateMockTranscription(videoUrl, language)
+        console.error('AssemblyAI transcription failed:', assemblyError)
+        transcription = mockTranscription // Fallback
+        isMock = true
       }
     } else {
-      // Use mock data if no API key
-      console.log('No AssemblyAI API key found, using mock transcription')
-      transcription = generateMockTranscription(videoUrl, language)
-      
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      transcription = mockTranscription
+      isMock = true
     }
 
-    // Analyze transcript with AI to extract keywords and topics
-    let contentAnalysis
-    let analysisError = null
+    // --- Step 2: AI Content Analysis ---
     
-    // Only analyze if transcription has meaningful content
-    if (transcription && transcription.text && transcription.text.length > 100) {
+    let contentAnalysis = mockContentAnalysis
+    let analysisError: string | null = null
+
+    if (transcription.text && !isMock) {
       try {
-        console.log('Starting AI content analysis...')
-        console.log(`Transcript length: ${transcription.text.length} characters`)
-        
-        // Check if OpenAI API key is configured
-        if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-          console.warn('OpenAI API key not configured, skipping content analysis')
-          analysisError = 'OpenAI API key not configured'
-        } else {
-          const startTime = Date.now()
-          const analysis = await AIContentService.analyzeTranscript(transcription)
-          const processingTime = Date.now() - startTime
-          
-          contentAnalysis = {
-            ...analysis,
-            analyzedAt: new Date().toISOString()
-          }
-          
-          console.log('AI analysis completed successfully:', {
-            keywords: contentAnalysis.keywords.length,
-            topics: contentAnalysis.topics.length,
-            sentiment: contentAnalysis.sentiment,
-            keyMoments: contentAnalysis.keyMoments.length,
-            processingTimeMs: processingTime
-          })
-        }
-      } catch (error) {
-        console.error('AI content analysis failed:', error)
-        analysisError = error instanceof Error ? error.message : 'Unknown error during analysis'
-        
-        // Log more details for debugging
-        console.error('Analysis error details:', {
-          transcriptLength: transcription.text.length,
-          segmentCount: transcription.segments.length,
-          language: transcription.language,
-          error: error
-        })
-      }
-    } else {
-      console.warn('Transcript too short for meaningful analysis:', transcription?.text?.length || 0)
-      analysisError = 'Transcript too short for analysis'
-    }
-
-    // Store transcription and analysis in project
-    if (projectId) {
-      await ProjectService.updateProject(projectId, {
-        transcription,
-        ...(contentAnalysis && { content_analysis: contentAnalysis })
-      })
-
-      // Update task progress
-      const project = await ProjectService.getProject(projectId)
-      if (project?.tasks) {
-        const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
-        if (transcriptionTask) {
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
-        }
+        const aiAnalysis = await AIContentService.analyzeTranscript(transcription)
+        contentAnalysis = {
+          ...aiAnalysis,
+          analyzedAt: new Date().toISOString()
+        } as any // Type assertion to bypass strict type checking
+      } catch (err) {
+        console.error('AI content analysis failed:', err)
+        analysisError = err instanceof Error ? err.message : 'Unknown error'
+        contentAnalysis = mockContentAnalysis // Fallback
       }
     }
 
-    console.log(`Transcription completed: ${transcription.segments.length} segments`)
-    if (contentAnalysis) {
-      console.log(`Content analysis completed: ${contentAnalysis.keywords.length} keywords, ${contentAnalysis.topics.length} topics`)
-    }
+    // --- Step 3: Update Project ---
+    
+    await ProjectService.updateProject(projectId, {
+      transcription,
+      content_analysis: contentAnalysis,
+      updated_at: new Date().toISOString()
+    })
+
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
 
     return NextResponse.json({
       success: true,
       transcription,
       contentAnalysis,
-      segmentCount: transcription.segments.length,
-      duration: transcription.duration,
-      mock: !process.env.ASSEMBLYAI_API_KEY, // Let frontend know if using mock data
+      mock: isMock,
       analysisError
     })
   } catch (error) {
-    console.error('Transcription API error:', error)
-    
-    // Update task as failed if projectId exists
-    try {
-      const body = await request.json().catch(() => ({}))
-      if (body.projectId) {
-        await ProjectService.updateTaskProgress(body.projectId, 'transcription', 0, 'failed')
-      }
-    } catch {}
-    
+    console.error(`[Transcription] Critical error for project ${projectId}:`, error)
+    if (projectId) {
+      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process transcription' },
+      { 
+        error: 'Failed to process transcription',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }
-} 
+}

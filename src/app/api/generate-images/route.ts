@@ -77,8 +77,6 @@ export async function POST(request: NextRequest) {
         const slidePrompt = carouselPrompts[i]
         
         try {
-          console.log(`Generating carousel slide ${i + 1}/${carouselPrompts.length}...`)
-          
           const slideResponse = await openai.images.generate({
             model: 'gpt-image-1',
             prompt: style ? `${slidePrompt}. Style: ${style}` : slidePrompt,
@@ -87,9 +85,6 @@ export async function POST(request: NextRequest) {
             quality: quality as any
           })
           
-          // Log the full response to understand its structure
-          console.log('Full slide response:', JSON.stringify(slideResponse, null, 2))
-          
           // Check if response has data
           if (!slideResponse.data || slideResponse.data.length === 0) {
             console.error('No data in slide response:', slideResponse)
@@ -97,22 +92,18 @@ export async function POST(request: NextRequest) {
           }
           
           const imageData = slideResponse.data[0]
-          console.log('Image data structure:', JSON.stringify(imageData, null, 2))
           
           const imageId = crypto.randomUUID()
           let publicUrl: string
           let base64: string
           
-          // GPT-IMAGE-1 returns base64, not URLs
           const imageDataAny = imageData as any
           
           if (imageDataAny.b64_json) {
             // GPT-IMAGE-1 returns base64 directly
-            console.log('Found b64_json for GPT-IMAGE-1')
             base64 = imageDataAny.b64_json
           } else if (imageDataAny.url) {
             // Other models return URLs
-            console.log('Found URL, downloading image...')
             const imageResponse = await fetch(imageDataAny.url)
             if (!imageResponse.ok) {
               throw new Error(`Failed to download image: ${imageResponse.status} ${imageResponse.statusText}`)
@@ -160,26 +151,20 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Regular image generation
-      console.log('Regular image generation - full response:', JSON.stringify(response, null, 2))
-      
       for (let i = 0; i < (response.data?.length || 0); i++) {
         const imageData = response.data![i]
-        console.log(`Image ${i + 1} data:`, JSON.stringify(imageData, null, 2))
         
         const imageId = crypto.randomUUID()
         let publicUrl: string
         let base64: string
         
-        // GPT-IMAGE-1 returns base64, not URLs
         const imageDataAny = imageData as any
         
         if (imageDataAny.b64_json) {
           // GPT-IMAGE-1 returns base64 directly
-          console.log('Found b64_json for GPT-IMAGE-1')
           base64 = imageDataAny.b64_json
         } else if (imageDataAny.url) {
           // Other models return URLs
-          console.log('Found URL, downloading image...')
           const imageResponse = await fetch(imageDataAny.url)
           if (!imageResponse.ok) {
             throw new Error(`Failed to download image: ${imageResponse.status} ${imageResponse.statusText}`)

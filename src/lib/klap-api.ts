@@ -57,7 +57,6 @@ export class KlapAPIService {
    * Step 1: Create a video processing task on Klap.
    */
   private static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
-    console.log('[Klap] Creating video-to-shorts task for URL:', videoUrl)
     return this.request('/tasks/video-to-shorts', {
       method: 'POST',
       body: JSON.stringify({ 
@@ -85,7 +84,6 @@ export class KlapAPIService {
         
         // Calculate elapsed time
         const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
-        console.log(`[Klap] Polling task ${taskId}: status is ${task.status} (${elapsedMinutes} minutes elapsed)`)
       
       if (task.status === 'ready') {
         if (!task.output_id) {
@@ -110,13 +108,10 @@ export class KlapAPIService {
         
         // Handle rate limiting
         if (error.message && error.message.includes('429')) {
-          console.log(`[Klap] Rate limited. Waiting 60 seconds before retry...`)
           await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute on rate limit
         } else if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error(`[Klap] Too many consecutive errors (${consecutiveErrors}). Aborting.`)
           throw error;
         } else {
-          console.warn(`[Klap] Polling error (attempt ${consecutiveErrors}/${maxConsecutiveErrors}):`, error.message)
           // Wait longer on errors
           await new Promise(resolve => setTimeout(resolve, baseDelay * 2));
         }
@@ -131,7 +126,6 @@ export class KlapAPIService {
    * Step 3: Get all generated clips from the output folder.
    */
   private static async getClipsFromFolder(folderId: string): Promise<any[]> {
-    console.log('[Klap] Getting clips from folder:', folderId)
     return this.request(`/projects/${folderId}`)
   }
   
@@ -140,8 +134,6 @@ export class KlapAPIService {
    * This is the single public method that handles everything.
    */
   static async processVideo(videoUrl: string, title: string) {
-    console.log(`[Klap] Starting full processing for video: ${title}`)
-    
     // Step 1: Create task
     const task = await this.createVideoTask(videoUrl)
     console.log(`[Klap] Task creation successful. Received Task ID: ${task.id}`, task)
@@ -153,7 +145,6 @@ export class KlapAPIService {
     // Step 3: Get clips
     const clips = await this.getClipsFromFolder(completedTask.output_id)
     console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
-    console.log(`[Klap] Raw clips data:`, JSON.stringify(clips, null, 2))
     
     return { clips, klapFolderId: completedTask.output_id }
   }
@@ -199,8 +190,6 @@ export class KlapAPIService {
     watermark?: string,
     onProgress?: (message: string, index: number, total: number) => void
   ): Promise<Array<{ projectId: string; url: string }>> {
-    console.log(`[Klap] Exporting ${clipIds.length} clips from folder ${folderId}`)
-    
     const exportedClips: Array<{ projectId: string; url: string }> = []
     
     for (let i = 0; i < clipIds.length; i++) {
@@ -236,8 +225,6 @@ export class KlapAPIService {
           exportResult = await this.request<{ id: string; status: string; src_url?: string }>(
             `/projects/${folderId}/${clipId}/exports/${exportTask.id}`
           )
-          
-          console.log(`[Klap] Export status for ${clipId}: ${exportResult.status}`)
           
           if (exportResult.status === 'ready' && exportResult.src_url) {
             break // Success

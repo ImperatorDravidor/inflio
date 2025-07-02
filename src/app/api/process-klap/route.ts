@@ -44,8 +44,6 @@ export async function POST(request: NextRequest) {
     for (let clipIndex = 0; clipIndex < klapResult.clips.length; clipIndex++) {
       const basicClip = klapResult.clips[clipIndex];
       try {
-        console.log(`[Klap Route] Processing clip ${basicClip.id}...`);
-        
         // Update progress based on clips processed
         const progress = Math.floor(((processedClips + 0.5) / totalClips) * 100);
         await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing');
@@ -131,18 +129,6 @@ export async function POST(request: NextRequest) {
             duration = clip.clip_length;
         }
         
-        console.log(`[Klap Route] Clip ${clip.id} duration calculation:`, {
-            direct_duration: clip.duration,
-            end_time: clip.end_time,
-            start_time: clip.start_time,
-            end: clip.end,
-            start: clip.start,
-            length: clip.length,
-            clip_length: clip.clip_length,
-            calculated_duration: duration,
-            raw_clip_data: clip
-        });
-        
         const transcript = clip.transcript || clip.text || clip.caption || '';
 
         const startTime = clip.start_time ?? clip.start ?? 0;
@@ -173,7 +159,6 @@ export async function POST(request: NextRequest) {
 
         // 5. Store the fully processed clip
         await ProjectService.addToFolder(projectId, 'clips', clipToStore);
-        console.log(`[Klap Route] Successfully stored clip ${clip.id} with video URL: ${ownStorageUrl}`);
         
         // Increment processed clips counter
         processedClips++;
@@ -276,7 +261,9 @@ export async function PUT(request: NextRequest) {
       clipIds,
       undefined, // No watermark for now
       (message, index, total) => {
-        console.log(`Export progress: ${message} (${index + 1}/${total})`)
+        // This is a progress callback, logging here can be useful for server-side monitoring
+        // but can be removed if too noisy for production.
+        // console.log(`Export progress: ${message} (${index + 1}/${total})`)
       }
     )
 

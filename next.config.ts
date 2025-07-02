@@ -33,13 +33,6 @@ const nextConfig: NextConfig = {
   },
   // Configure server external packages (moved from experimental)
   serverExternalPackages: [],
-  // Configure API routes for large uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '2gb',
-    },
-    responseLimit: false,
-  },
 };
 
 export default withSentryConfig(nextConfig, {
