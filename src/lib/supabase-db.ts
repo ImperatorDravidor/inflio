@@ -38,7 +38,7 @@ export class SupabaseProjectService {
         clips: [],
         blog: [],
         social: [],
-        podcast: []
+  
       },
       tasks: workflowOptions ? this.initializeTasksFromWorkflows(workflowOptions) : this.initializeTasks(),
       settings: {
@@ -118,14 +118,7 @@ export class SupabaseProjectService {
       })
     }
     
-    if (workflowOptions.podcast) {
-      tasks.push({
-        id: uuidv4(),
-        type: 'podcast',
-        status: 'pending',
-        progress: 0
-      })
-    }
+
     
     return tasks
   }
@@ -136,8 +129,7 @@ export class SupabaseProjectService {
       'transcription',
       'clips',
       'blog',
-      'social',
-      'podcast'
+      'social'
     ]
     
     return taskTypes.map(type => ({
@@ -430,7 +422,7 @@ export class SupabaseProjectService {
       totalClips: project.folders.clips.length,
       totalBlogs: project.folders.blog.length,
       totalSocialPosts: project.folders.social.length,
-      podcastChapters: project.folders.podcast.length,
+
       completedTasks: project.tasks.filter(t => t.status === 'completed').length,
       totalTasks: project.tasks.length,
       overallProgress: this.calculateProjectProgress(project)

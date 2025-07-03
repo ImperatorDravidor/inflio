@@ -6,7 +6,7 @@ import {
   SocialPost,
   ClipData,
   BlogPost,
-  PodcastData,
+
   GeneratedImage
 } from './project-types'
 import { v4 as uuidv4 } from 'uuid'
@@ -50,7 +50,7 @@ export class ProjectService {
         clips: [],
         blog: [],
         social: [],
-        podcast: []
+  
       },
       user_id: userId,
       tasks: this.initializeTasksFromWorkflows(workflows),
@@ -132,14 +132,7 @@ export class ProjectService {
       })
     }
     
-    if (workflowOptions.podcast) {
-      tasks.push({
-        id: uuidv4(),
-        type: 'podcast',
-        status: 'pending',
-        progress: 0
-      })
-    }
+
     
     return tasks
   }
@@ -150,8 +143,7 @@ export class ProjectService {
       'transcription',
       'clips',
       'blog',
-      'social',
-      'podcast'
+      'social'
     ]
     
     return taskTypes.map(type => ({
@@ -270,8 +262,6 @@ export class ProjectService {
       updatedFolders.blog = [...project.folders.blog, content as BlogPost]
     } else if (folderType === 'social') {
       updatedFolders.social = [...project.folders.social, content as SocialPost]
-    } else if (folderType === 'podcast') {
-      updatedFolders.podcast = [...project.folders.podcast, content as PodcastData]
     } else if (folderType === 'images' && project.folders.images) {
       updatedFolders.images = [...project.folders.images, content as GeneratedImage]
     }
@@ -447,7 +437,7 @@ export class ProjectService {
       totalBlogs: project.folders.blog.length,
       totalSocialPosts: project.folders.social.length,
       totalImages,
-      podcastChapters: project.folders.podcast.length,
+
       completedTasks: project.tasks.filter(t => t.status === 'completed').length,
       totalTasks: project.tasks.length,
       overallProgress: this.calculateProjectProgress(project)

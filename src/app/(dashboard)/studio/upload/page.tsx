@@ -44,8 +44,7 @@ export default function UploadPage() {
     transcription: true,
     clips: false,  // Default to false - user must explicitly check it
     blog: false,
-    social: false,
-    podcast: false
+    social: false
   })
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -150,8 +149,7 @@ export default function UploadPage() {
       transcription: true,
       clips: false,  // Reset to false
       blog: false,
-      social: false,
-      podcast: false
+      social: false
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""

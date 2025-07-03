@@ -20,7 +20,6 @@ export interface WorkflowOptions {
   clips: boolean
   blog: boolean
   social: boolean
-  podcast: boolean
 }
 
 interface WorkflowSelectionProps {

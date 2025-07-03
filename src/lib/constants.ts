@@ -52,7 +52,7 @@ export const TASK_TYPES = {
   CLIPS: 'clips',
   BLOG: 'blog',
   SOCIAL: 'social',
-  PODCAST: 'podcast'
+
 } as const
 
 // Project status

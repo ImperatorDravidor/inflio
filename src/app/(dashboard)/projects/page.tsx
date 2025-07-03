@@ -419,7 +419,7 @@ function ProjectCard({
           </div>
           <div className="flex items-center gap-2 text-sm">
             <IconMicrophone className="h-4 w-4 text-muted-foreground" />
-            <span>{stats.podcastChapters} chapters</span>
+            
           </div>
         </div>
         

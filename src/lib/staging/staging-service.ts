@@ -1220,7 +1220,7 @@ Return JSON array of optimal times:
       throw new AppError('Failed to schedule posts', 'SCHEDULE_FAILED', 500)
     }
     
-    // Log successful scheduling
+    // Log successful scheduling in development
     if (process.env.NODE_ENV === 'development') {
       console.log(`Successfully scheduled ${validPosts.length} posts for user ${userId}`)
     }

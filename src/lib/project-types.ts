@@ -11,13 +11,13 @@ export interface VideoMetadata {
 
 export interface ProcessingTask {
   id: string
-  type: 'transcription' | 'clips' | 'blog' | 'social' | 'podcast'
+  type: 'transcription' | 'clips' | 'blog' | 'social'
   status: 'pending' | 'processing' | 'completed' | 'failed'
   progress: number
   startedAt?: string
   completedAt?: string
   error?: string
-  result?: TranscriptionData | ClipData[] | BlogPost | SocialPost[] | PodcastData
+  result?: TranscriptionData | ClipData[] | BlogPost | SocialPost[]
 }
 
 export interface TranscriptionData {
@@ -96,21 +96,7 @@ export interface SocialPost {
   createdAt?: string
 }
 
-export interface PodcastData {
-  id: string
-  title: string
-  description: string
-  chapters: Array<{
-    title: string
-    startTime: number
-    endTime: number
-    summary: string
-  }>
-  showNotes: string
-  keywords: string[]
-  guests?: string[]
-  topics: string[]
-}
+
 
 export interface GeneratedImage {
   id: string
@@ -131,7 +117,6 @@ export interface ContentFolders {
   clips: ClipData[]
   blog: BlogPost[]
   social: SocialPost[]
-  podcast: PodcastData[]
   images?: GeneratedImage[]
 }
 

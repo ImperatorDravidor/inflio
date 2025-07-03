@@ -26,7 +26,7 @@ interface AnalyticsData {
   totalClips: number
   totalBlogs: number
   totalSocialPosts: number
-  totalPodcasts: number
+
   projectsByStatus: Record<string, number>
   recentActivity: Array<{
     id: string
@@ -68,7 +68,7 @@ export default function AnalyticsPage() {
           totalClips: 0,
           totalBlogs: 0,
           totalSocialPosts: 0,
-          totalPodcasts: 0,
+
           projectsByStatus: {
             draft: 0,
             processing: 0,
@@ -92,7 +92,7 @@ export default function AnalyticsPage() {
         totalClips: 0,
         totalBlogs: 0,
         totalSocialPosts: 0,
-        totalPodcasts: 0,
+
         projectsByStatus: {
           draft: 0,
           processing: 0,
@@ -111,7 +111,7 @@ export default function AnalyticsPage() {
         data.totalClips += project.folders.clips.length
         data.totalBlogs += project.folders.blog.length
         data.totalSocialPosts += project.folders.social.length
-        data.totalPodcasts += project.folders.podcast.length
+
         data.projectsByStatus[project.status] = (data.projectsByStatus[project.status] || 0) + 1
       })
 
