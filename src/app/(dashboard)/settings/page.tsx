@@ -573,9 +573,11 @@ export default function SettingsPage() {
                   
                   <div className="flex gap-2">
                     {usageData.plan === 'basic' && (
-                      <Button className="gradient-premium" onClick={() => {
-                        toast.info("Upgrade feature coming soon!")
-                      }}>
+                      <Button 
+                        className="w-full gradient-premium text-white" 
+                        size="lg"
+                        onClick={() => window.open('https://inflio.com/pricing', '_blank')}
+                      >
                         Upgrade to Pro
                       </Button>
                     )}

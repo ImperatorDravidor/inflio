@@ -57,6 +57,38 @@ NEXT_PUBLIC_MAX_FILE_SIZE=524288000  # Max upload size in bytes (default: 500MB)
 3. Generate an API key
 4. **Note**: Klap API has usage limits based on your plan
 
+## Social Media OAuth (Optional but Recommended)
+
+To enable social media posting, add these credentials:
+
+```bash
+# Application URL (required for OAuth redirects)
+NEXT_PUBLIC_APP_URL=http://localhost:3000  # Change to your production URL
+
+# Facebook & Instagram
+FACEBOOK_APP_ID=your_facebook_app_id
+FACEBOOK_APP_SECRET=your_facebook_app_secret
+
+# X (Twitter)
+TWITTER_CLIENT_ID=your_x_client_id
+TWITTER_CLIENT_SECRET=your_x_client_secret
+
+# YouTube
+YOUTUBE_CLIENT_ID=your_youtube_client_id  # Or use GOOGLE_CLIENT_ID
+YOUTUBE_CLIENT_SECRET=your_youtube_client_secret  # Or use GOOGLE_CLIENT_SECRET
+
+# Scheduled Publishing (Production Only)
+CRON_SECRET=your_random_secret_string  # Generate a secure random string for production
+```
+
+### Getting Social Media API Keys
+
+1. **Facebook & Instagram**: [developers.facebook.com](https://developers.facebook.com)
+2. **X (Twitter)**: [developer.twitter.com](https://developer.twitter.com)
+3. **YouTube**: [console.cloud.google.com](https://console.cloud.google.com)
+
+See the [Social OAuth Setup Guide](/docs/setup/social-oauth-setup.md) for detailed instructions.
+
 ## Environment Variables by Feature
 
 ### Core Features (Required)

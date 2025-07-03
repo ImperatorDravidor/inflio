@@ -802,7 +802,7 @@ export default function SocialCalendarPage() {
                       description="You don't have any posts scheduled yet. Create content in your projects and schedule them to appear here."
                       action={{
                         label: "Schedule Your First Post",
-                        onClick: () => toast.info('Coming soon: Quick schedule')
+                        onClick: () => router.push('/social/compose')
                       }}
                     />
                   ) : (

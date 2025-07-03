@@ -96,19 +96,19 @@ export async function POST(request: NextRequest) {
           instagram: {
             maxLength: 2200,
             tone: 'casual, emoji-rich',
-            hashtags: 30,
+            hashtags: 10,
             notes: 'Front-load key message into first 125 characters. Visible preview before "more" is ~125 chars.'
           },
           'instagram-reel': {
             maxLength: 2200,
             tone: 'engaging, hook-focused',
-            hashtags: 30,
+            hashtags: 10,
             notes: 'Front-load key message into first 125 characters.'
           },
           'instagram-story': {
             maxLength: 100,
             tone: 'brief, casual',
-            hashtags: 15
+            hashtags: 5
           },
           x: {
             maxLength: 280,
@@ -130,13 +130,13 @@ export async function POST(request: NextRequest) {
           youtube: {
             maxLength: 5000,
             tone: 'descriptive, SEO-focused',
-            hashtags: 15,
+            hashtags: 8,
             notes: 'Key info ideally in the first 157 characters. Title should be ≤100 characters.'
           },
           'youtube-short': {
             maxLength: 100,
             tone: 'engaging, fast-paced',
-            hashtags: 10,
+            hashtags: 5,
             notes: 'Shorts caption/hashtags limited to ~100 characters total.'
           },
           tiktok: {

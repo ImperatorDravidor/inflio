@@ -35,7 +35,9 @@ import {
   IconTrendingUp,
   IconEdit,
   IconCalendar,
-  IconShare2
+  IconShare2,
+  IconChevronDown,
+  IconFileText
 } from "@tabler/icons-react"
 import { StagedContent } from "@/lib/staging/staging-service"
 import { Platform } from "@/lib/social/types"
@@ -43,6 +45,7 @@ import { cn, countCharacters, getPlatformLimit, getPlatformHashtagLimit, getPlat
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface ContentStagerProps {
   content: StagedContent[]
@@ -238,25 +241,32 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
     setIsGenerating({ ...isGenerating, [key]: true })
     
     try {
+      // Get the current item
+      const item = editedContent.find(i => i.id === contentId)
+      if (!item) {
+        toast.error('Content item not found')
+        return
+      }
+      
       // Get the project ID from the current item's original data
-      const projectId = currentItem?.originalData?.projectId || 
+      const projectId = item.originalData?.projectId || 
                        (window.location.pathname.match(/projects\/([^\/]+)/)?.[1])
       
       // Prepare comprehensive content data
       const contentData = {
-        id: currentItem?.id || '',
-        title: currentItem?.title || '',
-        description: currentItem?.description || '',
-        type: currentItem?.type || 'clip',
-        duration: currentItem?.duration,
-        thumbnail: currentItem?.thumbnailUrl,
+        id: item.id || '',
+        title: item.title || '',
+        description: item.description || '',
+        type: item.type || 'clip',
+        duration: item.duration,
+        thumbnail: item.thumbnailUrl,
         // Include all virality and analysis data
-        score: currentItem?.originalData?.score,
-        scoreReasoning: currentItem?.originalData?.scoreReasoning,
-        transcript: currentItem?.originalData?.transcript,
-        sentiment: currentItem?.originalData?.sentiment,
-        analytics: currentItem?.analytics,
-        originalData: currentItem?.originalData
+        score: item.originalData?.score,
+        scoreReasoning: item.originalData?.scoreReasoning,
+        transcript: item.originalData?.transcript,
+        sentiment: item.originalData?.sentiment,
+        analytics: item.analytics,
+        originalData: item.originalData
       }
       
       // Call AI service to generate caption
@@ -267,25 +277,88 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
           content: contentData,
           platform,
           projectId,
-          projectContext: currentItem?.originalData?.projectContext
+          projectContext: item.originalData?.projectContext
         })
       })
       
-      if (!response.ok) throw new Error('Failed to generate caption')
+      if (!response.ok) {
+        const errorData = await response.text()
+        throw new Error(`Failed to generate caption: ${errorData}`)
+      }
       
       const { caption, hashtags, suggestions, cta, hook } = await response.json()
       
-      // Update caption
+      // Update caption for the requested platform
       handlePlatformContentUpdate(contentId, platform, 'caption', caption)
       
-      // Update hashtags
+      // Update hashtags for the requested platform (with proper limits)
       if (hashtags && hashtags.length > 0) {
-        handleHashtagUpdate(contentId, platform, hashtags)
+        const platformHashtagLimit = getPlatformHashtagLimit(platform)
+        const limitedHashtags = hashtags.slice(0, platformHashtagLimit)
+        handleHashtagUpdate(contentId, platform, limitedHashtags)
       }
       
       // Update CTA if provided
       if (cta) {
         handlePlatformContentUpdate(contentId, platform, 'cta', cta)
+      }
+      
+      // Generate platform-specific fields
+      await generatePlatformSpecificFields(item, platform)
+      
+      // Auto-fill other platforms with adapted content
+      if (item.platforms && item.platforms.length > 1) {
+        // Generate adapted content for each platform
+        const otherPlatforms = item.platforms.filter(p => p !== platform)
+        
+        // Show loading toast for bulk generation
+        const toastId = toast.loading(`Generating content for ${otherPlatforms.length} other platforms...`)
+        
+        for (const otherPlatform of otherPlatforms) {
+          try {
+            // Generate platform-specific content
+            const otherResponse = await fetch('/api/generate-caption', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                content: contentData,
+                platform: otherPlatform,
+                projectId,
+                projectContext: item.originalData?.projectContext
+              })
+            })
+            
+            if (otherResponse.ok) {
+              const otherData = await otherResponse.json()
+              
+              // Update caption for other platform
+              handlePlatformContentUpdate(contentId, otherPlatform, 'caption', otherData.caption)
+              
+              // Update hashtags for other platform with proper limits
+              if (otherData.hashtags && otherData.hashtags.length > 0) {
+                const otherPlatformHashtagLimit = getPlatformHashtagLimit(otherPlatform)
+                const limitedHashtags = otherData.hashtags.slice(0, otherPlatformHashtagLimit)
+                handleHashtagUpdate(contentId, otherPlatform, limitedHashtags)
+              }
+              
+              // Update CTA if provided
+              if (otherData.cta) {
+                handlePlatformContentUpdate(contentId, otherPlatform, 'cta', otherData.cta)
+              }
+              
+              // Generate platform-specific fields for other platforms
+              await generatePlatformSpecificFields(item, otherPlatform)
+            }
+          } catch (error) {
+            console.warn(`Failed to generate content for ${otherPlatform}`, error)
+            // Continue with other platforms even if one fails
+          }
+        }
+        
+        // Update loading toast
+        toast.success('Smart captions generated for all platforms!', { id: toastId })
+      } else {
+        toast.success(`Smart caption generated for ${platform}!`)
       }
       
       // Store AI suggestions for later use
@@ -294,7 +367,6 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
         [key]: suggestions || { tip: 'AI-generated caption based on content analysis' }
       })
       
-      toast.success('Smart caption generated!')
     } catch (error) {
       // Don't log to console in production to avoid Next.js error handling
       if (process.env.NODE_ENV === 'development') {
@@ -306,10 +378,87 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
       handlePlatformContentUpdate(contentId, platform, 'caption', fallbackCaptions)
       
       // Show a more user-friendly message
-      toast.info('Using optimized caption template for ' + platform)
+      toast.error('Failed to generate AI caption. Using optimized template instead.')
     } finally {
       setIsGenerating({ ...isGenerating, [key]: false })
     }
+  }
+
+  // New function to generate platform-specific fields
+  const generatePlatformSpecificFields = async (item: StagedContent, platform: Platform) => {
+    // Generate alt text for images
+    if ((item.type === 'image' || item.type === 'carousel') && !item.platformContent[platform]?.altText) {
+      const altText = await generateAltText(item, platform)
+      handlePlatformContentUpdate(item.id, platform, 'altText', altText)
+    }
+    
+    // Generate YouTube title if needed
+    if (platform === 'youtube' && !item.platformContent[platform]?.title) {
+      const title = generateYouTubeTitle(item)
+      handlePlatformContentUpdate(item.id, platform, 'title', title)
+      
+      // Also set category for clips
+      if (item.type === 'clip') {
+        const category = detectYouTubeCategory(item)
+        handlePlatformContentUpdate(item.id, platform, 'category', category)
+      }
+    }
+    
+    // Generate LinkedIn article link for blogs
+    if (platform === 'linkedin' && item.type === 'blog' && !item.platformContent[platform]?.link) {
+      const blogUrl = `${window.location.origin}/blog/${item.originalData?.id || item.id}`
+      handlePlatformContentUpdate(item.id, platform, 'link', blogUrl)
+    }
+    
+    // Set Instagram location if available
+    if (platform === 'instagram' && item.type === 'clip' && item.originalData?.location) {
+      handlePlatformContentUpdate(item.id, platform, 'location', item.originalData.location)
+    }
+  }
+
+  // Helper function to generate alt text for images
+  const generateAltText = async (item: StagedContent, platform: Platform): Promise<string> => {
+    // Use AI to analyze image content if available
+    if (item.originalData?.imageAnalysis) {
+      return item.originalData.imageAnalysis.description || ''
+    }
+    
+    // Fallback to content-based alt text
+    const contentType = item.type === 'carousel' ? 'carousel slide' : 'image'
+    return `${contentType} showing ${item.title || 'visual content'} - ${item.description || 'see caption for details'}`
+  }
+
+  // Helper function to generate YouTube title
+  const generateYouTubeTitle = (item: StagedContent): string => {
+    const title = item.title || 'Untitled Video'
+    // YouTube titles should be max 100 chars and SEO-friendly
+    if (title.length > 100) {
+      return title.substring(0, 97) + '...'
+    }
+    return title
+  }
+
+  // Helper function to detect YouTube category
+  const detectYouTubeCategory = (item: StagedContent): string => {
+    const content = (item.description + ' ' + (item.originalData?.transcript || '')).toLowerCase()
+    
+    if (content.includes('tech') || content.includes('software') || content.includes('code')) {
+      return 'Science & Technology'
+    } else if (content.includes('business') || content.includes('money') || content.includes('finance')) {
+      return 'Business'
+    } else if (content.includes('education') || content.includes('learn') || content.includes('tutorial')) {
+      return 'Education'
+    } else if (content.includes('game') || content.includes('gaming') || content.includes('play')) {
+      return 'Gaming'
+    } else if (content.includes('music') || content.includes('song') || content.includes('artist')) {
+      return 'Music'
+    } else if (content.includes('news') || content.includes('politics') || content.includes('government')) {
+      return 'News & Politics'
+    } else if (content.includes('lifestyle') || content.includes('fashion') || content.includes('beauty')) {
+      return 'Lifestyle'
+    }
+    
+    return 'Entertainment' // Default category
   }
 
   const getSmartCaptionFallback = (contentType: string, platform: Platform): string => {
@@ -372,21 +521,77 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
     return platformTemplates[contentType] || platformTemplates.clip || "Check out this amazing content!"
   }
 
-  const copyToAllPlatforms = (sourceplatform: Platform, field: 'caption' | 'hashtags') => {
-    if (!currentItem || !currentItem.platforms) return
+  const copyToAllPlatforms = (sourceplatform: Platform, field: 'caption' | 'hashtags' | 'all') => {
+    if (!currentItem || !currentItem.platforms) {
+      toast.error('No content selected')
+      return
+    }
     
     const sourceContent = currentItem.platformContent[sourceplatform]
-    if (!sourceContent) return
+    if (!sourceContent) {
+      toast.error('Source platform content not found')
+      return
+    }
     
-    const value = sourceContent[field]
-    
-    currentItem.platforms.forEach((platform: Platform) => {
-      if (platform !== sourceplatform) {
-        handlePlatformContentUpdate(currentItem.id, platform, field, value)
+    if (field === 'all') {
+      // Copy all fields from source platform
+      let copiedCount = 0
+      currentItem.platforms.forEach((platform: Platform) => {
+        if (platform !== sourceplatform) {
+          // Copy caption
+          if (sourceContent.caption) {
+            handlePlatformContentUpdate(currentItem.id, platform, 'caption', sourceContent.caption)
+          }
+          
+          // Copy hashtags with platform limits
+          if (sourceContent.hashtags && sourceContent.hashtags.length > 0) {
+            const platformHashtagLimit = getPlatformHashtagLimit(platform)
+            const limitedHashtags = sourceContent.hashtags.slice(0, platformHashtagLimit)
+            handleHashtagUpdate(currentItem.id, platform, limitedHashtags)
+          }
+          
+          // Copy CTA if applicable
+          if (sourceContent.cta && ['instagram', 'facebook', 'linkedin'].includes(platform)) {
+            handlePlatformContentUpdate(currentItem.id, platform, 'cta', sourceContent.cta)
+          }
+          
+          // Copy alt text for images
+          if (sourceContent.altText && (currentItem.type === 'image' || currentItem.type === 'carousel')) {
+            handlePlatformContentUpdate(currentItem.id, platform, 'altText', sourceContent.altText)
+          }
+          
+          copiedCount++
+        }
+      })
+      
+      toast.success(`All content copied to ${copiedCount} platforms`)
+    } else {
+      // Original single field copy logic
+      const value = sourceContent[field]
+      if (!value || (Array.isArray(value) && value.length === 0)) {
+        toast.error(`No ${field} to copy`)
+        return
       }
-    })
-    
-    toast.success(`${field === 'caption' ? 'Caption' : 'Hashtags'} copied to all platforms`)
+      
+      let copiedCount = 0
+      currentItem.platforms.forEach((platform: Platform) => {
+        if (platform !== sourceplatform) {
+          if (field === 'hashtags') {
+            // Apply platform-specific hashtag limits
+            const platformHashtagLimit = getPlatformHashtagLimit(platform)
+            const limitedValue = Array.isArray(value) ? value.slice(0, platformHashtagLimit) : value
+            handlePlatformContentUpdate(currentItem.id, platform, field, limitedValue)
+          } else {
+            handlePlatformContentUpdate(currentItem.id, platform, field, value)
+          }
+          copiedCount++
+        }
+      })
+      
+      if (copiedCount > 0) {
+        toast.success(`${field === 'caption' ? 'Caption' : 'Hashtags'} copied to ${copiedCount} platforms`)
+      }
+    }
   }
 
   const suggestTrendingHashtags = async (contentId: string, platform: Platform) => {
@@ -863,14 +1068,33 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                             <div className="flex items-center justify-between">
                               <Label htmlFor={`caption-${platform}`}>Caption</Label>
                               <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => copyToAllPlatforms(platform, 'caption')}
-                                >
-                                  <IconCopy className="h-4 w-4 mr-1" />
-                                  Copy to All
-                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                    >
+                                      <IconCopy className="h-4 w-4 mr-1" />
+                                      Copy
+                                      <IconChevronDown className="h-3 w-3 ml-1" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => copyToAllPlatforms(platform, 'caption')}>
+                                      <IconFileText className="h-4 w-4 mr-2" />
+                                      Copy Caption Only
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => copyToAllPlatforms(platform, 'hashtags')}>
+                                      <IconHash className="h-4 w-4 mr-2" />
+                                      Copy Hashtags Only
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => copyToAllPlatforms(platform, 'all')}>
+                                      <IconCopy className="h-4 w-4 mr-2" />
+                                      Copy All Content
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -881,7 +1105,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                     "h-4 w-4 mr-2",
                                     isGenerating[key] && "animate-spin"
                                   )} />
-                                  {isGenerating[key] ? 'Generating...' : 'AI Caption'}
+                                  {isGenerating[key] ? 'Generating...' : 'AI Generate All'}
                                 </Button>
                               </div>
                             </div>
@@ -1094,6 +1318,81 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
                                   <IconLink className="h-4 w-4" />
                                 </Button>
                               </div>
+                            </div>
+                          )}
+
+                          {/* YouTube-specific fields */}
+                          {platform === 'youtube' && (
+                            <>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Label htmlFor={`title-${platform}`}>Video Title</Label>
+                                  <Badge variant="outline" className="text-xs">Required</Badge>
+                                </div>
+                                <Input
+                                  id={`title-${platform}`}
+                                  value={(platformData as any).title || ''}
+                                  onChange={(e) => handlePlatformContentUpdate(
+                                    currentItem.id,
+                                    platform,
+                                    'title',
+                                    e.target.value
+                                  )}
+                                  placeholder="Engaging video title (max 100 characters)"
+                                  maxLength={100}
+                                  className={!(platformData as any).title ? "border-orange-500" : ""}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  {((platformData as any).title || '').length}/100 • First 70 characters show in search
+                                </p>
+                              </div>
+
+                              {currentItem.type === 'clip' && (
+                                <div className="space-y-2">
+                                  <Label htmlFor={`category-${platform}`}>Category</Label>
+                                  <Select
+                                    value={(platformData as any).category || ''}
+                                    onValueChange={(value) => handlePlatformContentUpdate(
+                                      currentItem.id,
+                                      platform,
+                                      'category',
+                                      value
+                                    )}
+                                  >
+                                    <SelectTrigger id={`category-${platform}`}>
+                                      <SelectValue placeholder="Select category..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Education">Education</SelectItem>
+                                      <SelectItem value="Entertainment">Entertainment</SelectItem>
+                                      <SelectItem value="Science & Technology">Science & Technology</SelectItem>
+                                      <SelectItem value="Business">Business</SelectItem>
+                                      <SelectItem value="Lifestyle">Lifestyle</SelectItem>
+                                      <SelectItem value="Gaming">Gaming</SelectItem>
+                                      <SelectItem value="Music">Music</SelectItem>
+                                      <SelectItem value="News & Politics">News & Politics</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* Instagram location for clips */}
+                          {platform === 'instagram' && currentItem.type === 'clip' && (
+                            <div className="space-y-2">
+                              <Label htmlFor={`location-${platform}`}>Location (Optional)</Label>
+                              <Input
+                                id={`location-${platform}`}
+                                value={(platformData as any).location || ''}
+                                onChange={(e) => handlePlatformContentUpdate(
+                                  currentItem.id,
+                                  platform,
+                                  'location',
+                                  e.target.value
+                                )}
+                                placeholder="Add location tag..."
+                              />
                             </div>
                           )}
 

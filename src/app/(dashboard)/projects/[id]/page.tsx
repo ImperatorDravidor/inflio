@@ -806,7 +806,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <Button 
                   size="lg"
                   className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
-                  onClick={() => setActiveTab('publish')}
+                  onClick={() => setShowPublishDialog(true)}
                   disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
@@ -1183,16 +1183,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       )}
                     </Button>
                     
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => setShowPublishDialog(true)}
-                      disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && (project.folders.images?.length || 0) === 0}
-                    >
-                      <IconRocket className="mr-2 h-4 w-4"/>
-                      Publish Content
-                    </Button>
-                    
                     <Button size="sm" variant="outline" disabled>
                       <IconScissors className="mr-2 h-4 w-4"/>
                       More Clips
@@ -1204,9 +1194,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             </Card>
 
             {/* Content Tabs */}
-            <Card className="overflow-hidden h-[calc(100vh-400px)]">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
-                <div className="border-b flex-shrink-0">
+            <Card className="overflow-hidden">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <div className="border-b">
                   <div className="px-6 pt-6 pb-2">
                     <TabsList className="grid w-full grid-cols-4 h-auto p-1">
                       <TabsTrigger value="overview" className="flex flex-col items-center gap-1 py-3">
@@ -1233,7 +1223,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="p-6">
                   <TabsContent value="overview" className="mt-0 space-y-6">
                         {/* Project Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

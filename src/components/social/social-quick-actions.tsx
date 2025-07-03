@@ -62,24 +62,6 @@ export function SocialQuickActions({
       action: () => router.push('/social/calendar')
     },
     {
-      id: 'templates',
-      title: 'Templates',
-      description: 'Use saved templates',
-      icon: IconTemplate,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100 dark:bg-green-900/20',
-      action: () => toast.info('Templates coming soon!')
-    },
-    {
-      id: 'ai',
-      title: 'AI Assistant',
-      description: 'Generate content',
-      icon: IconWand,
-      color: 'text-pink-600',
-      bgColor: 'bg-pink-100 dark:bg-pink-900/20',
-      action: () => toast.info('AI Assistant coming soon!')
-    },
-    {
       id: 'analytics',
       title: 'Analytics',
       description: 'View insights',
@@ -87,20 +69,11 @@ export function SocialQuickActions({
       color: 'text-orange-600',
       bgColor: 'bg-orange-100 dark:bg-orange-900/20',
       action: () => router.push('/analytics')
-    },
-    {
-      id: 'audience',
-      title: 'Audience',
-      description: 'Manage followers',
-      icon: IconUsers,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-100 dark:bg-indigo-900/20',
-      action: () => toast.info('Audience insights coming soon!')
     }
   ]
 
   const containerClass = variant === 'grid' 
-    ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4'
+    ? 'grid grid-cols-1 md:grid-cols-3 gap-4'
     : 'flex gap-4 overflow-x-auto pb-4 scrollbar-hide'
 
   const cardClass = variant === 'grid'
@@ -183,13 +156,6 @@ export function QuickCreateWidget({
       icon: IconCalendar,
       gradient: 'from-blue-500 to-cyan-500',
       action: onSchedulePost || (() => router.push('/social/compose'))
-    },
-    {
-      title: 'Bulk Upload',
-      description: 'Upload multiple posts',
-      icon: IconRocket,
-      gradient: 'from-green-500 to-emerald-500',
-      action: onBulkUpload || (() => toast.info('Bulk upload coming soon!'))
     }
   ]
 

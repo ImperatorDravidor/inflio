@@ -35,6 +35,9 @@
     },
     "src/app/api/projects/[id]/process/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/social/publish-scheduled/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [
@@ -60,6 +63,12 @@
     {
       "source": "/help",
       "destination": "/docs"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/social/publish-scheduled",
+      "schedule": "*/5 * * * *"
     }
   ]
 } 

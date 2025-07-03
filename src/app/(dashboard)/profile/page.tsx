@@ -183,6 +183,50 @@ export default function ProfilePage() {
 
   const creatorLevel = calculateLevel()
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      toast.error('Image must be less than 5MB')
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', 'personal-photo')
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to upload avatar')
+      }
+
+      const { url } = await response.json()
+      
+      // Update user profile with new avatar URL
+      await user?.setProfileImage({ file: url })
+      
+      toast.success('Avatar updated successfully!')
+      
+      // Reload to show new avatar
+      window.location.reload()
+    } catch (error) {
+      console.error('Avatar upload error:', error)
+      toast.error('Failed to upload avatar')
+    }
+  }
+
   return (
     <div className="relative">
       <AnimatedBackground variant="subtle" />
@@ -200,14 +244,26 @@ export default function ProfilePage() {
                     {profile.name.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>
                 </Avatar>
-                <Button 
-                  size="icon" 
-                  variant="secondary" 
-                  className="absolute bottom-0 right-0 rounded-full"
-                  onClick={() => toast.info("Avatar upload coming soon!")}
-                >
-                  <IconCamera className="h-4 w-4" />
-                </Button>
+                <label htmlFor="avatar-upload">
+                  <Button 
+                    size="icon" 
+                    variant="secondary" 
+                    className="absolute bottom-0 right-0 rounded-full cursor-pointer"
+                    asChild
+                  >
+                    <span>
+                      <IconCamera className="h-4 w-4" />
+                    </span>
+                  </Button>
+                </label>
+                <input
+                  id="avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                  aria-label="Upload avatar image"
+                />
               </div>
             </div>
             

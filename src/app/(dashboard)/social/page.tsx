@@ -467,7 +467,7 @@ function SocialMediaDashboardContent() {
                         onEdit={() => router.push(`/social/compose?postId=${post.id}`)}
                         onDelete={() => deletePost(post.id)}
                         onPublishNow={() => publishNow(post.id)}
-                        onViewAnalytics={() => toast.info('Analytics coming soon!')}
+                        onViewAnalytics={() => router.push(`/social/calendar?post=${post.id}`)}
                         variant="detailed"
                       />
                     ))}
@@ -498,22 +498,83 @@ function SocialMediaDashboardContent() {
                   <CardDescription>Your best content this month</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <IconChartBar className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Analytics data coming soon</p>
-                  </div>
+                  {recentPosts.filter(p => p.state === 'published').length > 0 ? (
+                    <div className="space-y-3">
+                      {recentPosts
+                        .filter(p => p.state === 'published')
+                        .sort((a, b) => {
+                          const aEngagement = (a.analytics?.likes || 0) + (a.analytics?.comments || 0) + (a.analytics?.shares || 0)
+                          const bEngagement = (b.analytics?.likes || 0) + (b.analytics?.comments || 0) + (b.analytics?.shares || 0)
+                          return bEngagement - aEngagement
+                        })
+                        .slice(0, 3)
+                        .map((post, index) => {
+                          const engagement = (post.analytics?.likes || 0) + (post.analytics?.comments || 0) + (post.analytics?.shares || 0)
+                          const platform = integrations.find(i => i.id === post.integration_id)?.platform || 'unknown'
+                          const Icon = platformIcons[platform as keyof typeof platformIcons] || IconLink
+                          
+                          return (
+                            <div key={post.id} className="flex items-center gap-3">
+                              <div className="text-lg font-bold text-muted-foreground">#{index + 1}</div>
+                              <div className={cn("p-2 rounded", platformColors[platform as keyof typeof platformColors])}>
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium truncate">{post.content}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {engagement} engagements • {format(new Date(post.publish_date), 'MMM d')}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <IconChartBar className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p>No published posts to analyze yet</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               
               <Card>
                 <CardHeader>
-                  <CardTitle>Audience Insights</CardTitle>
-                  <CardDescription>Understanding your followers</CardDescription>
+                  <CardTitle>Platform Performance</CardTitle>
+                  <CardDescription>Engagement by platform</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <IconUsers className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Insights coming soon</p>
+                  <div className="space-y-3">
+                    {integrations.filter(i => !i.disabled).map((integration) => {
+                      const platformPosts = recentPosts.filter(p => p.integration_id === integration.id && p.state === 'published')
+                      const totalEngagement = platformPosts.reduce((sum, post) => {
+                        return sum + (post.analytics?.likes || 0) + (post.analytics?.comments || 0) + (post.analytics?.shares || 0)
+                      }, 0)
+                      const Icon = platformIcons[integration.platform as keyof typeof platformIcons] || IconLink
+                      
+                      return (
+                        <div key={integration.id} className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded", platformColors[integration.platform as keyof typeof platformColors])}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{integration.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {platformPosts.length} posts • {totalEngagement} total engagements
+                            </p>
+                          </div>
+                          {integration.followers_count && (
+                            <Badge variant="secondary">{integration.followers_count} followers</Badge>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {integrations.filter(i => !i.disabled).length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <IconUsers className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                        <p>Connect platforms to see performance data</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
