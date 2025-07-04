@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
 
     const body: GenerateImageRequest = await req.json()
     const { 
-      projectId, 
-      prompt, 
+      projectId,
+      prompt,
       imageType, 
       platforms = [], 
       count = 1,
@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
       customizations,
       generatedAt: new Date().toISOString()
     }
-
+    
     // Update project with generated images
     const currentImages = project.generated_images || []
     const updatedImages = [

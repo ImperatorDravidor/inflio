@@ -581,15 +581,15 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       {/* Enhanced Header */}
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
               My Projects
             </h1>
             <p className="text-muted-foreground text-base">
-              Manage and track all your video projects in one place
-            </p>
-          </div>
+            Manage and track all your video projects in one place
+          </p>
+        </div>
           <div className="flex items-center gap-3">
             {UsageService.getRemainingVideos() === 0 ? (
               <div className="text-right mr-4">
@@ -613,17 +613,17 @@ export default function ProjectsPage() {
                 </p>
               </div>
             )}
-            <Button
-              size="lg"
+        <Button
+          size="lg"
               className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
-              onClick={() => router.push('/studio/upload')}
-              disabled={UsageService.getRemainingVideos() === 0}
-            >
-              <IconPlus className="h-5 w-5 mr-2" />
-              New Project
-            </Button>
+          onClick={() => router.push('/studio/upload')}
+          disabled={UsageService.getRemainingVideos() === 0}
+        >
+          <IconPlus className="h-5 w-5 mr-2" />
+          New Project
+        </Button>
           </div>
-        </div>
+      </div>
 
         {/* Quick Actions Bar */}
         <div className="flex flex-wrap gap-2">
@@ -736,15 +736,15 @@ export default function ProjectsPage() {
                 {UsageService.getRemainingVideos()} remaining
               </p>
               {UsageService.getUsagePercentage() >= 80 && (
-                <Button 
-                  variant="link" 
-                  size="sm" 
+              <Button 
+                variant="link" 
+                size="sm" 
                   className="p-0 h-auto text-xs"
-                  onClick={() => router.push('/settings#upgrade')}
-                >
+                onClick={() => router.push('/settings#upgrade')}
+              >
                   Upgrade →
-                </Button>
-              )}
+              </Button>
+            )}
             </div>
           </CardContent>
         </Card>
@@ -809,38 +809,38 @@ export default function ProjectsPage() {
 
               {/* Sort and View Controls */}
               <div className="flex items-center gap-2">
-                <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
+              <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
                   <SelectTrigger className="w-[140px] h-9">
-                    <IconSortDescending className="h-4 w-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recent">Most Recent</SelectItem>
+                  <IconSortDescending className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Most Recent</SelectItem>
                     <SelectItem value="name">Name (A-Z)</SelectItem>
-                    <SelectItem value="duration">Duration</SelectItem>
-                    <SelectItem value="status">Status</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="duration">Duration</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                </SelectContent>
+              </Select>
 
                 <div className="flex border rounded-lg bg-muted/50 p-1">
-                  <Button
+                <Button
                     size="sm"
-                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
                     className="rounded-md h-7 px-2"
-                    onClick={() => setViewMode('grid')}
-                  >
-                    <IconLayoutGrid className="h-4 w-4" />
-                  </Button>
-                  <Button
+                  onClick={() => setViewMode('grid')}
+                >
+                  <IconLayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
                     size="sm"
-                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
                     className="rounded-md h-7 px-2"
-                    onClick={() => setViewMode('list')}
-                  >
-                    <IconList className="h-4 w-4" />
-                  </Button>
-                </div>
+                  onClick={() => setViewMode('list')}
+                >
+                  <IconList className="h-4 w-4" />
+                </Button>
               </div>
+            </div>
             </div>
             
             {/* Active Filters Display */}
@@ -902,7 +902,7 @@ export default function ProjectsPage() {
                       }}
                     >
                       Clear All Filters
-                    </Button>
+              </Button>
                   </div>
                 </>
               ) : (
@@ -985,28 +985,28 @@ export default function ProjectsPage() {
             )}
           </div>
           
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className={cn(
-              viewMode === 'grid' 
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className={cn(
+            viewMode === 'grid' 
                 ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6"
-                : "space-y-4"
-            )}
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredProjects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  viewMode={viewMode}
-                  onDelete={(id) => setDeleteId(id)}
-                  onThumbnailUpdate={loadProjects}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
+              : "space-y-4"
+          )}
+        >
+          <AnimatePresence mode="popLayout">
+            {filteredProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                viewMode={viewMode}
+                onDelete={(id) => setDeleteId(id)}
+                onThumbnailUpdate={loadProjects}
+              />
+            ))}
+          </AnimatePresence>
+        </motion.div>
         </>
       )}
 

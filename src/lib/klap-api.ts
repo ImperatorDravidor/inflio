@@ -30,28 +30,60 @@ export class KlapAPIService {
     const url = `${apiUrl}${endpoint}`
     console.log(`[Klap] Requesting: ${options.method || 'GET'} ${url}`)
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      let errorMessage = `[Klap] API Error: ${response.status} - ${response.statusText}`
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = `[Klap] API Error: ${errorJson.message || errorMessage}`
-      } catch {
-        console.error('[Klap] Raw non-JSON error response:', errorText)
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorMessage = `[Klap] API Error: ${response.status} - ${response.statusText}`
+        let errorDetails = errorText
+        
+        try {
+          const errorJson = JSON.parse(errorText)
+          errorMessage = `[Klap] API Error: ${errorJson.message || errorJson.error || errorMessage}`
+          errorDetails = JSON.stringify(errorJson, null, 2)
+        } catch {
+          console.error('[Klap] Raw non-JSON error response:', errorText)
+        }
+        
+        console.error(`[Klap] API request failed:`, {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          method: options.method || 'GET',
+          details: errorDetails
+        })
+        
+        // Provide more specific error messages based on status code
+        if (response.status === 401) {
+          throw new Error('Klap API authentication failed. Please check your KLAP_API_KEY.')
+        } else if (response.status === 429) {
+          throw new Error('Klap API rate limit exceeded. Please try again later.')
+        } else if (response.status === 503) {
+          throw new Error('Klap API service is temporarily unavailable. Please try again later.')
+        } else {
+          throw new Error(errorMessage)
+        }
       }
-      throw new Error(errorMessage)
-    }
 
-    return response.json()
+      return response.json()
+    } catch (error) {
+      if (error instanceof Error) {
+        // Network or parsing errors
+        if (error.message.includes('fetch')) {
+          throw new Error(`Klap API network error: ${error.message}`)
+        }
+        throw error // Re-throw if it's already a proper error
+      }
+      throw new Error(`Unknown error during Klap API request: ${error}`)
+    }
   }
 
   /**

@@ -299,54 +299,54 @@ export default function ProjectStagePage() {
       if (selectedContentData) {
         try {
           const parsedContent = JSON.parse(selectedContentData)
-          
+        
           // Initialize staged content from selected items
           const content = parsedContent.map((item: any) => {
             const platforms = determinePlatformsForContent(item)
-            const platformContent: any = {}
-            
-            // Initialize platform content for each platform
-            platforms.forEach((platform: string) => {
-              platformContent[platform] = {
-                caption: '',
-                hashtags: [],
-                cta: '',
-                characterCount: 0,
-                isValid: true,
-                validationErrors: [],
-                altText: '',
-                link: ''
-              }
-            })
-            
-            // Extract media URLs based on content type
-            let mediaUrls: string[] = []
+          const platformContent: any = {}
+          
+          // Initialize platform content for each platform
+          platforms.forEach((platform: string) => {
+            platformContent[platform] = {
+              caption: '',
+              hashtags: [],
+              cta: '',
+              characterCount: 0,
+              isValid: true,
+              validationErrors: [],
+              altText: '',
+              link: ''
+            }
+          })
+          
+          // Extract media URLs based on content type
+          let mediaUrls: string[] = []
             if (item.type === 'clip' && item.exportUrl) {
               mediaUrls = [item.exportUrl]
             } else if (item.type === 'image' && item.url) {
               mediaUrls = [item.url]
             } else if (item.thumbnail) {
               mediaUrls = [item.thumbnail]
-            }
-            
-            return {
-              id: item.id || Math.random().toString(36).substr(2, 9),
+          }
+          
+          return {
+            id: item.id || Math.random().toString(36).substr(2, 9),
               type: item.type,
               title: item.title || item.name || 'Untitled',
               description: item.description || item.content || '',
               originalData: item,
               platforms,
-              platformContent,
-              mediaUrls,
+            platformContent,
+            mediaUrls,
               thumbnailUrl: item.thumbnail || item.url,
               duration: item.duration,
-              analytics: {
+            analytics: {
                 estimatedReach: item.score ? Math.floor(item.score * 10000) : 5000
-              }
             }
-          })
-          
-          setStagedContent(content)
+          }
+        })
+        
+        setStagedContent(content)
           
           // Clear the session storage
           sessionStorage.removeItem('selectedContent')
@@ -438,8 +438,8 @@ export default function ProjectStagePage() {
     } else {
       if (isDirty) {
         setShowExitDialog(true)
-      } else {
-        router.push(`/projects/${projectId}`)
+    } else {
+      router.push(`/projects/${projectId}`)
       }
     }
   }
@@ -476,14 +476,14 @@ export default function ProjectStagePage() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleBack}
-            >
-              <IconArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleBack}
+          >
+            <IconArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
             
             <div className="flex items-center gap-2">
               {isDirty && (

@@ -20,7 +20,6 @@ export function UserMenu() {
 
   return (
     <UserButton 
-      afterSignOutUrl="/sign-in"
       appearance={{
         elements: {
           avatarBox: "h-9 w-9",

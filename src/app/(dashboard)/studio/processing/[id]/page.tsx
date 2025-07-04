@@ -201,9 +201,9 @@ export default function ProcessingPage() {
       if (anySuccess) {
         // Update the main project status
         await ProjectService.updateProject(projectId, { status: 'draft' })
-        
-        // Then refresh the project data to show the new content
-        await loadProject()
+      
+      // Then refresh the project data to show the new content
+      await loadProject()
 
         // Show appropriate message based on what succeeded
         if (klapResult.status === 'rejected' && transcriptionResult.status === 'fulfilled') {
@@ -212,10 +212,10 @@ export default function ProcessingPage() {
           })
         }
 
-        // Redirect to the project page after a short delay
-        setTimeout(() => {
-          router.push(`/projects/${projectId}`)
-        }, 1500)
+      // Redirect to the project page after a short delay
+      setTimeout(() => {
+        router.push(`/projects/${projectId}`)
+      }, 1500)
       } else {
         // Both services failed
         toast.error("Processing failed. Please try again later.", {

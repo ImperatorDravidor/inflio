@@ -161,7 +161,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     loadProject()
   }, [projectId])
-
+  
   // Poll for updates when clips are being generated
   useEffect(() => {
     if (project) {
@@ -804,7 +804,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="hover:bg-primary/10">
                     <IconDots className="h-4 w-4" />
-                  </Button>
+              </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/settings`)}>
@@ -846,8 +846,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <div className="space-y-3">
                   <div className="flex items-start gap-3 flex-wrap">
                     <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-                      {project.title}
-                    </h1>
+                    {project.title}
+                  </h1>
                     <div className="flex items-center gap-2">
                       <Badge 
                         variant={project.status === 'published' ? 'default' : 'secondary'}
@@ -859,20 +859,20 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             Published
                           </>
                         ) : 'Draft'}
-                      </Badge>
+                  </Badge>
                       {project.folders.clips.length > 0 && (
                         <Badge variant="outline" className="font-medium">
                           {project.folders.clips.length} Clips
                         </Badge>
                       )}
-                    </div>
+                </div>
                   </div>
                   
-                  {project.description && (
+                {project.description && (
                     <p className="text-muted-foreground text-base lg:text-lg max-w-3xl">
                       {project.description}
                     </p>
-                  )}
+                )}
                 </div>
                 
                 {/* Project Metadata */}
@@ -955,7 +955,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <div className="space-y-1">
                   <h3 className="text-xl font-semibold flex items-center gap-2">
                     <div className="p-2 rounded-lg bg-primary/10">
-                      <IconSparkles className="h-5 w-5 text-primary" />
+                    <IconSparkles className="h-5 w-5 text-primary" />
                     </div>
                     AI Content Generation
                   </h3>
@@ -1047,15 +1047,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className={cn(
-                        "p-2 rounded-lg",
+                  <div className={cn(
+                    "p-2 rounded-lg",
                         project.transcription ? "bg-green-500/20" : "bg-muted"
-                      )}>
-                        <IconFileText className={cn(
+                  )}>
+                    <IconFileText className={cn(
                           "h-4 w-4",
                           project.transcription ? "text-green-600" : "text-muted-foreground"
-                        )} />
-                      </div>
+                    )} />
+                  </div>
                       {project.transcription && (
                         <IconCheck className="h-4 w-4 text-green-600" />
                       )}
@@ -1080,18 +1080,18 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className={cn(
-                        "p-2 rounded-lg",
+                  <div className={cn(
+                    "p-2 rounded-lg",
                         stats.totalClips > 0 ? "bg-purple-500/20" : 
                         clipsTask?.status === 'processing' ? "bg-orange-500/20" : "bg-muted"
-                      )}>
-                        <IconScissors className={cn(
+                  )}>
+                    <IconScissors className={cn(
                           "h-4 w-4",
                           stats.totalClips > 0 ? "text-purple-600" : 
                           clipsTask?.status === 'processing' ? "text-orange-600 animate-pulse" : 
                           "text-muted-foreground"
-                        )} />
-                      </div>
+                    )} />
+                  </div>
                       {stats.totalClips > 0 && (
                         <span className="text-lg font-bold text-purple-600">{stats.totalClips}</span>
                       )}
@@ -1115,15 +1115,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className={cn(
-                        "p-2 rounded-lg",
+                  <div className={cn(
+                    "p-2 rounded-lg",
                         stats.totalBlogs > 0 ? "bg-blue-500/20" : "bg-muted"
-                      )}>
-                        <IconArticle className={cn(
+                  )}>
+                    <IconArticle className={cn(
                           "h-4 w-4",
                           stats.totalBlogs > 0 ? "text-blue-600" : "text-muted-foreground"
-                        )} />
-                      </div>
+                    )} />
+                  </div>
                       {stats.totalBlogs > 0 ? (
                         <span className="text-lg font-bold text-blue-600">{stats.totalBlogs}</span>
                       ) : (
@@ -1148,15 +1148,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className={cn(
-                        "p-2 rounded-lg",
+                  <div className={cn(
+                    "p-2 rounded-lg",
                         totalImages > 0 ? "bg-pink-500/20" : "bg-muted"
-                      )}>
-                        <IconPhoto className={cn(
+                  )}>
+                    <IconPhoto className={cn(
                           "h-4 w-4",
                           totalImages > 0 ? "text-pink-600" : "text-muted-foreground"
-                        )} />
-                      </div>
+                    )} />
+                  </div>
                       {totalImages > 0 ? (
                         <span className="text-lg font-bold text-pink-600">{totalImages}</span>
                       ) : (
@@ -1181,15 +1181,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className={cn(
-                        "p-2 rounded-lg",
+                  <div className={cn(
+                    "p-2 rounded-lg",
                         stats.totalSocialPosts > 0 ? "bg-orange-500/20" : "bg-muted"
-                      )}>
-                        <IconShare2 className={cn(
+                  )}>
+                    <IconShare2 className={cn(
                           "h-4 w-4",
                           stats.totalSocialPosts > 0 ? "text-orange-600" : "text-muted-foreground"
-                        )} />
-                      </div>
+                    )} />
+                  </div>
                       {stats.totalSocialPosts > 0 ? (
                         <span className="text-lg font-bold text-orange-600">{stats.totalSocialPosts}</span>
                       ) : (
@@ -1208,9 +1208,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <div className="mt-6 pt-6 border-t flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <IconSparkles className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                     Powered by AI content analysis
-                  </p>
+                </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1249,28 +1249,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <IconVideo className="h-5 w-5 text-primary" />
-                    <div>
+                  <div>
                       <h3 className="font-semibold text-sm">Video Player</h3>
                       <p className="text-xs text-muted-foreground">
                         {project.thumbnail_url ? 'Custom thumbnail' : 'Default thumbnail'}
-                      </p>
-                    </div>
+                    </p>
+                  </div>
                   </div>
                   
                   {/* Thumbnail Actions */}
                   <div className="flex items-center gap-1">
-                    <ThumbnailCreator
-                      projectId={project.id}
-                      projectTitle={project.title}
-                      projectVideoUrl={project.video_url}
-                      contentAnalysis={project.content_analysis}
-                      currentThumbnail={project.thumbnail_url}
-                      onThumbnailUpdate={async (newThumbnailUrl: string) => {
-                        setThumbnailUrl(newThumbnailUrl)
-                        await loadProject()
+                  <ThumbnailCreator
+                    projectId={project.id}
+                    projectTitle={project.title}
+                    projectVideoUrl={project.video_url}
+                    contentAnalysis={project.content_analysis}
+                    currentThumbnail={project.thumbnail_url}
+                    onThumbnailUpdate={async (newThumbnailUrl: string) => {
+                      setThumbnailUrl(newThumbnailUrl)
+                      await loadProject()
                         toast.success('Thumbnail updated!')
-                      }}
-                    />
+                    }}
+                  />
                     
                     {project.thumbnail_url && (
                       <Button
@@ -1355,7 +1355,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               {/* Video Info Bar */}
               <div className="px-4 py-3 border-t bg-muted/30">
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4">
                     {project.metadata?.duration && (
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <IconClock className="h-4 w-4" />
@@ -1363,36 +1363,36 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </div>
                     )}
                     
-                    {project.transcription && (
+                      {project.transcription && (
                       <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <IconLanguage className="h-4 w-4" />
+                          <IconLanguage className="h-4 w-4" />
                         <span className="font-medium">{project.transcription.language.toUpperCase()}</span>
                       </div>
-                    )}
+                      )}
                     
                     {project.metadata?.width && project.metadata?.height && (
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <IconMaximize className="h-4 w-4" />
                         <span>{project.metadata.width}×{project.metadata.height}</span>
-                      </div>
+                    </div>
                     )}
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    {project.folders.clips.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">
+                    <div className="flex items-center gap-2">
+                      {project.folders.clips.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
                         <IconScissors className="h-3 w-3 mr-1" />
-                        {project.folders.clips.length} clips
-                      </Badge>
-                    )}
-                    {hasSubtitles && (
+                          {project.folders.clips.length} clips
+                        </Badge>
+                      )}
+                      {hasSubtitles && (
                       <Badge variant="outline" className="text-xs border-green-600/50 text-green-600">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Subtitles
-                      </Badge>
-                    )}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
               </div>
             </Card>
 
@@ -1407,7 +1407,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <div>
                       <p className="font-semibold">AI Quick Actions</p>
                       <p className="text-xs text-muted-foreground">Generate content instantly</p>
-                    </div>
+                  </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -1437,7 +1437,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           <IconPlus className="h-4 w-4 mr-2" />
                           More
                           <IconChevronDown className="h-3 w-3 ml-1" />
-                        </Button>
+                    </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuItem onClick={() => setActiveTab('graphics')}>
@@ -2155,42 +2155,42 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         } else {
                           // No clips and not processing - show empty state
                           return (
-                            <EmptyState
-                              icon={<IconScissors className="h-16 w-16 text-primary/50" />}
-                              title="No clips generated yet"
-                              description="Generate short-form clips from your video content"
-                              action={{
-                                label: "Generate Clips",
-                                onClick: async () => {
-                                  const toastId = toast.loading('Starting clip generation...')
-                                  try {
-                                    const response = await fetch(`/api/projects/${project.id}/process`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ 
-                                        workflow: 'clips',
-                                        projectId: project.id 
-                                      })
-                                    })
-                                    
-                                    if (!response.ok) {
-                                      const error = await response.json()
-                                      throw new Error(error.error || 'Failed to start clip generation')
-                                    }
-                                    
+                        <EmptyState
+                          icon={<IconScissors className="h-16 w-16 text-primary/50" />}
+                          title="No clips generated yet"
+                          description="Generate short-form clips from your video content"
+                          action={{
+                            label: "Generate Clips",
+                            onClick: async () => {
+                              const toastId = toast.loading('Starting clip generation...')
+                              try {
+                                const response = await fetch(`/api/projects/${project.id}/process`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ 
+                                    workflow: 'clips',
+                                    projectId: project.id 
+                                  })
+                                })
+                                
+                                if (!response.ok) {
+                                  const error = await response.json()
+                                  throw new Error(error.error || 'Failed to start clip generation')
+                                }
+                                
                                     toast.success('Clip generation started! This may take 10-15 minutes.', { id: toastId })
                                     // Refresh the page to show processing status
                                     loadProject()
-                                  } catch (error) {
-                                    toast.error(
-                                      error instanceof Error ? error.message : 'Failed to generate clips', 
-                                      { id: toastId }
-                                    )
-                                    console.error('Clip generation error:', error)
-                                  }
-                                }
-                              }}
-                            />
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error ? error.message : 'Failed to generate clips', 
+                                  { id: toastId }
+                                )
+                                console.error('Clip generation error:', error)
+                              }
+                            }
+                          }}
+                        />
                           );
                         }
                       })()}
@@ -2898,82 +2898,82 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   
                   {/* Enhanced Transcript Editor */}
                   <div className="flex-1 overflow-hidden">
-                    <EnhancedTranscriptEditor
-                      segments={project.transcription.segments.map(s => ({
-                        start: s.start,
-                        end: s.end,
-                        text: s.text
-                      }))}
-                      onSegmentsChange={(updatedSegments) => {
-                        const updatedTranscription = {
-                          ...project.transcription!,
-                          segments: project.transcription!.segments.map((originalSegment, index) => ({
-                            ...originalSegment,
-                            text: updatedSegments[index]?.text || originalSegment.text,
-                            start: updatedSegments[index]?.start || originalSegment.start,
-                            end: updatedSegments[index]?.end || originalSegment.end
-                          })),
-                          text: updatedSegments.map(s => s.text).join(' ')
-                        }
-                        setProject(prev => prev ? { ...prev, transcription: updatedTranscription } : null)
-                      }}
-                      projectId={projectId}
-                      videoUrl={project.video_url}
-                      videoDuration={project.metadata?.duration}
-                      onSegmentClick={(segment) => {
-                        if (videoRef.current) {
-                          videoRef.current.currentTime = segment.start
-                          videoRef.current.play()
-                        }
-                      }}
-                      onVideoUrlUpdate={(newVideoUrl, vttUrl) => {
-                        // Update the video element
-                        if (videoRef.current && newVideoUrl && newVideoUrl !== project.video_url) {
-                          const currentTime = videoRef.current.currentTime
-                          const wasPlaying = !videoRef.current.paused
-                          
-                          videoRef.current.src = newVideoUrl
-                          videoRef.current.load()
-                          
-                          videoRef.current.addEventListener('loadeddata', () => {
-                            if (videoRef.current) {
-                              videoRef.current.currentTime = currentTime
-                              if (wasPlaying) videoRef.current.play()
-                            }
-                          }, { once: true })
-                          
-                          // Update project video URL
-                          setProject(prev => prev ? { ...prev, video_url: newVideoUrl } : null)
-                        }
+                  <EnhancedTranscriptEditor
+                    segments={project.transcription.segments.map(s => ({
+                      start: s.start,
+                      end: s.end,
+                      text: s.text
+                    }))}
+                    onSegmentsChange={(updatedSegments) => {
+                      const updatedTranscription = {
+                        ...project.transcription!,
+                        segments: project.transcription!.segments.map((originalSegment, index) => ({
+                          ...originalSegment,
+                          text: updatedSegments[index]?.text || originalSegment.text,
+                          start: updatedSegments[index]?.start || originalSegment.start,
+                          end: updatedSegments[index]?.end || originalSegment.end
+                        })),
+                        text: updatedSegments.map(s => s.text).join(' ')
+                      }
+                      setProject(prev => prev ? { ...prev, transcription: updatedTranscription } : null)
+                    }}
+                    projectId={projectId}
+                    videoUrl={project.video_url}
+                    videoDuration={project.metadata?.duration}
+                    onSegmentClick={(segment) => {
+                      if (videoRef.current) {
+                        videoRef.current.currentTime = segment.start
+                        videoRef.current.play()
+                      }
+                    }}
+                    onVideoUrlUpdate={(newVideoUrl, vttUrl) => {
+                      // Update the video element
+                      if (videoRef.current && newVideoUrl && newVideoUrl !== project.video_url) {
+                        const currentTime = videoRef.current.currentTime
+                        const wasPlaying = !videoRef.current.paused
                         
-                        // Add subtitle track if VTT URL is provided
-                        if (videoRef.current && vttUrl) {
-                          const existingTracks = videoRef.current.querySelectorAll('track')
-                          existingTracks.forEach(track => track.remove())
-                          
-                          const track = document.createElement('track')
-                          track.kind = 'subtitles'
-                          track.label = 'English'
-                          track.srclang = 'en'
-                          track.src = vttUrl
-                          track.default = true
-                          
-                          // Force track to be showing
-                          track.addEventListener('load', () => {
-                            if (videoRef.current && videoRef.current.textTracks[0]) {
-                              videoRef.current.textTracks[0].mode = 'showing'
-                            }
-                          })
-                          
-                          videoRef.current.appendChild(track)
-                        }
+                        videoRef.current.src = newVideoUrl
+                        videoRef.current.load()
                         
-                        // Mark as having subtitles
-                        setHasSubtitles(true)
+                        videoRef.current.addEventListener('loadeddata', () => {
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = currentTime
+                            if (wasPlaying) videoRef.current.play()
+                          }
+                        }, { once: true })
                         
-                        toast.success("Subtitles applied! Your long-form content is ready.")
-                      }}
-                    />
+                        // Update project video URL
+                        setProject(prev => prev ? { ...prev, video_url: newVideoUrl } : null)
+                      }
+                      
+                      // Add subtitle track if VTT URL is provided
+                      if (videoRef.current && vttUrl) {
+                        const existingTracks = videoRef.current.querySelectorAll('track')
+                        existingTracks.forEach(track => track.remove())
+                        
+                        const track = document.createElement('track')
+                        track.kind = 'subtitles'
+                        track.label = 'English'
+                        track.srclang = 'en'
+                        track.src = vttUrl
+                        track.default = true
+                        
+                        // Force track to be showing
+                        track.addEventListener('load', () => {
+                          if (videoRef.current && videoRef.current.textTracks[0]) {
+                            videoRef.current.textTracks[0].mode = 'showing'
+                          }
+                        })
+                        
+                        videoRef.current.appendChild(track)
+                      }
+                      
+                      // Mark as having subtitles
+                      setHasSubtitles(true)
+                      
+                      toast.success("Subtitles applied! Your long-form content is ready.")
+                    }}
+                  />
                   </div>
                 </div>
               ) : (

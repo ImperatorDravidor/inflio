@@ -16,11 +16,11 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { projectId, enhancedContext } = body
-
+    
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
     }
-
+    
     // Check usage
     if (!UsageService.canProcessVideo()) {
       return NextResponse.json(
@@ -106,7 +106,7 @@ Create a blog post that:
 
 Format the response as clean HTML that can be rendered directly, using appropriate tags like <h2>, <p>, <ul>, <strong>, etc.
 Include timestamp references in the format [0:23] when mentioning specific video moments.`
-
+    
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-2024-08-06',
       messages: [
@@ -122,7 +122,7 @@ Include timestamp references in the format [0:23] when mentioning specific video
     if (!blogContent) {
       throw new Error('Failed to generate blog content')
     }
-
+    
     // Generate SEO metadata
     const seoPrompt = `Based on this blog content, generate SEO metadata:
     
