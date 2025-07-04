@@ -58,19 +58,21 @@ export async function POST(request: NextRequest) {
     // Update task status to processing
     await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
     
-    // Return immediate response to prevent timeout
-    const response = NextResponse.json({
+    // Start the Klap processing in the background
+    // Use setImmediate to ensure the response is sent before processing starts
+    setImmediate(() => {
+      processVideoInBackground(projectId, videoUrl, project.title).catch(error => {
+        console.error(`[Klap Route] Background processing failed for project ${projectId}:`, error);
+      });
+    });
+    
+    // Return response indicating processing has started
+    return NextResponse.json({
       success: true,
       message: 'Clip generation started. This process typically takes 10-20 minutes.',
-      status: 'processing'
+      status: 'processing',
+      projectId: projectId
     });
-
-    // Start the Klap processing in the background (fire and forget)
-    processVideoInBackground(projectId, videoUrl, project.title).catch(error => {
-      console.error(`[Klap Route] Background processing failed:`, error);
-    });
-
-    return response;
 
   } catch (error) {
     console.error(`[Klap Route] Critical error for project ${projectId}:`, error)
@@ -101,11 +103,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Background processing function
+// Background processing function with better error handling and progress updates
 async function processVideoInBackground(projectId: string, videoUrl: string, title: string) {
+  const startTime = Date.now();
+  
   try {
     console.log(`[Klap Background] Starting processing for project: ${projectId}`)
     
+    // Update initial progress
+    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
+    
+    // Call Klap API to process video
     const klapResult = await KlapAPIService.processVideo(videoUrl, title)
     
     console.log(`[Klap Background] Klap processing complete. Found ${klapResult.clips.length} clips for project ${projectId}.`)
@@ -116,10 +124,19 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
       klap_folder_id: klapResult.klapFolderId,
     });
 
+    // Update progress after getting clips
+    await ProjectService.updateTaskProgress(projectId, 'clips', 50, 'processing');
+
     // Process clips in a more efficient way
     const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'false'; // Default to true
     const totalClips = klapResult.clips.length;
     let processedClips = 0;
+    
+    if (totalClips === 0) {
+      console.warn(`[Klap Background] No clips generated for project ${projectId}`)
+      await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed');
+      return;
+    }
     
     // Process clips in batches to avoid timeout
     const batchSize = 2; // Process 2 clips at a time
@@ -129,9 +146,9 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
       await Promise.all(batch.map(async (basicClip, batchIndex) => {
         const clipIndex = i + batchIndex;
         try {
-          // Update progress
-          const progress = Math.floor(((processedClips + 0.5) / totalClips) * 100);
-          await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing');
+          // Update progress for each clip
+          const clipProgress = 50 + Math.floor(((processedClips + 0.5) / totalClips) * 50);
+          await ProjectService.updateTaskProgress(projectId, 'clips', clipProgress, 'processing');
 
           // Get clip details
           const clip = await KlapAPIService.getClipDetails(
@@ -217,6 +234,7 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
           await ProjectService.addToFolder(projectId, 'clips', clipToStore);
           
           processedClips++;
+          console.log(`[Klap Background] Processed clip ${processedClips}/${totalClips} for project ${projectId}`);
           
         } catch (clipError) {
           console.error(`[Klap Background] Failed to process clip ${basicClip.id}:`, clipError);
@@ -225,17 +243,18 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
       }));
       
       // Update progress after each batch
-      const newProgress = Math.floor((processedClips / totalClips) * 100);
+      const newProgress = 50 + Math.floor((processedClips / totalClips) * 50);
       await ProjectService.updateTaskProgress(projectId, 'clips', newProgress, 'processing');
     }
     
+    const processingTime = Math.round((Date.now() - startTime) / 1000);
+    console.log(`[Klap Background] Finished processing all clips for project ${projectId} in ${processingTime} seconds.`);
+    
     await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed');
-    console.log(`[Klap Background] Finished processing all clips for project ${projectId}.`);
     
   } catch (error) {
     console.error(`[Klap Background] Failed to process video for project ${projectId}:`, error);
     await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
-    throw error; // Re-throw for logging
   }
 }
 
