@@ -451,7 +451,11 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
         })
       })
 
-      if (!response.ok) throw new Error('Failed to generate content')
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('Caption generation failed:', error)
+        throw new Error(error.error || 'Failed to generate content')
+      }
       
       const result = await response.json()
       
@@ -492,7 +496,9 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
       
       toast.success('AI content generated successfully!')
     } catch (error) {
-      toast.error('Failed to generate AI content')
+      console.error('AI generation error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate AI content'
+      toast.error(errorMessage)
     } finally {
       setIsGenerating({ [currentPlatform]: false })
     }

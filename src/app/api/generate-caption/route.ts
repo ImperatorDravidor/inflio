@@ -39,12 +39,35 @@ interface PlatformConstraint {
 }
 
 export async function POST(request: NextRequest) {
+  // Early check for API key configuration
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.error('OpenAI API key not configured')
+    return NextResponse.json(
+      { 
+        error: 'AI features are not configured. Please contact your administrator to set up OpenAI API access.',
+        details: 'OPENAI_API_KEY is missing or not configured'
+      },
+      { status: 503 }
+    )
+  }
+  
   try {
     // Auth check
-    const { userId } = await auth()
+    let userId
+    try {
+      const authResult = await auth()
+      userId = authResult?.userId
+    } catch (error) {
+      console.error('Auth error:', error)
+      return NextResponse.json(
+        { error: 'Authentication failed. Please sign in again.' },
+        { status: 401 }
+      )
+    }
+    
     if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized. Please sign in to use AI features.' },
         { status: 401 }
       )
     }
@@ -89,7 +112,13 @@ export async function POST(request: NextRequest) {
     // Generate caption with error handling and retry logic
     const result = await withAIErrorHandling(
       async () => {
-        const openai = getOpenAI()
+        let openai
+        try {
+          openai = getOpenAI()
+        } catch (error) {
+          console.error('OpenAI initialization error:', error)
+          throw new AppError('OpenAI API key not configured. Please set OPENAI_API_KEY in your environment variables.', 'OPENAI_CONFIG_ERROR', 500)
+        }
         
         // Platform-specific constraints
         const platformConstraints: Record<string, PlatformConstraint> = {
@@ -219,7 +248,7 @@ Return JSON in this format:
 }`
 
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4.1-2025-04-14', // Using the same model as transcript analysis
+          model: 'gpt-4o-2024-08-06', // Using the standard GPT-4o model
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
