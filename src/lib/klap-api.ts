@@ -10,7 +10,8 @@ export class KlapAPIService {
     const apiUrl = process.env.KLAP_API_URL || 'https://api.klap.app/v2'
     
     if (!apiKey) {
-      throw new Error('[Klap] Error: KLAP_API_KEY is not configured in environment variables.')
+      console.error('[Klap] KLAP_API_KEY is not configured')
+      throw new Error('Clip generation service is not configured. Please set KLAP_API_KEY in environment variables.')
     }
     
     return { apiKey, apiUrl }

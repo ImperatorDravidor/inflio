@@ -726,7 +726,6 @@ export default function ProjectsPage() {
             <Progress 
               value={UsageService.getUsagePercentage()} 
               className="h-2 mt-3"
-              // @ts-ignore
               indicatorClassName={cn(
                 UsageService.getUsagePercentage() > 80 && "bg-orange-500",
                 UsageService.getUsagePercentage() === 100 && "bg-red-500"

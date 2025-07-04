@@ -9,6 +9,18 @@ export const maxDuration = 60; // 1 minute - Vercel Hobby plan limit
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // Early check for Klap API configuration
+  if (!process.env.KLAP_API_KEY) {
+    console.error('[Klap Route] KLAP_API_KEY not configured')
+    return NextResponse.json(
+      { 
+        error: 'Video clip generation is temporarily unavailable. Please try again later.',
+        details: 'Klap API service not configured. Contact administrator.'
+      },
+      { status: 503 }
+    )
+  }
+
   const { projectId, videoUrl } = await request.json()
 
   // Authenticate the user

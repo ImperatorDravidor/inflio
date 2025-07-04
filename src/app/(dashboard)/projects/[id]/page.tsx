@@ -94,7 +94,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
-import { UnifiedContentGenerator } from "@/components/unified-content-generator"
+
 
 const platformIcons = {
   twitter: IconBrandTwitter,
@@ -361,9 +361,9 @@ export default function ProjectDetailPage() {
   }
 
   const handlePublishContent = (selectedContent: any[]) => {
-    // Save selected content to session storage to pass to publish page
+    // Save selected content to session storage to pass to staging page
     sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
-    router.push(`/projects/${projectId}/publish`)
+    router.push(`/projects/${projectId}/stage`)
   }
 
   const handleEditBlog = (blogId: string) => {
@@ -931,29 +931,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Badge>
                   )}
                 </Button>
-                
-                {/* Secondary Actions Grid */}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/projects/${projectId}/stage`)}
-                    className="h-10"
-                  >
-                    <IconLayoutGridAdd className="h-4 w-4 mr-2" />
-                    Stage
-                  </Button>
-                  
-                  <UnifiedContentGenerator
-                    projectId={projectId}
-                    projectTitle={project.title}
-                    projectVideoUrl={project.video_url}
-                    contentAnalysis={project.content_analysis}
-                    onContentGenerated={(content) => {
-                      toast.success("Content package generated successfully!")
-                      loadProject()
-                    }}
-                  />
-                </div>
                 
                 {/* Processing View Link */}
                 <Button

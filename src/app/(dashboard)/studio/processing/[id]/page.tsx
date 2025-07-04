@@ -129,8 +129,18 @@ export default function ProcessingPage() {
           await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
           return { success: true, result }
         } else {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
           await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
-          throw new Error('Klap processing failed')
+          
+          // Handle specific error codes
+          if (response.status === 503) {
+            console.error('Klap service unavailable:', errorData)
+            throw new Error('Video clip generation service is temporarily unavailable. The transcription will still be processed.')
+          } else if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.')
+          } else {
+            throw new Error(errorData.error || 'Failed to generate video clips')
+          }
         }
       })
 
@@ -160,30 +170,60 @@ export default function ProcessingPage() {
       const [klapResult, transcriptionResult] = await Promise.allSettled([klapPromise, transcriptionPromise])
 
       // Handle results
+      let anySuccess = false
+      let allFailed = true
+      
       if (klapResult.status === 'fulfilled') {
-        toast.success("Clips generated successfully!")
+        anySuccess = true
+        allFailed = false
       } else {
-        console.error("Klap processing failed:", klapResult)
-        toast.error("Failed to generate clips")
+        console.error("Klap processing failed:", klapResult.reason)
+        // Check if it's a service unavailable error
+        if (klapResult.reason?.message?.includes('temporarily unavailable')) {
+          toast.warning("Video clips service is unavailable. Continuing with transcription only.", {
+            duration: 5000
+          })
+        } else {
+          toast.error("Failed to generate video clips")
+        }
       }
 
       if (transcriptionResult.status === 'fulfilled') {
-        toast.success("Transcription completed!")
+        anySuccess = true
+        allFailed = false
+        toast.success("AI analysis completed successfully!")
       } else {
-        console.error("Transcription failed:", transcriptionResult)
-        toast.warning("Transcription failed, but clips were generated")
+        console.error("Transcription failed:", transcriptionResult.reason)
+        toast.error("Failed to complete AI analysis")
       }
 
-      // Update the main project status FIRST
-      await ProjectService.updateProject(projectId, { status: 'ready' })
-      
-      // Then refresh the project data to show the new content
-      await loadProject()
+      // If at least one service succeeded, continue
+      if (anySuccess) {
+        // Update the main project status
+        await ProjectService.updateProject(projectId, { status: 'draft' })
+        
+        // Then refresh the project data to show the new content
+        await loadProject()
 
-      // Redirect to the project page after a short delay
-      setTimeout(() => {
-        router.push(`/projects/${projectId}`)
-      }, 1500)
+        // Show appropriate message based on what succeeded
+        if (klapResult.status === 'rejected' && transcriptionResult.status === 'fulfilled') {
+          toast.info("AI analysis complete! Video clips could not be generated at this time.", {
+            duration: 4000
+          })
+        }
+
+        // Redirect to the project page after a short delay
+        setTimeout(() => {
+          router.push(`/projects/${projectId}`)
+        }, 1500)
+      } else {
+        // Both services failed
+        toast.error("Processing failed. Please try again later.", {
+          duration: 5000
+        })
+        await ProjectService.updateProject(projectId, { status: 'draft' })
+        setProcessingStarted(false)
+      }
 
     } catch (error) {
       console.error("Processing failed:", error)
