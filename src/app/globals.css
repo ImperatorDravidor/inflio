@@ -400,32 +400,9 @@
 
 /* Video Player Subtitle Styles */
 video {
-  position: relative;
   max-width: 100%;
   height: auto;
-}
-
-/* Ensure video controls are visible and properly positioned */
-video::-webkit-media-controls {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  z-index: 10;
-}
-
-video::-webkit-media-controls-enclosure {
-  position: relative;
-  bottom: 0;
-  width: 100%;
-}
-
-/* Fix video controls bar positioning */
-video::-webkit-media-controls-panel {
-  position: relative;
-  bottom: 0;
-  width: 100%;
-  padding: 5px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  display: block;
 }
 
 /* Style the subtitle track */
@@ -501,10 +478,7 @@ video:fullscreen::cue {
   }
 }
 
-/* Ensure video player controls don't overlap subtitles */
-video::-webkit-media-controls-panel {
-  margin-bottom: 50px;
-}
+
 
 /* Custom scrollbar for subtitle settings */
 .subtitle-settings-scroll::-webkit-scrollbar {
@@ -539,19 +513,23 @@ video::-webkit-media-controls-panel {
   object-fit: contain;
 }
 
-/* Aspect ratio containers */
-.aspect-video {
-  position: relative;
-  width: 100%;
-  padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+/* Remove aspect-video override - use Tailwind's built-in aspect-video class instead */
+
+
+
+/* Subtitle styling for when they're applied */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 1.1em;
+  line-height: 1.4;
+  padding: 0.3em 0.5em;
+  border-radius: 0.3em;
+  font-weight: 500;
 }
 
-.aspect-video > * {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+video::-webkit-media-text-track-display {
+  margin-bottom: 60px !important; /* Keep subtitles above controls */
 }
 
 /* END: Video Player Subtitle Styles */

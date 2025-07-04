@@ -149,6 +149,7 @@ export default function ProjectDetailPage() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
+  const [videoLoading, setVideoLoading] = useState(true)
   
   // Publishing Dialog States
   const [showPublishDialog, setShowPublishDialog] = useState(false)
@@ -1241,76 +1242,23 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Video Player & Content Section */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Enhanced Video Player Card */}
-            <Card className="overflow-hidden border-2 border-primary/10 shadow-lg">
+            {/* Video Player Card */}
+            <Card className="overflow-hidden">
               {/* Video Header */}
-              <div className="p-4 border-b bg-gradient-to-r from-background to-muted/30">
+              <div className="px-4 py-3 border-b bg-muted/20">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <IconVideo className="h-4 w-4 text-primary" />
-                      Video Preview
-                    </h3>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      {project.thumbnail_url ? (
-                        <>
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          <span>Custom thumbnail applied</span>
-                        </>
-                      ) : (
-                        <>
-                          <IconInfoCircle className="h-3 w-3" />
-                          <span>No thumbnail set</span>
-                        </>
-                      )}
+                  <div className="flex items-center gap-3">
+                    <IconVideo className="h-5 w-5 text-primary" />
+                    <div>
+                      <h3 className="font-semibold text-sm">Video Player</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {project.thumbnail_url ? 'Custom thumbnail' : 'Default thumbnail'}
+                      </p>
                     </div>
                   </div>
                   
                   {/* Thumbnail Actions */}
-                  <div className="flex items-center gap-2">
-                    {!project.thumbnail_url && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="gap-1 hover:bg-primary/10"
-                        onClick={async () => {
-                          try {
-                            const video = videoRef.current
-                            if (video) {
-                              video.currentTime = 5 // Seek to 5 seconds
-                              await new Promise(resolve => {
-                                video.addEventListener('seeked', resolve, { once: true })
-                              })
-                              
-                              const canvas = document.createElement('canvas')
-                              canvas.width = video.videoWidth
-                              canvas.height = video.videoHeight
-                              const ctx = canvas.getContext('2d')
-                              if (ctx) {
-                                ctx.drawImage(video, 0, 0)
-                                const dataUrl = canvas.toDataURL('image/png')
-                                
-                                const supabase = createSupabaseBrowserClient()
-                                await supabase
-                                  .from('projects')
-                                  .update({ thumbnail_url: dataUrl })
-                                  .eq('id', project.id)
-                                
-                                setThumbnailUrl(dataUrl)
-                                await loadProject()
-                                toast.success('Quick thumbnail captured!')
-                              }
-                            }
-                          } catch (error) {
-                            toast.error('Failed to capture thumbnail')
-                          }
-                        }}
-                      >
-                        <IconCamera className="h-4 w-4" />
-                        Quick Capture
-                      </Button>
-                    )}
-                    
+                  <div className="flex items-center gap-1">
                     <ThumbnailCreator
                       projectId={project.id}
                       projectTitle={project.title}
@@ -1320,59 +1268,48 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       onThumbnailUpdate={async (newThumbnailUrl: string) => {
                         setThumbnailUrl(newThumbnailUrl)
                         await loadProject()
-                        toast.success('Thumbnail updated successfully!')
+                        toast.success('Thumbnail updated!')
                       }}
                     />
                     
                     {project.thumbnail_url && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1 hover:bg-primary/10"
-                          onClick={() => window.open(project.thumbnail_url!, '_blank')}
-                        >
-                          <IconDownload className="h-4 w-4" />
-                          <span className="hidden sm:inline">Download</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1 hover:bg-destructive/10 text-destructive"
-                          onClick={async () => {
-                            if (confirm('Remove the custom thumbnail?')) {
-                              const supabase = createSupabaseBrowserClient()
-                              await supabase
-                                .from('projects')
-                                .update({ thumbnail_url: null })
-                                .eq('id', project.id)
-                              
-                              setThumbnailUrl(null)
-                              await loadProject()
-                              toast.success('Thumbnail removed')
-                            }
-                          }}
-                        >
-                          <IconTrash className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => window.open(project.thumbnail_url!, '_blank')}
+                      >
+                        <IconDownload className="h-4 w-4" />
+                        <span className="sr-only">Download thumbnail</span>
+                      </Button>
                     )}
                   </div>
                 </div>
               </div>
               
               {/* Video Container */}
-              <div className="relative aspect-video bg-gradient-to-br from-primary/10 via-background to-accent/10">
+              <div className="relative bg-black">
                 {project.video_url ? (
                   <>
+                    {/* Loading Overlay */}
+                    {videoLoading && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 pointer-events-none">
+                        <div className="text-center">
+                          <IconLoader2 className="h-10 w-10 animate-spin text-white/70 mx-auto" />
+                          <p className="text-white/60 text-sm mt-2">Loading video...</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Video Element */}
                     <video
                       ref={videoRef}
                       src={project.video_url}
                       poster={project.thumbnail_url || thumbnailUrl || undefined}
-                      className="w-full h-full object-contain bg-black"
+                      className="w-full aspect-video bg-black"
                       controls
-                      controlsList="nodownload"
-                      crossOrigin="anonymous"
+                      playsInline
+                      preload="metadata"
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget
                         if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
@@ -1385,75 +1322,78 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           } : null)
                         }
                       }}
-                      preload="metadata"
+                      onError={(e) => {
+                        console.error("Video error:", e)
+                        setVideoLoading(false)
+                        toast.error("Failed to load video")
+                      }}
+                      onLoadStart={() => {
+                        setVideoLoading(true)
+                      }}
+                      onCanPlay={() => {
+                        setVideoLoading(false)
+                      }}
+                      onLoadedData={() => {
+                        setVideoLoading(false)
+                      }}
                     >
-                      <p className="text-center p-4">Your browser doesn't support HTML5 video.</p>
+                      <source src={project.video_url} type="video/mp4" />
+                      Your browser does not support the video tag.
                     </video>
-                    
-                    {/* Video Overlay Badges */}
-                    <div className="absolute top-4 right-4 flex flex-col gap-2 pointer-events-none">
-                      {hasSubtitles && (
-                        <Badge className="bg-green-600/90 text-white border-0 backdrop-blur-sm shadow-lg">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Subtitles Applied
-                        </Badge>
-                      )}
-                      {project.metadata?.width && project.metadata?.height && (
-                        <Badge className="bg-black/60 text-white border-0 backdrop-blur-sm">
-                          {project.metadata.width}x{project.metadata.height}
-                        </Badge>
-                      )}
-                    </div>
                   </>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full">
-                    <IconVideo className="h-20 w-20 text-primary/30 mb-4" />
-                    <p className="text-muted-foreground">No video uploaded</p>
+                  <div className="relative aspect-video bg-black flex items-center justify-center">
+                    <div className="text-center">
+                      <IconVideo className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                      <p className="text-muted-foreground">No video uploaded</p>
+                    </div>
                   </div>
                 )}
               </div>
               
+              
               {/* Video Info Bar */}
-              {project.metadata?.duration && (
-                <CardContent className="p-4 border-t bg-muted/20">
-                  <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
-                    <div className="flex items-center gap-6">
+              <div className="px-4 py-3 border-t bg-muted/30">
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <div className="flex items-center gap-4">
+                    {project.metadata?.duration && (
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <IconClock className="h-4 w-4" />
                         <span className="font-medium">{formatDuration(project.metadata.duration)}</span>
                       </div>
-                      
-                      {project.transcription && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <IconLanguage className="h-4 w-4" />
-                          <span className="font-medium">{project.transcription.language.toUpperCase()}</span>
-                        </div>
-                      )}
-                      
-                      {project.metadata?.width && project.metadata?.height && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <IconMaximize className="h-4 w-4" />
-                          <span>{project.metadata.width}x{project.metadata.height}</span>
-                        </div>
-                      )}
-                    </div>
+                    )}
                     
-                    <div className="flex items-center gap-2">
-                      {project.folders.clips.length > 0 && (
-                        <Badge variant="secondary">
-                          {project.folders.clips.length} clips
-                        </Badge>
-                      )}
-                      {hasSubtitles && (
-                        <Badge variant="secondary">
-                          <IconFileText className="h-3 w-3 mr-1" />
-                          Subtitled
-                        </Badge>
-                      )}
-                    </div>
+                    {project.transcription && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <IconLanguage className="h-4 w-4" />
+                        <span className="font-medium">{project.transcription.language.toUpperCase()}</span>
+                      </div>
+                    )}
+                    
+                    {project.metadata?.width && project.metadata?.height && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <IconMaximize className="h-4 w-4" />
+                        <span>{project.metadata.width}×{project.metadata.height}</span>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              )}
+                  
+                  <div className="flex items-center gap-2">
+                    {project.folders.clips.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        <IconScissors className="h-3 w-3 mr-1" />
+                        {project.folders.clips.length} clips
+                      </Badge>
+                    )}
+                    {hasSubtitles && (
+                      <Badge variant="outline" className="text-xs border-green-600/50 text-green-600">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Subtitles
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
             </Card>
 
             {/* Quick AI Actions Bar */}
