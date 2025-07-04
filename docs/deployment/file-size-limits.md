@@ -183,4 +183,64 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 # Processing APIs
 OPENAI_API_KEY=sk-...  # For files < 25MB
 KLAP_API_KEY=klap_...  # For larger files
+```
+
+## 🎬 Video Processing Optimization
+
+### Klap API Clip Generation
+
+When processing videos with Klap API for clip generation, you may encounter timeouts, especially with multiple clips. Here's how to optimize:
+
+#### Environment Variables
+
+```bash
+# Skip re-uploading Klap videos to your storage (RECOMMENDED)
+SKIP_KLAP_VIDEO_REUPLOAD=true
+
+# This significantly reduces processing time by:
+# - Avoiding video downloads from Klap
+# - Skipping re-uploads to Supabase
+# - Using Klap's direct player URLs instead
+```
+
+#### Why This Helps
+
+1. **Reduces timeout issues**: Each clip download/upload can take 30-60 seconds
+2. **Faster processing**: Clips are available immediately after Klap processing
+3. **Lower bandwidth usage**: No need to transfer video files
+4. **Cost savings**: Less storage and bandwidth usage
+
+#### Trade-offs
+
+- ✅ **Pros**: Faster, more reliable, no timeout issues
+- ❌ **Cons**: Videos hosted on Klap servers (not your storage)
+
+### Processing Time Expectations
+
+| Video Length | AI Analysis | Clip Generation | Total Time |
+|--------------|-------------|-----------------|------------|
+| < 5 min      | 1-2 min     | 5-10 min        | 6-12 min   |
+| 5-15 min     | 2-3 min     | 10-20 min       | 12-23 min  |
+| 15-30 min    | 3-5 min     | 15-25 min       | 18-30 min  |
+
+### Troubleshooting Timeouts
+
+If you experience "2 clips 33%" freeze:
+
+1. **Add to your .env.local**:
+   ```bash
+   SKIP_KLAP_VIDEO_REUPLOAD=true
+   ```
+
+2. **For production (Vercel)**:
+   - Go to your Vercel dashboard
+   - Settings → Environment Variables
+   - Add `SKIP_KLAP_VIDEO_REUPLOAD` = `true`
+   - Redeploy
+
+3. **Alternative: Use background processing**:
+   - The current implementation processes clips in background
+   - Check project status periodically
+   - Clips will appear when ready
 ``` 
+</rewritten_file>

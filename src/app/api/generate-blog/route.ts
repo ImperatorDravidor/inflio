@@ -2,256 +2,212 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { UsageService } from '@/lib/usage-service'
 
-export async function POST(request: NextRequest) {
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { projectId, options } = await request.json()
-    
+    const body = await req.json()
+    const { projectId, enhancedContext } = body
+
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
     }
-    
-    // Default options if not provided
-    const blogOptions = options || {
-      style: 'professional',
-      length: 2000,
-      seoOptimized: true,
-      includeImages: true,
-      includeFAQ: true,
-      customInstructions: ''
+
+    // Check usage
+    if (!UsageService.canProcessVideo()) {
+      return NextResponse.json(
+        { error: 'Monthly usage limit reached. Please upgrade your plan.' },
+        { status: 429 }
+      )
     }
 
-    // Fetch project with transcript and content analysis
-    const { data: project, error: projectError } = await supabaseAdmin
+    const { data: project } = await supabaseAdmin
       .from('projects')
-      .select('*')
+      .select('*, content_analysis')
       .eq('id', projectId)
       .eq('user_id', userId)
       .single()
 
-    if (projectError || !project) {
-      console.error('Project fetch error:', projectError)
+    if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    if (!project.transcription) {
-      return NextResponse.json({ error: 'No transcript available for this project' }, { status: 400 })
+    // Use enhanced context if provided (from unified content generator)
+    const contentAnalysis = enhancedContext?.contentAnalysis || project.content_analysis
+    const unifiedPrompt = enhancedContext?.unifiedPrompt
+    const includeVideoMoments = enhancedContext?.includeVideoMoments || false
+    const selectedMoments = enhancedContext?.selectedMoments || []
+
+    if (!contentAnalysis) {
+      return NextResponse.json(
+        { error: 'Content analysis not available. Please analyze the video first.' },
+        { status: 400 }
+      )
     }
 
-    const contentAnalysis = project.content_analysis || {}
-    const keywords = contentAnalysis.keywords || []
-    const topics = contentAnalysis.topics || []
-    const summary = contentAnalysis.summary || ''
-    const keyMoments = contentAnalysis.keyMoments || []
-    const suggestions = contentAnalysis.contentSuggestions || {}
-    const blogIdeas = suggestions.blogPostIdeas || []
-
-    // Build comprehensive context from content analysis
-    const contextPrompt = `
-Video Title: ${project.title}
-Content Summary: ${summary}
-
-Main Topics: ${topics.join(', ')}
-Keywords: ${keywords.join(', ')}
-
-Key Moments from the Video:
-${keyMoments.map((moment: any, idx: number) => `${idx + 1}. [${moment.timestamp}] ${moment.description}`).join('\n')}
-
-Content Ideas: ${blogIdeas.join('; ')}
-
-Full Transcript:
-${project.transcription.text || project.transcription}
-`;
-
-    // Generate comprehensive blog post
-    const openai = getOpenAI();
+    const openai = getOpenAI()
     
-    // Adjust system prompt based on writing style
-    const stylePrompts = {
-      professional: 'You are an expert content writer specializing in professional, authoritative content. Use formal language, industry terminology, and maintain a credible tone.',
-      casual: 'You are a friendly content creator who writes in a conversational, approachable style. Use everyday language, personal anecdotes, and connect with readers on a personal level.',
-      technical: 'You are a technical writer who creates detailed, expert-level content. Use precise terminology, include technical details, and explain complex concepts thoroughly.',
-      storytelling: 'You are a narrative content writer who uses storytelling techniques. Create engaging narratives, use vivid descriptions, and connect facts through compelling stories.'
-    }
-    
+    // Enhanced system prompt with better context understanding
+    const systemPrompt = `You are a professional blog writer and content strategist specializing in creating engaging, SEO-optimized articles from video content.
+Your writing should be informative yet conversational, with a focus on delivering value to readers while maintaining strong search engine visibility.
+
+Key Guidelines:
+- Write in a clear, engaging tone that matches the video's energy
+- Include relevant timestamps when referencing specific moments
+- Naturally incorporate keywords without keyword stuffing
+- Create scannable content with clear headings and bullet points
+- Focus on practical takeaways and actionable insights
+- Use the active voice and write directly to the reader
+
+${unifiedPrompt ? `Additional Context: ${unifiedPrompt}` : ''}`
+
+    // Build comprehensive prompt with all video context
+    const videoMomentsSection = includeVideoMoments && selectedMoments.length > 0
+      ? `\n\n**KEY VIDEO MOMENTS TO HIGHLIGHT:**\n${selectedMoments.map((m: any, i: number) => 
+          `${i+1}. [${m.timestamp}s] ${m.description}`
+        ).join('\n')}`
+      : ''
+
+    const userPrompt = `Create a comprehensive blog post based on this video content:
+
+**VIDEO TITLE:** ${project.title}
+
+**SUMMARY:** ${contentAnalysis.summary}
+
+**MAIN TOPICS:** ${contentAnalysis.topics.join(', ')}
+
+**KEYWORDS TO INCORPORATE:** ${contentAnalysis.keywords.join(', ')}
+
+**SENTIMENT/TONE:** ${contentAnalysis.sentiment}
+
+**KEY MOMENTS:**
+${contentAnalysis.keyMoments.map((moment: any, index: number) => 
+  `${index + 1}. [${moment.timestamp}s] ${moment.description}`
+).join('\n')}
+${videoMomentsSection}
+
+Create a blog post that:
+1. Has an attention-grabbing title that includes the main keyword
+2. Starts with a compelling introduction that hooks the reader
+3. Organizes content into logical sections with descriptive headings
+4. References specific timestamps when mentioning video moments
+5. Includes a practical takeaways or action items section
+6. Ends with a strong conclusion and call-to-action
+7. Is optimized for SEO while remaining reader-friendly
+8. Maintains the video's tone (${contentAnalysis.sentiment})
+
+Format the response as clean HTML that can be rendered directly, using appropriate tags like <h2>, <p>, <ul>, <strong>, etc.
+Include timestamp references in the format [0:23] when mentioning specific video moments.`
+
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-2025-04-14',
+      model: 'gpt-4o-2024-08-06',
       messages: [
-        {
-          role: 'system',
-          content: `${stylePrompts[blogOptions.style as keyof typeof stylePrompts] || stylePrompts.professional} ${blogOptions.seoOptimized ? 'Create SEO-optimized content with proper keyword integration.' : ''} Format the output in clean markdown with proper headings, lists, and emphasis.`
-        },
-        {
-          role: 'user',
-          content: `${contextPrompt}
-${blogOptions.customInstructions ? `\nAdditional Instructions: ${blogOptions.customInstructions}\n` : ''}
-
-Create a comprehensive ${blogOptions.style} blog article following these requirements:
-
-1. **Article Structure** (Target: ${blogOptions.length} words):
-   - Compelling introduction (${Math.round(blogOptions.length * 0.1)} words)
-   - ${blogOptions.length >= 2000 ? '4-6' : blogOptions.length >= 1000 ? '3-4' : '2-3'} main sections with descriptive headings
-   - ${blogOptions.length >= 1500 ? '2-3 subsections under each main section' : '1-2 subsections where appropriate'}
-   - Conclusion with actionable takeaways (${Math.round(blogOptions.length * 0.1)} words)
-   ${blogOptions.includeFAQ ? `- FAQ section with ${blogOptions.length >= 2000 ? '5-7' : '3-5'} questions` : ''}
-
-2. **Content Requirements**:
-   - Reference specific moments from the video transcript with timestamps
-   - Include relevant statistics, data, or examples
-   - Use the identified topics and keywords naturally throughout
-   - Create engaging content that provides value
-   - Include relevant quotes from the transcript
-
-${blogOptions.seoOptimized ? `3. **SEO Optimization**:
-   - Naturally integrate LSI and NLP keywords throughout
-   - Maintain optimal keyword density without stuffing
-   - Include internal and external linking suggestions naturally in the text` : ''}
-
-4. **Formatting**:
-   - Use markdown formatting (# for h1, ## for h2, ### for h3)
-   - Use **bold** for emphasis and *italics* for subtle emphasis
-   - Use > for blockquotes of important video quotes
-   - Create scannable content with bullet points and numbered lists
-   - Use [text](url) format for links
-
-Output the article in clean markdown format. ${blogOptions.seoOptimized || blogOptions.includeImages ? `At the end, include a separate JSON block with:
-${blogOptions.seoOptimized ? `- metaTitle (50-60 characters)
-- metaDescription (150-160 characters)
-- keywords (array of LSI/NLP keywords used)` : ''}
-${blogOptions.includeImages ? '- suggestedImages (3-5 image descriptions)' : ''}` : ''}
-
-Write the full article now, ensuring it's comprehensive, engaging, and perfectly suited to the ${blogOptions.style} style requested.`
-        }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 4000,
-    });
+      max_tokens: 2500
+    })
 
-    const generatedContent = completion.choices[0].message.content || ''
+    const blogContent = completion.choices[0].message.content
 
-    // Parse the response - extract article and metadata
-    let articleContent = generatedContent
-    let metadata: any = {}
-    
-    // Check if there's a JSON block at the end
-    const jsonMatch = generatedContent.match(/```json\n([\s\S]+?)\n```\s*$/)
-    if (jsonMatch) {
-      try {
-        metadata = JSON.parse(jsonMatch[1])
-        // Remove the JSON block from the article content
-        articleContent = generatedContent.replace(/```json\n[\s\S]+?\n```\s*$/, '').trim()
-      } catch (e) {
-        console.error('Failed to parse metadata JSON:', e)
-      }
+    if (!blogContent) {
+      throw new Error('Failed to generate blog content')
     }
 
-    // Extract title from the first H1 in the markdown
-    const titleMatch = articleContent.match(/^#\s+(.+)$/m)
-    const extractedTitle = titleMatch ? titleMatch[1] : project.title + ' - Complete Guide'
+    // Generate SEO metadata
+    const seoPrompt = `Based on this blog content, generate SEO metadata:
     
-    // Extract excerpt from the first paragraph
-    const paragraphMatch = articleContent.match(/^(?!#|\*|\-|\>|\[).+$/m)
-    const extractedExcerpt = paragraphMatch 
-      ? paragraphMatch[0].substring(0, 200).trim() + '...'
-      : summary || project.title
-    
-    // Calculate reading time (average 200 words per minute)
-    const wordCount = articleContent.split(/\s+/).length
-    const readingTime = Math.ceil(wordCount / 200)
-    
-    // Extract sections from the markdown content
-    const sections: Array<{ heading: string; content: string }> = []
-    const sectionRegex = /^##\s+(.+)$/gm
-    let lastIndex = 0
-    let match
-    
-    while ((match = sectionRegex.exec(articleContent)) !== null) {
-      if (lastIndex > 0) {
-        // Get the content between the previous heading and this one
-        const prevSection = sections[sections.length - 1]
-        if (prevSection) {
-          prevSection.content = articleContent.substring(lastIndex, match.index).trim()
+Blog Content: ${blogContent.substring(0, 1000)}...
+Main Topic: ${contentAnalysis.topics[0]}
+Keywords: ${contentAnalysis.keywords.join(', ')}
+
+Provide:
+1. Meta title (50-60 characters)
+2. Meta description (150-160 characters)
+3. URL slug
+4. 5 relevant tags
+
+Format as JSON.`
+
+    const seoCompletion = await openai.chat.completions.create({
+      model: 'gpt-4-turbo-preview',
+      messages: [
+        { role: 'system', content: 'You are an SEO expert. Generate optimized metadata.' },
+        { role: 'user', content: seoPrompt }
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' }
+    })
+
+    const seoData = JSON.parse(seoCompletion.choices[0].message.content || '{}')
+
+    // Track usage
+    UsageService.incrementUsage()
+
+    // Save to database
+    const { data: savedBlog, error } = await supabaseAdmin
+      .from('blogs')
+      .insert({
+        project_id: projectId,
+        user_id: userId,
+        title: seoData.title || project.title,
+        content: blogContent,
+        slug: seoData.slug || project.title.toLowerCase().replace(/\s+/g, '-'),
+        meta_description: seoData.metaDescription || contentAnalysis.summary.substring(0, 160),
+        tags: seoData.tags || contentAnalysis.keywords.slice(0, 5),
+        status: 'draft',
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          model: 'gpt-4o-2024-08-06',
+          videoContext: {
+            topics: contentAnalysis.topics,
+            keywords: contentAnalysis.keywords,
+            sentiment: contentAnalysis.sentiment,
+            keyMomentsUsed: contentAnalysis.keyMoments.length
+          },
+          enhancedContext: enhancedContext ? {
+            unifiedPrompt,
+            includeVideoMoments,
+            selectedMomentsCount: selectedMoments.length
+          } : null
         }
-      }
-      sections.push({
-        heading: match[1],
-        content: ''
       })
-      lastIndex = match.index + match[0].length
-    }
-    
-    // Get the content for the last section
-    if (sections.length > 0 && lastIndex > 0) {
-      sections[sections.length - 1].content = articleContent.substring(lastIndex).trim()
-    }
-    
-    const blogPost = {
-      title: extractedTitle,
-      content: articleContent,
-      excerpt: extractedExcerpt,
-      author: 'AI Content Assistant',
-      tags: [...topics, ...keywords.slice(0, 5)],
-      seoTitle: metadata.metaTitle || extractedTitle.substring(0, 60),
-      seoDescription: metadata.metaDescription || extractedExcerpt.substring(0, 160),
-      readingTime: readingTime,
-      sections: sections,
-      projectId: projectId,
-      createdAt: new Date().toISOString(),
-      status: 'draft',
-      seo: {
-        keywords: metadata.keywords || keywords,
-        focusKeyword: keywords[0] || '',
-        readabilityScore: 'good',
-        seoScore: 'good',
-        suggestedImages: metadata.suggestedImages || []
-      }
-    }
+      .select()
+      .single()
 
-    // Generate a unique ID for the blog post
-    const blogId = crypto.randomUUID();
-    
-    // Store the blog post in the project's folders
-    const blogPostWithId = {
-      id: blogId,
-      ...blogPost
-    };
-
-    // Update the project's blog folder
-    const currentBlogFolder = project.folders?.blog || [];
-    const updatedFolders = {
-      ...project.folders,
-      blog: [...currentBlogFolder, blogPostWithId]
-    };
-
-    const { error: updateError } = await supabaseAdmin
-      .from('projects')
-      .update({ 
-        folders: updatedFolders,
-        updated_at: new Date().toISOString()
+    if (error) {
+      console.error('Error saving blog:', error)
+      // Return the content anyway
+      return NextResponse.json({
+        success: true,
+        content: blogContent,
+        seo: seoData,
+        saved: false,
+        error: error.message
       })
-      .eq('id', projectId);
-
-    if (updateError) {
-      console.error('Error saving blog post:', updateError);
-      // Continue anyway - return the generated content
     }
 
     return NextResponse.json({
       success: true,
-      blogPost: blogPostWithId
+      blog: savedBlog,
+      content: blogContent,
+      seo: seoData,
+      saved: true
     })
+
   } catch (error) {
-    console.error('Blog generation error:', error)
+    console.error('Error generating blog:', error)
     return NextResponse.json(
-      { 
-        error: 'Failed to generate blog post',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to generate blog content', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

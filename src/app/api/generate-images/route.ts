@@ -1,246 +1,227 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { getOpenAI } from '@/lib/openai'
+import { AIImageService } from '@/lib/ai-image-service'
+import { UsageService } from '@/lib/usage-service'
+import { UnifiedContentService, VideoSnippet, ContentPersona } from '@/lib/unified-content-service'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { SupabaseImageStorage } from '@/lib/supabase-image-storage'
+import { getOpenAI } from '@/lib/openai'
 
-export async function POST(request: NextRequest) {
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+interface GenerateImageRequest {
+  projectId: string
+  prompt?: string
+  imageType: 'social' | 'carousel' | 'quote' | 'linkedin' | 'story'
+  platforms?: string[]
+  count?: number
+  
+  // Unified content options
+  usePersona?: boolean
+  personaId?: string
+  personaPhotos?: string[] // Base64 images
+  useVideoSnippets?: boolean
+  videoSnippets?: VideoSnippet[]
+  style?: string
+  customizations?: {
+    textOverlay?: string
+    brandColors?: string[]
+    mood?: string
+  }
+  
+  // AI suggestions
+  suggestionId?: string
+  useAISuggestion?: boolean
+}
+
+export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const body: GenerateImageRequest = await req.json()
     const { 
-      projectId,
-      prompt,
-      quality = 'medium',
-      size = '1024x1024',
-      style = '',
-      format = 'png',
-      background = 'opaque',
-      n = 1,
-      isCarousel = false,
-      carouselPrompts = [],
-      type = 'ai-generated'
-    } = await request.json()
-    
-    if (!projectId || !prompt) {
-      return NextResponse.json({ error: 'Project ID and prompt are required' }, { status: 400 })
+      projectId, 
+      prompt, 
+      imageType, 
+      platforms = [], 
+      count = 1,
+      usePersona = false,
+      personaId,
+      personaPhotos = [],
+      useVideoSnippets = false,
+      videoSnippets = [],
+      style,
+      customizations,
+      suggestionId,
+      useAISuggestion = false
+    } = body
+
+    // Check usage
+    if (!UsageService.canProcessVideo()) {
+      return NextResponse.json(
+        { error: 'Monthly usage limit reached. Please upgrade your plan.' },
+        { status: 429 }
+      )
     }
 
-    // Fetch project to ensure user owns it
-    const { data: project, error: projectError } = await supabaseAdmin
+    // Get project details
+    const { data: project } = await supabaseAdmin
       .from('projects')
-      .select('*')
+      .select('*, content_analysis')
       .eq('id', projectId)
       .eq('user_id', userId)
       .single()
 
-    if (projectError || !project) {
+    if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // Build the full prompt with style
-    const fullPrompt = style ? `${prompt}. Style: ${style}` : prompt
+    // Generate AI suggestions if requested
+    let finalPrompt = prompt || ''
+    let enhancedPrompt = ''
+    
+    if (useAISuggestion || !prompt) {
+      const suggestions = await UnifiedContentService.generateUnifiedSuggestions(project, {
+        contentType: 'social',
+        style,
+        platform: platforms[0]
+      })
+      
+      // Find matching suggestion or use first one
+      const suggestion = suggestionId 
+        ? suggestions.find(s => s.id === suggestionId) 
+        : suggestions.find(s => s.type === 'social' && s.platform === platforms[0])
+      
+      if (suggestion) {
+        finalPrompt = suggestion.prompt
+        enhancedPrompt = suggestion.enhancedPrompt
+      }
+    }
+
+    // Apply persona if requested
+    if (usePersona && personaId) {
+      // Load persona from storage or use provided photos
+      const persona: ContentPersona = {
+        id: personaId,
+        name: 'User Persona',
+        description: 'Personal brand persona',
+        photos: personaPhotos.map((url, idx) => ({
+          id: `photo-${idx}`,
+          url,
+          name: `Photo ${idx + 1}`
+        })),
+        style: style || 'professional',
+        promptTemplate: 'featuring persona with professional appearance',
+        keywords: project.content_analysis?.keywords || []
+      }
+      
+      finalPrompt = UnifiedContentService.applyPersonaToPrompt(
+        enhancedPrompt || finalPrompt,
+        persona,
+        'social'
+      )
+    }
+
+    // Apply video snippets if requested
+    if (useVideoSnippets && videoSnippets.length > 0) {
+      finalPrompt = UnifiedContentService.mergeVideoSnippetsIntoPrompt(
+        finalPrompt,
+        videoSnippets,
+        'social'
+      )
+    }
+
+    // Apply customizations
+    if (customizations) {
+      if (customizations.textOverlay) {
+        finalPrompt += ` With text overlay: "${customizations.textOverlay}".`
+      }
+      if (customizations.brandColors?.length) {
+        finalPrompt += ` Using brand colors: ${customizations.brandColors.join(', ')}.`
+      }
+      if (customizations.mood) {
+        finalPrompt += ` ${customizations.mood} mood and atmosphere.`
+      }
+    }
 
     // Generate images using OpenAI
     const openai = getOpenAI()
+    const images = []
     
-    // Image generation parameters
-    // Note: GPT-IMAGE-1 always returns base64 (b64_json), not URLs
-    const imageParams: any = {
-      model: 'gpt-image-1',
-      prompt: fullPrompt,
-      n,
-      size: size as any,
-      quality: quality as any
-    }
-    
-    // Add transparent background to prompt if requested
-    if (background === 'transparent') {
-      imageParams.prompt = `${fullPrompt}. IMPORTANT: Generate with a transparent background, no background elements.`
-    }
-    
-    const response = await openai.images.generate(imageParams)
-
-    // Initialize storage bucket (only runs once)
-    await SupabaseImageStorage.initializeBucket()
-
-    // Process and store generated images
-    const generatedImages = []
-    const carouselId = isCarousel ? crypto.randomUUID() : null
-    
-    // For carousels, generate each slide with its specific prompt
-    if (isCarousel && carouselPrompts.length > 0) {
-      for (let i = 0; i < carouselPrompts.length; i++) {
-        const slidePrompt = carouselPrompts[i]
-        
-        try {
-          const slideResponse = await openai.images.generate({
-            model: 'gpt-image-1',
-            prompt: style ? `${slidePrompt}. Style: ${style}` : slidePrompt,
-            n: 1,
-            size: size as any,
-            quality: quality as any
-          })
-          
-          // Check if response has data
-          if (!slideResponse.data || slideResponse.data.length === 0) {
-            console.error('No data in slide response:', slideResponse)
-            throw new Error('No image data returned from API')
-          }
-          
-          const imageData = slideResponse.data[0]
-          
-          const imageId = crypto.randomUUID()
-          let publicUrl: string
-          let base64: string
-          
-          const imageDataAny = imageData as any
-          
-          if (imageDataAny.b64_json) {
-            // GPT-IMAGE-1 returns base64 directly
-            base64 = imageDataAny.b64_json
-          } else if (imageDataAny.url) {
-            // Other models return URLs
-            const imageResponse = await fetch(imageDataAny.url)
-            if (!imageResponse.ok) {
-              throw new Error(`Failed to download image: ${imageResponse.status} ${imageResponse.statusText}`)
-            }
-            
-            const imageBlob = await imageResponse.blob()
-            const arrayBuffer = await imageBlob.arrayBuffer()
-            base64 = Buffer.from(arrayBuffer).toString('base64')
-          } else {
-            console.error('No b64_json or url found. Available fields:', Object.keys(imageDataAny))
-            console.error('Full image data object:', imageDataAny)
-            throw new Error('No image data in response')
-          }
-          
-          publicUrl = await SupabaseImageStorage.uploadImage(
-            base64,
-            projectId,
-            imageId,
-            format
-          )
-          
-          generatedImages.push({
-            id: imageId,
-            prompt: slidePrompt,
-            originalPrompt: prompt,
-            style,
-            quality,
-            size,
-            format,
-            background,
-            url: publicUrl,
-            createdAt: new Date().toISOString(),
-            type: 'carousel-slide',
-            carouselId,
-            slideNumber: i + 1,
-            totalSlides: carouselPrompts.length
-          })
-          
-        } catch (slideError) {
-          console.error(`Error generating carousel slide ${i + 1}:`, slideError)
-          // Continue with other slides instead of failing completely
-          // You might want to handle this differently based on your needs
-          throw new Error(`Failed to generate carousel slide ${i + 1}: ${slideError instanceof Error ? slideError.message : 'Unknown error'}`)
-        }
-      }
-    } else {
-      // Regular image generation
-      for (let i = 0; i < (response.data?.length || 0); i++) {
-        const imageData = response.data![i]
-        
-        const imageId = crypto.randomUUID()
-        let publicUrl: string
-        let base64: string
-        
-        const imageDataAny = imageData as any
-        
-        if (imageDataAny.b64_json) {
-          // GPT-IMAGE-1 returns base64 directly
-          base64 = imageDataAny.b64_json
-        } else if (imageDataAny.url) {
-          // Other models return URLs
-          const imageResponse = await fetch(imageDataAny.url)
-          if (!imageResponse.ok) {
-            throw new Error(`Failed to download image: ${imageResponse.status} ${imageResponse.statusText}`)
-          }
-          
-          const imageBlob = await imageResponse.blob()
-          const arrayBuffer = await imageBlob.arrayBuffer()
-          base64 = Buffer.from(arrayBuffer).toString('base64')
-        } else {
-          console.error('No b64_json or url found. Available fields:', Object.keys(imageDataAny))
-          console.error('Full image data object:', imageDataAny)
-          throw new Error('No image data returned from GPT-IMAGE-1')
-        }
-        
-        publicUrl = await SupabaseImageStorage.uploadImage(
-          base64,
-          projectId,
-          imageId,
-          format
-        )
-        
-        generatedImages.push({
-          id: imageId,
-          prompt: fullPrompt,
-          originalPrompt: prompt,
+    for (let i = 0; i < count; i++) {
+      const response = await openai.images.generate({
+        model: "gpt-image-1",
+        prompt: AIImageService.enhancePromptWithStyle(finalPrompt, style || 'modern', 'high'),
+        n: 1,
+        size: imageType === 'story' ? '1024x1792' : '1024x1024',
+        quality: 'standard',
+        style: 'natural'
+      })
+      
+      if (response.data && response.data[0]?.url) {
+        images.push({
+          id: crypto.randomUUID(),
+          url: response.data[0].url,
+          prompt: finalPrompt,
+          type: imageType,
+          platform: platforms[0],
           style,
-          quality,
-          size,
-          format,
-          background,
-          url: publicUrl,
-          createdAt: new Date().toISOString(),
-          type: type || 'ai-generated'
+          createdAt: new Date().toISOString()
         })
       }
     }
 
-    // Update project with generated image metadata (not the image data)
-    const currentImages = project.folders?.images || []
-    const updatedFolders = {
-      ...project.folders,
-      images: [...currentImages, ...generatedImages]
+    // Track usage
+    UsageService.incrementUsage()
+
+    // Save generation metadata
+    const metadata = {
+      type: 'social_graphics',
+      prompt: finalPrompt,
+      enhancedPrompt,
+      imageType,
+      platforms,
+      usePersona,
+      personaId,
+      useVideoSnippets,
+      style,
+      customizations,
+      generatedAt: new Date().toISOString()
     }
 
-    // If type is thumbnail, also update the project's thumbnail_url
-    const updateData: any = { 
-      folders: updatedFolders,
-      updated_at: new Date().toISOString()
-    }
-    
-    if (type === 'thumbnail' && generatedImages.length > 0) {
-      updateData.thumbnail_url = generatedImages[0].url
-    }
+    // Update project with generated images
+    const currentImages = project.generated_images || []
+    const updatedImages = [
+      ...currentImages,
+      ...images.map((img: any) => ({
+        ...img,
+        metadata
+      }))
+    ]
 
-    const { error: updateError } = await supabaseAdmin
+    await supabaseAdmin
       .from('projects')
-      .update(updateData)
+      .update({
+        generated_images: updatedImages,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', projectId)
-
-    if (updateError) {
-      console.error('Error saving image metadata:', updateError)
-    }
 
     return NextResponse.json({
       success: true,
-      images: generatedImages,
-      imageUrl: generatedImages.length > 0 ? generatedImages[0].url : null
+      images,
+      prompt: finalPrompt,
+      enhancedPrompt,
+      metadata
     })
 
   } catch (error) {
-    console.error('Image generation error:', error)
+    console.error('Error generating images:', error)
     return NextResponse.json(
-      { 
-        error: 'Failed to generate images',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to generate images', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

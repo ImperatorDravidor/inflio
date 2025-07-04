@@ -32,7 +32,9 @@ import {
   IconX,
   IconSparkles,
   IconLoader2,
-  IconPhoto
+  IconPhoto,
+  IconChartBar,
+  IconTemplate
 } from "@tabler/icons-react"
 import {
   DropdownMenu,
@@ -230,6 +232,14 @@ function ProjectCard({
                 {stats.totalSocialPosts} social
               </span>
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <IconMicrophone className="h-4 w-4 text-muted-foreground" />
+              <span>{project.transcription ? 'Transcribed' : 'No transcript'}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <IconPhoto className="h-4 w-4 text-muted-foreground" />
+              <span>{project.folders.images?.length || 0} images</span>
+            </div>
             <Progress value={progress} className="h-1.5 mt-2" />
           </div>
 
@@ -419,7 +429,11 @@ function ProjectCard({
           </div>
           <div className="flex items-center gap-2 text-sm">
             <IconMicrophone className="h-4 w-4 text-muted-foreground" />
-            
+            <span>{project.transcription ? 'Transcribed' : 'No transcript'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <IconPhoto className="h-4 w-4 text-muted-foreground" />
+            <span>{project.folders.images?.length || 0} images</span>
           </div>
         </div>
         
@@ -565,102 +579,196 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">My Projects</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and track all your video projects in one place
-          </p>
+      {/* Enhanced Header */}
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              My Projects
+            </h1>
+            <p className="text-muted-foreground text-base">
+              Manage and track all your video projects in one place
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {UsageService.getRemainingVideos() === 0 ? (
+              <div className="text-right mr-4">
+                <p className="text-sm text-muted-foreground">Monthly limit reached</p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 h-auto text-sm"
+                  onClick={() => router.push('/settings#upgrade')}
+                >
+                  Upgrade to continue →
+                </Button>
+              </div>
+            ) : (
+              <div className="text-right mr-4 hidden md:block">
+                <p className="text-sm text-muted-foreground">
+                  {UsageService.getRemainingVideos()} videos remaining
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Resets {new Date(usageData.resetDate).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
+              onClick={() => router.push('/studio/upload')}
+              disabled={UsageService.getRemainingVideos() === 0}
+            >
+              <IconPlus className="h-5 w-5 mr-2" />
+              New Project
+            </Button>
+          </div>
         </div>
-        <Button
-          size="lg"
-          className="gradient-premium hover:opacity-90 shadow-lg"
-          onClick={() => router.push('/studio/upload')}
-          disabled={UsageService.getRemainingVideos() === 0}
-        >
-          <IconPlus className="h-5 w-5 mr-2" />
-          New Project
-        </Button>
+
+        {/* Quick Actions Bar */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/studio/videos')}
+            className="gap-2"
+          >
+            <IconVideo className="h-4 w-4" />
+            Video Library
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/studio/analytics')}
+            className="gap-2"
+          >
+            <IconChartBar className="h-4 w-4" />
+            Analytics
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/templates')}
+            className="gap-2"
+          >
+            <IconTemplate className="h-4 w-4" />
+            Templates
+          </Button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+      {/* Enhanced Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">All time</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold">{stats.total}</span>
+              <span className="text-sm text-muted-foreground">all time</span>
+            </div>
+            <div className="mt-3 h-1 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-primary/50 to-primary w-full" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
+        
+        <Card className="overflow-hidden border-orange-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Processing</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{stats.processing}</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-orange-600">{stats.processing}</span>
+              {stats.processing > 0 && (
+                <IconLoader2 className="h-4 w-4 text-orange-600 animate-spin" />
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">In progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Ready</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.ready}</div>
-            <p className="text-xs text-muted-foreground mt-1">Completed</p>
-          </CardContent>
-        </Card>
-        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <IconSparkles className="h-4 w-4 text-primary" />
-              Monthly Limit
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold gradient-text">{UsageService.getRemainingVideos()}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              of {usageData.limit} remaining
-            </p>
-            <Progress 
-              value={UsageService.getUsagePercentage()} 
-              className="h-1.5 mt-2" 
-            />
-            {UsageService.getRemainingVideos() === 0 && (
-              <Button 
-                variant="link" 
-                size="sm" 
-                className="p-0 h-auto mt-2 text-xs"
-                onClick={() => router.push('/settings#upgrade')}
-              >
-                Upgrade plan →
-              </Button>
+            {stats.processing > 0 && (
+              <Progress value={60} className="h-1 mt-3" />
             )}
           </CardContent>
         </Card>
+        
+        <Card className="overflow-hidden border-green-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Ready</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-green-600">{stats.ready}</span>
+              <Badge variant="outline" className="text-xs border-green-500/50 text-green-600">
+                Complete
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.ready > 0 ? 'Ready to publish' : 'None completed yet'}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-primary/5 to-transparent">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <IconSparkles className="h-4 w-4 text-primary animate-pulse" />
+              Monthly Usage
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                {usageData.used}
+              </span>
+              <span className="text-sm text-muted-foreground">/ {usageData.limit}</span>
+            </div>
+            <Progress 
+              value={UsageService.getUsagePercentage()} 
+              className="h-2 mt-3"
+              // @ts-ignore
+              indicatorClassName={cn(
+                UsageService.getUsagePercentage() > 80 && "bg-orange-500",
+                UsageService.getUsagePercentage() === 100 && "bg-red-500"
+              )}
+            />
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-muted-foreground">
+                {UsageService.getRemainingVideos()} remaining
+              </p>
+              {UsageService.getUsagePercentage() >= 80 && (
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="p-0 h-auto text-xs"
+                  onClick={() => router.push('/settings#upgrade')}
+                >
+                  Upgrade →
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Filters and Search */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            {/* Search */}
-            <div className="relative flex-1">
+      {/* Enhanced Filters and Search */}
+      <Card className="overflow-hidden">
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-4">
+            {/* Search Bar */}
+            <div className="relative">
               <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search projects..."
+                placeholder="Search by title, description, or tags..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
+                className="pl-10 pr-10 h-11"
               />
               {searchQuery && (
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9"
                   onClick={() => setSearchQuery("")}
                 >
                   <IconX className="h-4 w-4" />
@@ -668,99 +776,239 @@ export default function ProjectsPage() {
               )}
             </div>
 
-            {/* Filters */}
-            <div className="flex items-center gap-2">
-              <Tabs value={filterStatus} onValueChange={(v) => setFilterStatus(v as FilterStatus)}>
-                <TabsList>
-                  <TabsTrigger value="all">All</TabsTrigger>
+            {/* Filters Row */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Status Filter Tabs */}
+              <Tabs value={filterStatus} onValueChange={(v) => setFilterStatus(v as FilterStatus)} className="flex-1">
+                <TabsList className="grid w-full grid-cols-5 h-auto">
+                  <TabsTrigger value="all" className="data-[state=active]:bg-background">
+                    All
+                    {stats.total > 0 && (
+                      <Badge variant="secondary" className="ml-1.5 h-5 px-1">
+                        {stats.total}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="draft">Draft</TabsTrigger>
-                  <TabsTrigger value="processing">Processing</TabsTrigger>
-                  <TabsTrigger value="ready">Ready</TabsTrigger>
+                  <TabsTrigger value="processing" className="relative">
+                    Processing
+                    {stats.processing > 0 && (
+                      <div className="absolute -top-1 -right-1 h-2 w-2 bg-orange-500 rounded-full animate-pulse" />
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="ready">
+                    Ready
+                    {stats.ready > 0 && (
+                      <Badge variant="secondary" className="ml-1.5 h-5 px-1 bg-green-500/10 text-green-600">
+                        {stats.ready}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="published">Published</TabsTrigger>
                 </TabsList>
               </Tabs>
 
-              <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
-                <SelectTrigger className="w-[140px]">
-                  <IconSortDescending className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recent">Most Recent</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="duration">Duration</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Sort and View Controls */}
+              <div className="flex items-center gap-2">
+                <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
+                  <SelectTrigger className="w-[140px] h-9">
+                    <IconSortDescending className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Most Recent</SelectItem>
+                    <SelectItem value="name">Name (A-Z)</SelectItem>
+                    <SelectItem value="duration">Duration</SelectItem>
+                    <SelectItem value="status">Status</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <div className="flex border rounded-lg">
-                <Button
-                  size="icon"
-                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                  className="rounded-r-none"
-                  onClick={() => setViewMode('grid')}
-                >
-                  <IconLayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant={viewMode === 'list' ? 'default' : 'ghost'}
-                  className="rounded-l-none"
-                  onClick={() => setViewMode('list')}
-                >
-                  <IconList className="h-4 w-4" />
-                </Button>
+                <div className="flex border rounded-lg bg-muted/50 p-1">
+                  <Button
+                    size="sm"
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    className="rounded-md h-7 px-2"
+                    onClick={() => setViewMode('grid')}
+                  >
+                    <IconLayoutGrid className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    className="rounded-md h-7 px-2"
+                    onClick={() => setViewMode('list')}
+                  >
+                    <IconList className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
+            
+            {/* Active Filters Display */}
+            {(searchQuery || filterStatus !== 'all') && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Active filters:</span>
+                {searchQuery && (
+                  <Badge variant="secondary" className="gap-1">
+                    Search: {searchQuery}
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="ml-1 hover:text-destructive"
+                      aria-label="Clear search"
+                    >
+                      <IconX className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {filterStatus !== 'all' && (
+                  <Badge variant="secondary" className="gap-1 capitalize">
+                    Status: {filterStatus}
+                    <button
+                      onClick={() => setFilterStatus('all')}
+                      className="ml-1 hover:text-destructive"
+                      aria-label="Clear status filter"
+                    >
+                      <IconX className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Projects Grid/List */}
       {filteredProjects.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <IconFolder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">
-              {searchQuery || filterStatus !== 'all' ? 'No projects found' : 'No projects yet'}
-            </h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {searchQuery || filterStatus !== 'all' 
-                ? 'Try adjusting your search or filters'
-                : 'Upload your first video to get started'
-              }
-            </p>
-            {!searchQuery && filterStatus === 'all' && (
-              <Button onClick={() => router.push('/studio/upload')}>
-                <IconPlus className="h-4 w-4 mr-2" />
-                Create Your First Project
-              </Button>
-            )}
+        <Card className="overflow-hidden">
+          <CardContent className="py-20 text-center">
+            <div className="mx-auto max-w-md space-y-6">
+              {searchQuery || filterStatus !== 'all' ? (
+                <>
+                  <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                    <IconSearch className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold">No projects found</h3>
+                    <p className="text-muted-foreground">
+                      Try adjusting your search terms or clearing filters to see more results
+                    </p>
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSearchQuery("")
+                        setFilterStatus('all')
+                      }}
+                    >
+                      Clear All Filters
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+                    <IconVideo className="h-10 w-10 text-primary" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-semibold">Start your first project</h3>
+                    <p className="text-muted-foreground text-base">
+                      Upload a video to begin creating amazing content with AI
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <Button 
+                      size="lg"
+                      onClick={() => router.push('/studio/upload')}
+                      className="bg-gradient-to-r from-primary to-primary/80"
+                    >
+                      <IconPlus className="h-5 w-5 mr-2" />
+                      Upload Your First Video
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={() => router.push('/templates')}
+                    >
+                      Browse Templates
+                    </Button>
+                  </div>
+                  <div className="pt-6 border-t">
+                    <p className="text-sm text-muted-foreground mb-3">What you can do with Inflio:</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                          <IconScissors className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Generate Clips</p>
+                          <p className="text-xs text-muted-foreground">AI finds the best moments</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                          <IconFileText className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Create Blogs</p>
+                          <p className="text-xs text-muted-foreground">Turn videos into articles</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0">
+                          <IconShare className="h-4 w-4 text-pink-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Social Media</p>
+                          <p className="text-xs text-muted-foreground">Ready-to-post content</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className={cn(
-            viewMode === 'grid' 
-              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              : "space-y-4"
-          )}
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredProjects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                viewMode={viewMode}
-                onDelete={(id) => setDeleteId(id)}
-                onThumbnailUpdate={loadProjects}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        <>
+          {/* Results count */}
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <p>
+              Showing {filteredProjects.length} {filteredProjects.length === 1 ? 'project' : 'projects'}
+              {(searchQuery || filterStatus !== 'all') && ' (filtered)'}
+            </p>
+            {filteredProjects.length > 0 && (
+              <p>
+                {viewMode === 'grid' ? 'Grid' : 'List'} view
+              </p>
+            )}
+          </div>
+          
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className={cn(
+              viewMode === 'grid' 
+                ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6"
+                : "space-y-4"
+            )}
+          >
+            <AnimatePresence mode="popLayout">
+              {filteredProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  viewMode={viewMode}
+                  onDelete={(id) => setDeleteId(id)}
+                  onThumbnailUpdate={loadProjects}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        </>
       )}
 
       {/* Delete Confirmation Dialog */}

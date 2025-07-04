@@ -75,10 +75,6 @@ const pageActions: Record<string, React.ReactNode[]> = {
     </DropdownMenu>
   ],
   '/projects': [
-    <Button key="new-project" className="gap-2 gradient-premium shadow-sm" size="sm">
-      <IconPlus className="h-4 w-4" />
-      <span className="hidden sm:inline">New Project</span>
-    </Button>,
     <DropdownMenu key="sort">
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">

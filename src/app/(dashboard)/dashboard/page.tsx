@@ -43,7 +43,8 @@ import {
   IconArrowUp,
   IconGift,
   IconRocket,
-  IconEdit
+  IconEdit,
+  IconLoader2
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { ProjectService } from "@/lib/services"
@@ -873,6 +874,18 @@ export default function DashboardPage() {
                           <span className="flex items-center gap-1">
                             <IconVideo className="h-4 w-4" />
                             {projectStats.totalClips} clips
+                            {(() => {
+                              const clipsTask = project.tasks.find(t => t.type === 'clips');
+                              if (clipsTask && clipsTask.status === 'processing') {
+                                return (
+                                  <span className="ml-1 inline-flex items-center">
+                                    <IconLoader2 className="h-3 w-3 animate-spin text-primary" />
+                                    <span className="text-xs ml-1 text-primary">+{clipsTask.progress || 0}%</span>
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </span>
                           <span className="flex items-center gap-1">
                             <IconFileText className="h-4 w-4" />

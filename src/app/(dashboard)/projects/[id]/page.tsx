@@ -59,6 +59,8 @@ import {
   IconMail,
   IconMessageCircle,
   IconBrandReddit,
+  IconLayoutGridAdd,
+  IconChevronDown,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -88,9 +90,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { ContentStager } from "@/components/staging/content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
 import type { StagedContent } from "@/lib/staging/staging-service"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
+import { UnifiedContentGenerator } from "@/components/unified-content-generator"
 
 const platformIcons = {
   twitter: IconBrandTwitter,
@@ -156,6 +160,23 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     loadProject()
   }, [projectId])
+
+  // Poll for updates when clips are being generated
+  useEffect(() => {
+    if (project) {
+      const clipsTask = project.tasks.find(t => t.type === 'clips')
+      const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
+      
+      if (isClipsProcessing) {
+        // Poll every 5 seconds for updates
+        const interval = setInterval(() => {
+          loadProject()
+        }, 5000)
+        
+        return () => clearInterval(interval)
+      }
+    }
+  }, [project?.tasks])
   
 
   
@@ -722,6 +743,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     ? TranscriptionService.searchTranscription(project.transcription.segments, searchQuery)
     : []
   const displaySegments = searchQuery ? searchResults : (project.transcription?.segments || [])
+  const clipsTask = project.tasks.find(t => t.type === 'clips')
 
   return (
     <div className="relative min-h-screen">
@@ -744,237 +766,492 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         </div>
       )}
       
-      <div className="relative mx-auto max-[1600px] px-4 animate-in">
-        {/* Enhanced Header with Powerful Actions */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+      <div className="relative mx-auto max-w-[1920px] px-4 py-6 animate-in">
+        {/* Enhanced Header with Better Organization */}
+        <div className="mb-8 space-y-6">
+          {/* Top Navigation Bar */}
+          <div className="flex items-center justify-between">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.push('/projects')}
-              className="mb-2"
+              className="gap-2 hover:bg-primary/10"
             >
-              <IconArrowLeft className="h-4 w-4 mr-2" />
-              All Projects
+              <IconArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">All Projects</span>
             </Button>
+            
+            {/* Quick Actions */}
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => router.push(`/projects/${projectId}/settings`)}>
-                <IconSettings className="h-4 w-4" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigator.share({ 
+                  title: project.title, 
+                  text: `Check out my video: ${project.title}`,
+                  url: window.location.href 
+                }).catch(() => {
+                  // Fallback to copy URL
+                  navigator.clipboard.writeText(window.location.href)
+                  toast.success('Link copied to clipboard')
+                })}
+                className="hover:bg-primary/10"
+              >
+                <IconShare className="h-4 w-4" />
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <IconTrash className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="hover:bg-primary/10">
+                    <IconDots className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/settings`)}>
+                    <IconSettings className="h-4 w-4 mr-2" />
+                    Project Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const projectData = JSON.stringify(project, null, 2)
+                    const blob = new Blob([projectData], { type: 'application/json' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${project.title}-data.json`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                    toast.success('Project data exported')
+                  }}>
+                    <IconFileDownload className="h-4 w-4 mr-2" />
+                    Export Data
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setIsDeleteDialogOpen(true)} 
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <IconTrash className="h-4 w-4 mr-2" />
+                    Delete Project
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           
-          {/* Project Info with Progress Indicator */}
-          <div className="mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                    {project.title}
-                  </h1>
-                  <Badge variant={project.status === 'published' ? 'default' : 'secondary'}>
-                    {project.status === 'published' ? 'Published' : 'Draft'}
-                  </Badge>
+          {/* Project Header with Enhanced Info */}
+          <div className="space-y-6">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+              <div className="flex-1 space-y-4">
+                {/* Title and Status */}
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+                      {project.title}
+                    </h1>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={project.status === 'published' ? 'default' : 'secondary'}
+                        className="font-medium"
+                      >
+                        {project.status === 'published' ? (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Published
+                          </>
+                        ) : 'Draft'}
+                      </Badge>
+                      {project.folders.clips.length > 0 && (
+                        <Badge variant="outline" className="font-medium">
+                          {project.folders.clips.length} Clips
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {project.description && (
+                    <p className="text-muted-foreground text-base lg:text-lg max-w-3xl">
+                      {project.description}
+                    </p>
+                  )}
                 </div>
-                {project.description && (
-                  <p className="text-muted-foreground text-lg mb-3">{project.description}</p>
-                )}
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
+                
+                {/* Project Metadata */}
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
                     <IconClock className="h-4 w-4" />
-                    {formatDuration(project.metadata.duration)}
-                  </span>
-                  <span>•</span>
-                  <span>{new Date(project.created_at).toLocaleDateString()}</span>
+                    <span className="font-medium">{formatDuration(project.metadata.duration)}</span>
+                  </div>
+                  
+                  <div className="h-4 w-px bg-border" />
+                  
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <IconCalendar className="h-4 w-4" />
+                    <span>{new Date(project.created_at).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    })}</span>
+                  </div>
+                  
                   {project.transcription && (
                     <>
-                      <span>•</span>
-                      <span className="flex items-center gap-1">
+                      <div className="h-4 w-px bg-border" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
                         <IconLanguage className="h-4 w-4" />
-                        {project.transcription.language.toUpperCase()}
-                      </span>
+                        <span className="font-medium">{project.transcription.language.toUpperCase()}</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {project.metadata?.size && (
+                    <>
+                      <div className="h-4 w-px bg-border" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <IconFileText className="h-4 w-4" />
+                        <span>{(project.metadata.size / 1024 / 1024).toFixed(1)} MB</span>
+                      </div>
                     </>
                   )}
                 </div>
               </div>
               
-              {/* Powerful Action Buttons */}
-              <div className="flex flex-col gap-2">
+              {/* Primary Actions - Better Organized */}
+              <div className="flex flex-col gap-3 min-w-[280px]">
+                {/* Main CTA */}
                 <Button 
                   size="lg"
-                  className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
                   onClick={() => setShowPublishDialog(true)}
                   disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
                   Publish Content
                   {(stats.totalClips + stats.totalBlogs + totalImages > 0) && (
-                    <Badge variant="secondary" className="ml-2">
-                      {stats.totalClips + stats.totalBlogs + totalImages} items
+                    <Badge variant="secondary" className="ml-2 bg-white/20 text-white border-0">
+                      {stats.totalClips + stats.totalBlogs + totalImages}
                     </Badge>
                   )}
                 </Button>
+                
+                {/* Secondary Actions Grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(`/projects/${projectId}/stage`)}
+                    className="h-10"
+                  >
+                    <IconLayoutGridAdd className="h-4 w-4 mr-2" />
+                    Stage
+                  </Button>
+                  
+                  <UnifiedContentGenerator
+                    projectId={projectId}
+                    projectTitle={project.title}
+                    projectVideoUrl={project.video_url}
+                    contentAnalysis={project.content_analysis}
+                    onContentGenerated={(content) => {
+                      toast.success("Content package generated successfully!")
+                      loadProject()
+                    }}
+                  />
+                </div>
+                
+                {/* Processing View Link */}
                 <Button
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => router.push(`/studio/processing/${projectId}`)}
+                  className="w-full justify-center text-muted-foreground hover:text-primary"
                 >
                   <IconWand className="h-4 w-4 mr-2" />
-                  View Processing
+                  View in Studio
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Content Generation Progress Card */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
+          {/* Enhanced Content Generation Progress Card */}
+          <Card className="border-2 border-primary/10 bg-gradient-to-br from-background via-primary/5 to-accent/5 shadow-xl">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <IconSparkles className="h-5 w-5 text-primary" />
-                    Content Generation Status
+              {/* Header with Progress */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="space-y-1">
+                  <h3 className="text-xl font-semibold flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <IconSparkles className="h-5 w-5 text-primary" />
+                    </div>
+                    AI Content Generation
                   </h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    AI has analyzed your video and generated content
+                  <p className="text-sm text-muted-foreground">
+                    Automated content creation from your video
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-primary">{stats.overallProgress}%</p>
-                  <p className="text-sm text-muted-foreground">Complete</p>
+                
+                {/* Progress Circle */}
+                <div className="relative">
+                  <svg className="w-20 h-20 transform -rotate-90">
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="36"
+                      stroke="currentColor"
+                      strokeWidth="8"
+                      fill="none"
+                      className="text-muted-foreground/20"
+                    />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="36"
+                      stroke="currentColor"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeDasharray={`${(stats.overallProgress / 100) * 226} 226`}
+                      className="text-primary transition-all duration-500"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-2xl font-bold">{stats.overallProgress}%</span>
+                  </div>
                 </div>
               </div>
               
-              {/* Ready Status Badges */}
-              <div className="flex gap-3 mb-4">
-                {hasSubtitles && (
-                  <Badge className="bg-green-500/10 text-green-600 border-green-500/20 px-3 py-1">
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Long-form Ready (Subtitles applied)
-                  </Badge>
+              {/* Status Indicators */}
+              <div className="space-y-4 mb-6">
+                {/* Clips Processing Status */}
+                {clipsTask && clipsTask.status === 'processing' && (
+                  <Alert className="border-orange-500/20 bg-orange-500/10">
+                    <IconLoader2 className="h-4 w-4 animate-spin text-orange-600" />
+                    <AlertTitle className="text-orange-900 dark:text-orange-200">Clips Processing</AlertTitle>
+                    <AlertDescription className="text-orange-800 dark:text-orange-300">
+                      AI is generating short-form clips from your video. This page will auto-refresh.
+                    </AlertDescription>
+                  </Alert>
                 )}
-                {!hasSubtitles && (
-                  <Badge variant="outline" className="text-muted-foreground px-3 py-1">
-                    Apply subtitles to prepare for long-form publishing
-                  </Badge>
+                
+                {/* Ready Status */}
+                {hasSubtitles ? (
+                  <Alert className="border-green-500/20 bg-green-500/10">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <AlertTitle className="text-green-900 dark:text-green-200">Long-form Ready</AlertTitle>
+                    <AlertDescription className="text-green-800 dark:text-green-300">
+                      Your video has subtitles applied and is ready for YouTube publishing.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Alert className="border-blue-500/20 bg-blue-500/10">
+                    <IconInfoCircle className="h-4 w-4 text-blue-600" />
+                    <AlertTitle className="text-blue-900 dark:text-blue-200">Subtitle Enhancement Available</AlertTitle>
+                    <AlertDescription className="text-blue-800 dark:text-blue-300">
+                      Apply subtitles to make your video accessible and boost engagement.
+                      <Button
+                        size="sm"
+                        variant="link"
+                        className="h-auto p-0 ml-2 text-blue-700 dark:text-blue-400"
+                        onClick={() => router.push(`/studio/processing/${projectId}`)}
+                      >
+                        Apply now →
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
                 )}
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    project.transcription ? "bg-green-500/20" : "bg-gray-500/20"
-                  )}>
-                    <IconFileText className={cn(
-                      "h-5 w-5",
-                      project.transcription ? "text-green-500" : "text-gray-500"
-                    )} />
-                  </div>
-                  <div>
-                    <p className="font-medium">Transcript</p>
+              {/* Content Stats Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* Transcript */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  project.transcription 
+                    ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40" 
+                    : "border-muted"
+                )}
+                onClick={() => project.transcription && setActiveTab('overview')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        project.transcription ? "bg-green-500/20" : "bg-muted"
+                      )}>
+                        <IconFileText className={cn(
+                          "h-4 w-4",
+                          project.transcription ? "text-green-600" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      {project.transcription && (
+                        <IconCheck className="h-4 w-4 text-green-600" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Transcript</p>
                     <p className="text-xs text-muted-foreground">
-                      {project.transcription ? "Ready" : "Processing"}
+                      {project.transcription ? "Complete" : "Processing"}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
                 
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    stats.totalClips > 0 ? "bg-purple-500/20" : "bg-gray-500/20"
-                  )}>
-                    <IconScissors className={cn(
-                      "h-5 w-5",
-                      stats.totalClips > 0 ? "text-purple-500" : "text-gray-500"
-                    )} />
-                  </div>
-                  <div>
-                    <p className="font-medium">{stats.totalClips} Clips</p>
+                {/* Clips */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  stats.totalClips > 0 
+                    ? "border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40" 
+                    : clipsTask?.status === 'processing'
+                    ? "border-orange-500/20 bg-orange-500/5"
+                    : "border-muted"
+                )}
+                onClick={() => stats.totalClips > 0 && setActiveTab('clips')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        stats.totalClips > 0 ? "bg-purple-500/20" : 
+                        clipsTask?.status === 'processing' ? "bg-orange-500/20" : "bg-muted"
+                      )}>
+                        <IconScissors className={cn(
+                          "h-4 w-4",
+                          stats.totalClips > 0 ? "text-purple-600" : 
+                          clipsTask?.status === 'processing' ? "text-orange-600 animate-pulse" : 
+                          "text-muted-foreground"
+                        )} />
+                      </div>
+                      {stats.totalClips > 0 && (
+                        <span className="text-lg font-bold text-purple-600">{stats.totalClips}</span>
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Video Clips</p>
                     <p className="text-xs text-muted-foreground">
-                      {stats.totalClips > 0 ? "Generated" : "Processing"}
+                      {stats.totalClips > 0 ? "Ready" : 
+                       clipsTask?.status === 'processing' ? "Generating..." : "Not started"}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
                 
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    stats.totalBlogs > 0 ? "bg-blue-500/20" : "bg-gray-500/20"
-                  )}>
-                    <IconArticle className={cn(
-                      "h-5 w-5",
-                      stats.totalBlogs > 0 ? "text-blue-500" : "text-gray-500"
-                    )} />
-                  </div>
-                  <div>
-                    <p className="font-medium">{stats.totalBlogs} Blogs</p>
+                {/* Blog Posts */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  stats.totalBlogs > 0 
+                    ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40" 
+                    : "border-muted hover:border-primary/20"
+                )}
+                onClick={() => stats.totalBlogs > 0 ? setActiveTab('blog') : setShowBlogDialog(true)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        stats.totalBlogs > 0 ? "bg-blue-500/20" : "bg-muted"
+                      )}>
+                        <IconArticle className={cn(
+                          "h-4 w-4",
+                          stats.totalBlogs > 0 ? "text-blue-600" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      {stats.totalBlogs > 0 ? (
+                        <span className="text-lg font-bold text-blue-600">{stats.totalBlogs}</span>
+                      ) : (
+                        <IconPlus className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Blog Posts</p>
                     <p className="text-xs text-muted-foreground">
                       {stats.totalBlogs > 0 ? "Created" : "Generate"}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
                 
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    totalImages > 0 ? "bg-pink-500/20" : "bg-gray-500/20"
-                  )}>
-                    <IconPhoto className={cn(
-                      "h-5 w-5",
-                      totalImages > 0 ? "text-pink-500" : "text-gray-500"
-                    )} />
-                  </div>
-                  <div>
-                    <p className="font-medium">{totalImages} Images</p>
+                {/* AI Images */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  totalImages > 0 
+                    ? "border-pink-500/20 bg-pink-500/5 hover:border-pink-500/40" 
+                    : "border-muted hover:border-primary/20"
+                )}
+                onClick={() => setActiveTab('graphics')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        totalImages > 0 ? "bg-pink-500/20" : "bg-muted"
+                      )}>
+                        <IconPhoto className={cn(
+                          "h-4 w-4",
+                          totalImages > 0 ? "text-pink-600" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      {totalImages > 0 ? (
+                        <span className="text-lg font-bold text-pink-600">{totalImages}</span>
+                      ) : (
+                        <IconPlus className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">AI Images</p>
                     <p className="text-xs text-muted-foreground">
                       {totalImages > 0 ? "Created" : "Generate"}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
                 
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    stats.totalSocialPosts > 0 ? "bg-orange-500/20" : "bg-gray-500/20"
-                  )}>
-                    <IconShare2 className={cn(
-                      "h-5 w-5",
-                      stats.totalSocialPosts > 0 ? "text-orange-500" : "text-gray-500"
-                    )} />
-                  </div>
-                  <div>
-                    <p className="font-medium">{stats.totalSocialPosts} Social</p>
+                {/* Social Posts */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  stats.totalSocialPosts > 0 
+                    ? "border-orange-500/20 bg-orange-500/5 hover:border-orange-500/40" 
+                    : "border-muted hover:border-primary/20"
+                )}
+                onClick={() => router.push(`/projects/${projectId}/stage`)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        stats.totalSocialPosts > 0 ? "bg-orange-500/20" : "bg-muted"
+                      )}>
+                        <IconShare2 className={cn(
+                          "h-4 w-4",
+                          stats.totalSocialPosts > 0 ? "text-orange-600" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      {stats.totalSocialPosts > 0 ? (
+                        <span className="text-lg font-bold text-orange-600">{stats.totalSocialPosts}</span>
+                      ) : (
+                        <IconPlus className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Social Posts</p>
                     <p className="text-xs text-muted-foreground">
-                      {stats.totalSocialPosts > 0 ? "Ready" : "Generate"}
+                      {stats.totalSocialPosts > 0 ? "Staged" : "Create"}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
               
-              {/* Quick Actions */}
-              <div className="mt-4 pt-4 border-t flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Generate more content based on your video's AI analysis
-                </p>
-                <div className="flex gap-2">
+              {/* Quick Actions Footer */}
+              <div className="mt-6 pt-6 border-t flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconSparkles className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    Powered by AI content analysis
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => setShowBlogDialog(true)}
                     disabled={isGeneratingBlog || !project.transcription}
+                    className="text-muted-foreground hover:text-primary"
                   >
-                    <IconWand className="h-4 w-4 mr-2" />
+                    <IconWand className="h-4 w-4 mr-1" />
                     Generate Blog
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => setActiveTab('graphics')}
+                    className="text-muted-foreground hover:text-primary"
                   >
-                    <IconPhoto className="h-4 w-4 mr-2" />
+                    <IconPhoto className="h-4 w-4 mr-1" />
                     Create Images
                   </Button>
                 </div>
@@ -987,26 +1264,39 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Video Player & Content Section */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Video Player */}
-            <Card className="overflow-hidden border-primary/20 shadow-lg">
-              {/* Thumbnail Creator Button */}
-              <div className="p-4 border-b bg-muted/30">
+            {/* Enhanced Video Player Card */}
+            <Card className="overflow-hidden border-2 border-primary/10 shadow-lg">
+              {/* Video Header */}
+              <div className="p-4 border-b bg-gradient-to-r from-background to-muted/30">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium">Video Preview</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {project.thumbnail_url ? 'Current thumbnail applied' : 'No thumbnail set'}
-                    </p>
+                  <div className="space-y-1">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <IconVideo className="h-4 w-4 text-primary" />
+                      Video Preview
+                    </h3>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      {project.thumbnail_url ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          <span>Custom thumbnail applied</span>
+                        </>
+                      ) : (
+                        <>
+                          <IconInfoCircle className="h-3 w-3" />
+                          <span>No thumbnail set</span>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  
+                  {/* Thumbnail Actions */}
                   <div className="flex items-center gap-2">
-                    {/* Quick Thumbnail Actions */}
                     {!project.thumbnail_url && (
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="gap-1"
+                        variant="ghost"
+                        className="gap-1 hover:bg-primary/10"
                         onClick={async () => {
-                          // Quick generate thumbnail from first frame
                           try {
                             const video = videoRef.current
                             if (video) {
@@ -1023,7 +1313,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                 ctx.drawImage(video, 0, 0)
                                 const dataUrl = canvas.toDataURL('image/png')
                                 
-                                // Update project with thumbnail
                                 const supabase = createSupabaseBrowserClient()
                                 await supabase
                                   .from('projects')
@@ -1032,11 +1321,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                 
                                 setThumbnailUrl(dataUrl)
                                 await loadProject()
-                                toast.success('Quick thumbnail generated!')
+                                toast.success('Quick thumbnail captured!')
                               }
                             }
                           } catch (error) {
-                            toast.error('Failed to generate quick thumbnail')
+                            toast.error('Failed to capture thumbnail')
                           }
                         }}
                       >
@@ -1045,48 +1334,70 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </Button>
                     )}
                     
-                  <ThumbnailCreator
-                    projectId={project.id}
-                    projectTitle={project.title}
-                    projectVideoUrl={project.video_url}
-                    contentAnalysis={project.content_analysis}
-                    currentThumbnail={project.thumbnail_url}
-                    onThumbnailUpdate={async (newThumbnailUrl: string) => {
-                      setThumbnailUrl(newThumbnailUrl)
-                      await loadProject()
-                      toast.success('Thumbnail updated successfully!')
-                    }}
-                  />
+                    <ThumbnailCreator
+                      projectId={project.id}
+                      projectTitle={project.title}
+                      projectVideoUrl={project.video_url}
+                      contentAnalysis={project.content_analysis}
+                      currentThumbnail={project.thumbnail_url}
+                      onThumbnailUpdate={async (newThumbnailUrl: string) => {
+                        setThumbnailUrl(newThumbnailUrl)
+                        await loadProject()
+                        toast.success('Thumbnail updated successfully!')
+                      }}
+                    />
                     
                     {project.thumbnail_url && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="gap-1"
-                        onClick={() => window.open(project.thumbnail_url!, '_blank')}
-                      >
-                        <IconDownload className="h-4 w-4" />
-                        Download
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1 hover:bg-primary/10"
+                          onClick={() => window.open(project.thumbnail_url!, '_blank')}
+                        >
+                          <IconDownload className="h-4 w-4" />
+                          <span className="hidden sm:inline">Download</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1 hover:bg-destructive/10 text-destructive"
+                          onClick={async () => {
+                            if (confirm('Remove the custom thumbnail?')) {
+                              const supabase = createSupabaseBrowserClient()
+                              await supabase
+                                .from('projects')
+                                .update({ thumbnail_url: null })
+                                .eq('id', project.id)
+                              
+                              setThumbnailUrl(null)
+                              await loadProject()
+                              toast.success('Thumbnail removed')
+                            }
+                          }}
+                        >
+                          <IconTrash className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
               </div>
               
-              <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-accent/20">
+              {/* Video Container */}
+              <div className="relative aspect-video bg-gradient-to-br from-primary/10 via-background to-accent/10">
                 {project.video_url ? (
-                  <div className="video-container w-full h-full bg-black rounded-lg overflow-hidden">
+                  <>
                     <video
                       ref={videoRef}
                       src={project.video_url}
-                      poster={project.thumbnail_url || thumbnailUrl || undefined}  // Add poster image
-                      className="w-full h-full object-contain"
+                      poster={project.thumbnail_url || thumbnailUrl || undefined}
+                      className="w-full h-full object-contain bg-black"
                       controls
                       controlsList="nodownload"
                       crossOrigin="anonymous"
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget
-                        // Update project metadata with actual video duration
                         if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
                           setProject(prev => prev ? {
                             ...prev,
@@ -1099,52 +1410,67 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       }}
                       preload="metadata"
                     >
-                      <p>Your browser doesn't support HTML5 video.</p>
+                      <p className="text-center p-4">Your browser doesn't support HTML5 video.</p>
                     </video>
-                  </div>
+                    
+                    {/* Video Overlay Badges */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2 pointer-events-none">
+                      {hasSubtitles && (
+                        <Badge className="bg-green-600/90 text-white border-0 backdrop-blur-sm shadow-lg">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Subtitles Applied
+                        </Badge>
+                      )}
+                      {project.metadata?.width && project.metadata?.height && (
+                        <Badge className="bg-black/60 text-white border-0 backdrop-blur-sm">
+                          {project.metadata.width}x{project.metadata.height}
+                        </Badge>
+                      )}
+                    </div>
+                  </>
                 ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <IconVideo className="h-20 w-20 text-primary/30" />
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <IconVideo className="h-20 w-20 text-primary/30 mb-4" />
+                    <p className="text-muted-foreground">No video uploaded</p>
                   </div>
                 )}
-                
-                {/* Status Badges */}
-                <div className="absolute top-4 right-4 flex flex-col gap-2">
-                  {/* Long-form Ready */}
-                  {hasSubtitles && (
-                    <Badge className="bg-green-500/90 text-white border-0 backdrop-blur-sm">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Long-form Ready
-                    </Badge>
-                  )}
-                </div>
               </div>
               
               {/* Video Info Bar */}
               {project.metadata?.duration && (
-                <CardContent className="p-3 border-t bg-muted/30">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-4">
-                      <span className="flex items-center gap-1 text-muted-foreground">
+                <CardContent className="p-4 border-t bg-muted/20">
+                  <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
                         <IconClock className="h-4 w-4" />
-                        {formatDuration(project.metadata.duration)}
-                      </span>
+                        <span className="font-medium">{formatDuration(project.metadata.duration)}</span>
+                      </div>
+                      
                       {project.transcription && (
-                        <span className="flex items-center gap-1 text-muted-foreground">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
                           <IconLanguage className="h-4 w-4" />
-                          {project.transcription.language.toUpperCase()}
-                        </span>
+                          <span className="font-medium">{project.transcription.language.toUpperCase()}</span>
+                        </div>
+                      )}
+                      
+                      {project.metadata?.width && project.metadata?.height && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <IconMaximize className="h-4 w-4" />
+                          <span>{project.metadata.width}x{project.metadata.height}</span>
+                        </div>
                       )}
                     </div>
+                    
                     <div className="flex items-center gap-2">
                       {project.folders.clips.length > 0 && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary">
                           {project.folders.clips.length} clips
                         </Badge>
                       )}
                       {hasSubtitles && (
-                        <Badge variant="secondary" className="text-xs">
-                          Subtitles applied
+                        <Badge variant="secondary">
+                          <IconFileText className="h-3 w-3 mr-1" />
+                          Subtitled
                         </Badge>
                       )}
                     </div>
@@ -1153,22 +1479,27 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               )}
             </Card>
 
-            {/* AI Actions Bar */}
-            <Card className="border-primary/20">
-              <CardContent className="p-4">
+            {/* Quick AI Actions Bar */}
+            <Card className="border border-primary/10 overflow-hidden">
+              <CardContent className="p-4 bg-gradient-to-r from-background to-muted/20">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg gradient-premium-subtle">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10">
                       <IconWand className="h-5 w-5 text-primary" />
                     </div>
-                    <span className="font-medium">AI Actions</span>
+                    <div>
+                      <p className="font-semibold">AI Quick Actions</p>
+                      <p className="text-xs text-muted-foreground">Generate content instantly</p>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
+                  
+                  <div className="flex items-center gap-2">
                     <Button 
                       size="sm"
                       onClick={() => setShowBlogDialog(true)} 
                       disabled={isGeneratingBlog || !project.transcription} 
                       variant={project.folders.blog.length > 0 ? "outline" : "default"}
+                      className={project.folders.blog.length > 0 ? "" : "bg-gradient-to-r from-primary to-primary/80"}
                     >
                       {isGeneratingBlog ? (
                         <>
@@ -1178,46 +1509,90 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       ) : (
                         <>
                           <IconArticle className="mr-2 h-4 w-4"/>
-                          {project.folders.blog.length > 0 ? "Regenerate Blog" : "Generate Blog"}
+                          {project.folders.blog.length > 0 ? "New Blog" : "Generate Blog"}
                         </>
                       )}
                     </Button>
                     
-                    <Button size="sm" variant="outline" disabled>
-                      <IconScissors className="mr-2 h-4 w-4"/>
-                      More Clips
-                      <Badge variant="secondary" className="ml-2 text-xs">Soon</Badge>
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline">
+                          <IconPlus className="h-4 w-4 mr-2" />
+                          More
+                          <IconChevronDown className="h-3 w-3 ml-1" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => setActiveTab('graphics')}>
+                          <IconPhoto className="h-4 w-4 mr-2" />
+                          Generate Images
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled>
+                          <IconScissors className="h-4 w-4 mr-2" />
+                          More Clips
+                          <Badge variant="secondary" className="ml-auto text-xs">Soon</Badge>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled>
+                          <IconSticker className="h-4 w-4 mr-2" />
+                          Auto Captions
+                          <Badge variant="secondary" className="ml-auto text-xs">Soon</Badge>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Content Tabs */}
-            <Card className="overflow-hidden">
+            {/* Enhanced Content Tabs */}
+            <Card className="overflow-hidden shadow-lg">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="border-b">
-                  <div className="px-6 pt-6 pb-2">
-                    <TabsList className="grid w-full grid-cols-4 h-auto p-1">
-                      <TabsTrigger value="overview" className="flex flex-col items-center gap-1 py-3">
+                <div className="border-b bg-gradient-to-r from-background to-muted/20">
+                  <div className="px-6 pt-6 pb-0">
+                    <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50">
+                      <TabsTrigger 
+                        value="overview" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
                         <IconChartBar className="h-5 w-5" />
                         <span className="text-xs font-medium">Overview</span>
-                        <span className="text-xs text-muted-foreground">Project Stats</span>
+                        <span className="text-[10px] text-muted-foreground">Analysis</span>
                       </TabsTrigger>
-                      <TabsTrigger value="clips" className="flex flex-col items-center gap-1 py-3">
+                      
+                      <TabsTrigger 
+                        value="clips" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm relative"
+                      >
                         <IconScissors className="h-5 w-5" />
-                        <span className="text-xs font-medium">Video Clips</span>
-                        <span className="text-xs text-muted-foreground">{stats.totalClips} generated</span>
+                        <span className="text-xs font-medium">Clips</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {stats.totalClips} items
+                        </span>
+                        {clipsTask?.status === 'processing' && (
+                          <div className="absolute -top-1 -right-1 h-2 w-2 bg-orange-500 rounded-full animate-pulse" />
+                        )}
                       </TabsTrigger>
-                      <TabsTrigger value="graphics" className="flex flex-col items-center gap-1 py-3">
-                        <IconSparkles className="h-5 w-5" />
-                        <span className="text-xs font-medium">Social Graphics</span>
-                        <span className="text-xs text-muted-foreground">{project.folders.images?.length || 0} generated</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="blog" className="flex flex-col items-center gap-1 py-3">
+                      
+                      <TabsTrigger 
+                        value="blog" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
                         <IconArticle className="h-5 w-5" />
-                        <span className="text-xs font-medium">Blog Posts</span>
-                        <span className="text-xs text-muted-foreground">{stats.totalBlogs > 0 ? `${stats.totalBlogs} created` : 'Generate'}</span>
+                        <span className="text-xs font-medium">Blog</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {stats.totalBlogs} posts
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="graphics" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconPhoto className="h-5 w-5" />
+                        <span className="text-xs font-medium">Graphics</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {totalImages} images
+                        </span>
                       </TabsTrigger>
                     </TabsList>
                   </div>
@@ -1822,44 +2197,86 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             })}
                           </div>
                       </>
-                      ) : (
-                        <EmptyState
-                          icon={<IconScissors className="h-16 w-16 text-primary/50" />}
-                          title="No clips generated yet"
-                          description="Generate short-form clips from your video content"
-                          action={{
-                            label: "Generate Clips",
-                            onClick: async () => {
-                              const toastId = toast.loading('Starting clip generation...')
-                              try {
-                                const response = await fetch(`/api/projects/${project.id}/process`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ 
-                                    workflow: 'clips',
-                                    projectId: project.id 
-                                  })
-                                })
-                                
-                                if (!response.ok) {
-                                  const error = await response.json()
-                                  throw new Error(error.error || 'Failed to start clip generation')
+                      ) : (() => {
+                        // Check if clips are currently being generated
+                        const clipsTask = project.tasks.find(t => t.type === 'clips');
+                        const isClipsProcessing = clipsTask && clipsTask.status === 'processing';
+                        
+                        if (isClipsProcessing) {
+                          // Clips are being generated, show progress
+                          return (
+                            <Card className="overflow-hidden">
+                              <div className="h-2 gradient-premium animate-gradient-x" />
+                              <CardContent className="p-8">
+                                <div className="flex flex-col items-center text-center space-y-4">
+                                  <div className="relative">
+                                    <IconScissors className="h-16 w-16 text-primary/30" />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <h3 className="text-lg font-semibold mb-2">Generating Clips</h3>
+                                    <p className="text-muted-foreground mb-4">
+                                      AI is analyzing your video to create viral short-form clips. This typically takes 10-15 minutes.
+                                    </p>
+                                    <div className="max-w-xs mx-auto space-y-2">
+                                      <Progress value={clipsTask.progress || 0} className="h-2" />
+                                      <p className="text-sm text-muted-foreground">
+                                        {clipsTask.progress || 0}% complete
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <IconInfoCircle className="h-4 w-4" />
+                                    <span>You can work on other content while clips are being generated</span>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        } else {
+                          // No clips and not processing - show empty state
+                          return (
+                            <EmptyState
+                              icon={<IconScissors className="h-16 w-16 text-primary/50" />}
+                              title="No clips generated yet"
+                              description="Generate short-form clips from your video content"
+                              action={{
+                                label: "Generate Clips",
+                                onClick: async () => {
+                                  const toastId = toast.loading('Starting clip generation...')
+                                  try {
+                                    const response = await fetch(`/api/projects/${project.id}/process`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ 
+                                        workflow: 'clips',
+                                        projectId: project.id 
+                                      })
+                                    })
+                                    
+                                    if (!response.ok) {
+                                      const error = await response.json()
+                                      throw new Error(error.error || 'Failed to start clip generation')
+                                    }
+                                    
+                                    toast.success('Clip generation started! This may take 10-15 minutes.', { id: toastId })
+                                    // Refresh the page to show processing status
+                                    loadProject()
+                                  } catch (error) {
+                                    toast.error(
+                                      error instanceof Error ? error.message : 'Failed to generate clips', 
+                                      { id: toastId }
+                                    )
+                                    console.error('Clip generation error:', error)
+                                  }
                                 }
-                                
-                                toast.success('Clip generation started! This may take 5-7 minutes.', { id: toastId })
-                                // Redirect to processing page
-                                router.push(`/studio/processing/${project.id}`)
-                              } catch (error) {
-                                toast.error(
-                                  error instanceof Error ? error.message : 'Failed to generate clips', 
-                                  { id: toastId }
-                                )
-                                console.error('Clip generation error:', error)
-                              }
-                            }
-                          }}
-                        />
-                      )}
+                              }}
+                            />
+                          );
+                        }
+                      })()}
                     </TabsContent>
 
                     <TabsContent value="blog" className="mt-0">
@@ -2509,91 +2926,144 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
           {/* Enhanced Transcription Panel - Right Side */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-4 h-[calc(100vh-120px)] overflow-hidden">
+            <Card className="sticky top-4 h-[calc(100vh-120px)] overflow-hidden border-2 border-primary/10 shadow-lg">
               {project.transcription ? (
-                <div className="h-full">
-                  <EnhancedTranscriptEditor
-                    segments={project.transcription.segments.map(s => ({
-                      start: s.start,
-                      end: s.end,
-                      text: s.text
-                    }))}
-                    onSegmentsChange={(updatedSegments) => {
-                      const updatedTranscription = {
-                        ...project.transcription!,
-                        segments: project.transcription!.segments.map((originalSegment, index) => ({
-                          ...originalSegment,
-                          text: updatedSegments[index]?.text || originalSegment.text,
-                          start: updatedSegments[index]?.start || originalSegment.start,
-                          end: updatedSegments[index]?.end || originalSegment.end
-                        })),
-                        text: updatedSegments.map(s => s.text).join(' ')
-                      }
-                      setProject(prev => prev ? { ...prev, transcription: updatedTranscription } : null)
-                    }}
-                    projectId={projectId}
-                    videoUrl={project.video_url}
-                    videoDuration={project.metadata?.duration}
-                    onSegmentClick={(segment) => {
-                      if (videoRef.current) {
-                        videoRef.current.currentTime = segment.start
-                        videoRef.current.play()
-                      }
-                    }}
-                    onVideoUrlUpdate={(newVideoUrl, vttUrl) => {
-                      // Update the video element
-                      if (videoRef.current && newVideoUrl && newVideoUrl !== project.video_url) {
-                        const currentTime = videoRef.current.currentTime
-                        const wasPlaying = !videoRef.current.paused
+                <div className="h-full flex flex-col">
+                  {/* Transcription Header */}
+                  <div className="p-4 border-b bg-gradient-to-r from-background to-muted/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <IconFileText className="h-4 w-4 text-primary" />
+                        Transcript
+                      </h3>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10">
+                            <IconDots className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleDownloadTranscript('txt')}>
+                            <IconFileDownload className="h-4 w-4 mr-2" />
+                            Download as TXT
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDownloadTranscript('srt')}>
+                            <IconFileDownload className="h-4 w-4 mr-2" />
+                            Download as SRT
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDownloadTranscript('vtt')}>
+                            <IconFileDownload className="h-4 w-4 mr-2" />
+                            Download as VTT
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => {
+                            const fullTranscript = project.transcription!.text
+                            copyToClipboard(fullTranscript, 'full-transcript')
+                            toast.success('Full transcript copied!')
+                          }}>
+                            <IconCopy className="h-4 w-4 mr-2" />
+                            Copy Full Text
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <IconLanguage className="h-3 w-3" />
+                        {project.transcription.language.toUpperCase()}
+                      </span>
+                      <span>•</span>
+                      <span>{project.transcription.segments.length} segments</span>
+                      <span>•</span>
+                      <span>{project.transcription.text.split(' ').length} words</span>
+                    </div>
+                  </div>
+                  
+                  {/* Enhanced Transcript Editor */}
+                  <div className="flex-1 overflow-hidden">
+                    <EnhancedTranscriptEditor
+                      segments={project.transcription.segments.map(s => ({
+                        start: s.start,
+                        end: s.end,
+                        text: s.text
+                      }))}
+                      onSegmentsChange={(updatedSegments) => {
+                        const updatedTranscription = {
+                          ...project.transcription!,
+                          segments: project.transcription!.segments.map((originalSegment, index) => ({
+                            ...originalSegment,
+                            text: updatedSegments[index]?.text || originalSegment.text,
+                            start: updatedSegments[index]?.start || originalSegment.start,
+                            end: updatedSegments[index]?.end || originalSegment.end
+                          })),
+                          text: updatedSegments.map(s => s.text).join(' ')
+                        }
+                        setProject(prev => prev ? { ...prev, transcription: updatedTranscription } : null)
+                      }}
+                      projectId={projectId}
+                      videoUrl={project.video_url}
+                      videoDuration={project.metadata?.duration}
+                      onSegmentClick={(segment) => {
+                        if (videoRef.current) {
+                          videoRef.current.currentTime = segment.start
+                          videoRef.current.play()
+                        }
+                      }}
+                      onVideoUrlUpdate={(newVideoUrl, vttUrl) => {
+                        // Update the video element
+                        if (videoRef.current && newVideoUrl && newVideoUrl !== project.video_url) {
+                          const currentTime = videoRef.current.currentTime
+                          const wasPlaying = !videoRef.current.paused
+                          
+                          videoRef.current.src = newVideoUrl
+                          videoRef.current.load()
+                          
+                          videoRef.current.addEventListener('loadeddata', () => {
+                            if (videoRef.current) {
+                              videoRef.current.currentTime = currentTime
+                              if (wasPlaying) videoRef.current.play()
+                            }
+                          }, { once: true })
+                          
+                          // Update project video URL
+                          setProject(prev => prev ? { ...prev, video_url: newVideoUrl } : null)
+                        }
                         
-                        videoRef.current.src = newVideoUrl
-                        videoRef.current.load()
+                        // Add subtitle track if VTT URL is provided
+                        if (videoRef.current && vttUrl) {
+                          const existingTracks = videoRef.current.querySelectorAll('track')
+                          existingTracks.forEach(track => track.remove())
+                          
+                          const track = document.createElement('track')
+                          track.kind = 'subtitles'
+                          track.label = 'English'
+                          track.srclang = 'en'
+                          track.src = vttUrl
+                          track.default = true
+                          
+                          // Force track to be showing
+                          track.addEventListener('load', () => {
+                            if (videoRef.current && videoRef.current.textTracks[0]) {
+                              videoRef.current.textTracks[0].mode = 'showing'
+                            }
+                          })
+                          
+                          videoRef.current.appendChild(track)
+                        }
                         
-                        videoRef.current.addEventListener('loadeddata', () => {
-                          if (videoRef.current) {
-                            videoRef.current.currentTime = currentTime
-                            if (wasPlaying) videoRef.current.play()
-                          }
-                        }, { once: true })
+                        // Mark as having subtitles
+                        setHasSubtitles(true)
                         
-                        // Update project video URL
-                        setProject(prev => prev ? { ...prev, video_url: newVideoUrl } : null)
-                      }
-                      
-                      // Add subtitle track if VTT URL is provided
-                      if (videoRef.current && vttUrl) {
-                        const existingTracks = videoRef.current.querySelectorAll('track')
-                        existingTracks.forEach(track => track.remove())
-                        
-                        const track = document.createElement('track')
-                        track.kind = 'subtitles'
-                        track.label = 'English'
-                        track.srclang = 'en'
-                        track.src = vttUrl
-                        track.default = true
-                        
-                        // Force track to be showing
-                        track.addEventListener('load', () => {
-                          if (videoRef.current && videoRef.current.textTracks[0]) {
-                            videoRef.current.textTracks[0].mode = 'showing'
-                          }
-                        })
-                        
-                        videoRef.current.appendChild(track)
-                      }
-                      
-                      // Mark as having subtitles
-                      setHasSubtitles(true)
-                      
-                      toast.success("Subtitles applied! Your long-form content is ready.")
-                    }}
-                  />
+                        toast.success("Subtitles applied! Your long-form content is ready.")
+                      }}
+                    />
+                  </div>
                 </div>
               ) : (
-                <CardContent className="flex-1 flex items-center justify-center">
+                <CardContent className="h-full flex items-center justify-center">
                   <EmptyState
-                    icon={<IconFileText className="h-12 w-12 text-primary/50" />}
-                    title="No transcription"
+                    icon={<IconFileText className="h-12 w-12 text-primary/30" />}
+                    title="No transcription yet"
                     description="Transcription will appear here once processing is complete"
                   />
                 </CardContent>
@@ -2948,6 +3418,44 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               </Button>
             </DialogFooter>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Project Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{project.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert variant="destructive">
+              <IconAlertCircle className="h-4 w-4" />
+              <AlertTitle>Warning</AlertTitle>
+              <AlertDescription>
+                All content associated with this project will be permanently deleted, including:
+                <ul className="mt-2 ml-4 list-disc text-sm">
+                  <li>Video and transcription</li>
+                  <li>{stats.totalClips} video clips</li>
+                  <li>{stats.totalBlogs} blog posts</li>
+                  <li>{totalImages} AI-generated images</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setIsDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => {
+              setIsDeleteDialogOpen(false)
+              handleDelete()
+            }}>
+              Delete Project
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -247,9 +247,41 @@ export default function ProcessingPage() {
           if (updatedProject) {
             setProject(updatedProject)
             
+            // Check if transcription is complete (AI analysis done)
+            const transcriptionTask = updatedProject.tasks.find(t => t.type === 'transcription')
+            const isTranscriptionComplete = transcriptionTask?.status === 'completed' && updatedProject.transcription?.text
+            
+            // Check if clips are still processing
+            const clipsTask = updatedProject.tasks.find(t => t.type === 'clips')
+            const areClipsProcessing = clipsTask && clipsTask.status === 'processing'
+            
+            // Redirect as soon as transcription is done, even if clips are still processing
+            if (isTranscriptionComplete) {
+              clearInterval(interval)
+              pollingIntervalRef.current = null
+              
+              // Update project status to indicate it's ready to view (but clips might still be processing)
+              if (updatedProject.status !== 'draft') {
+                await ProjectService.updateProject(projectId, { status: 'draft' })
+              }
+              
+              // Show a different toast if clips are still processing
+              if (areClipsProcessing) {
+                toast.success("AI analysis complete! Redirecting to your project. Clips are still generating in the background.", {
+                  duration: 5000
+                })
+              }
+              
+              // Redirect to project page
+              setTimeout(() => {
+                router.push(`/projects/${projectId}`)
+              }, 1500)
+              return
+            }
+            
             const updatedProgress = ProjectService.calculateProjectProgress(updatedProject)
             
-            // Stop polling if project is ready or complete
+            // Also redirect if everything is complete
             if (updatedProject.status === 'ready' || updatedProgress === 100) {
               clearInterval(interval)
               pollingIntervalRef.current = null

@@ -4,8 +4,8 @@ import { ProjectService } from '@/lib/services'
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Increase timeout for this route
-export const maxDuration = 300; // 5 minutes
+// Increase timeout for this route to handle multiple clips
+export const maxDuration = 60; // 1 minute - Vercel Hobby plan limit
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -33,166 +33,149 @@ export async function POST(request: NextRequest) {
     // Update task status to processing
     await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
     
-    // The single public method handles the entire workflow: task creation, polling, and result fetching.
-    const klapResult = await KlapAPIService.processVideo(videoUrl, project.title)
+    // Start the Klap processing in the background
+    // This creates the task and starts polling
+    KlapAPIService.processVideo(videoUrl, project.title)
+      .then(async (klapResult) => {
+        console.log(`[Klap Route] Klap processing complete. Found ${klapResult.clips.length} clips for project ${projectId}.`)
 
-    console.log(`[Klap Route] Klap processing complete. Found ${klapResult.clips.length} clips for project ${projectId}.`)
+        // Store the klap folder ID for future reference
+        await ProjectService.updateProject(projectId, {
+          klap_project_id: klapResult.klapFolderId,
+          klap_folder_id: klapResult.klapFolderId,
+        });
 
-    // Store the klap folder ID for future reference
-    await ProjectService.updateProject(projectId, {
-      klap_project_id: klapResult.klapFolderId,
-      klap_folder_id: klapResult.klapFolderId,
-    });
-
-    // Process each clip individually to get all details
-    const totalClips = klapResult.clips.length;
-    let processedClips = 0;
-    const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true';
-    
-    for (let clipIndex = 0; clipIndex < klapResult.clips.length; clipIndex++) {
-      const basicClip = klapResult.clips[clipIndex];
-      try {
-        // Update progress based on clips processed
-        const progress = Math.floor(((processedClips + 0.5) / totalClips) * 100);
-        await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing');
-
-        // 1. Get detailed clip info, which might contain duration and transcript
-        const clip = await KlapAPIService.getClipDetails(
-          klapResult.klapFolderId,
-          basicClip.id
-        );
-
-        // 2. Export the clip to get a direct video URL from Klap (optional)
-        let klapExportUrl: string | null = null;
-        let ownStorageUrl: string | undefined = undefined;
+        // Process clips in a more efficient way
+        const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'false'; // Default to true
+        const totalClips = klapResult.clips.length;
+        let processedClips = 0;
         
-        if (!skipVideoReupload) {
-          try {
-            const exportedData = await KlapAPIService.exportMultipleClips(
-              klapResult.klapFolderId,
-              [clip.id]
-            );
-            if (exportedData.length > 0 && exportedData[0].url) {
-              klapExportUrl = exportedData[0].url;
-            }
-          } catch (exportError) {
-            console.error(`[Klap Route] Could not export clip ${clip.id}:`, exportError);
-          }
-
-          // 3. Download from Klap and re-upload to our Supabase storage (optional)
-          if (klapExportUrl) {
+        // Process clips in batches to avoid timeout
+        const batchSize = 2; // Process 2 clips at a time
+        for (let i = 0; i < klapResult.clips.length; i += batchSize) {
+          const batch = klapResult.clips.slice(i, i + batchSize);
+          
+          await Promise.all(batch.map(async (basicClip, batchIndex) => {
+            const clipIndex = i + batchIndex;
             try {
-              const videoResponse = await fetch(klapExportUrl);
-              if (!videoResponse.ok) throw new Error('Failed to download video from Klap URL');
-              
-              const videoBlob = await videoResponse.blob();
-              
-              const supabaseAdmin = createClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.SUPABASE_SERVICE_ROLE_KEY!
+              // Update progress
+              const progress = Math.floor(((processedClips + 0.5) / totalClips) * 100);
+              await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing');
+
+              // Get clip details
+              const clip = await KlapAPIService.getClipDetails(
+                klapResult.klapFolderId,
+                basicClip.id
               );
+
+              // Skip video re-upload by default to save time
+              let exportUrl = `https://klap.app/player/${clip.id}`;
               
-              const filePath = `${project.id}/clips/${clip.id}.mp4`;
+              if (!skipVideoReupload) {
+                // Only attempt export if explicitly requested
+                try {
+                  const exportedData = await KlapAPIService.exportMultipleClips(
+                    klapResult.klapFolderId,
+                    [clip.id]
+                  );
+                  if (exportedData.length > 0 && exportedData[0].url) {
+                    exportUrl = exportedData[0].url;
+                  }
+                } catch (exportError) {
+                  console.warn(`[Klap Route] Export failed for clip ${clip.id}, using player URL:`, exportError);
+                }
+              }
+
+              // Sanitize and structure the data for storage
+              let score = clip.virality_score || 0;
+              if (score > 1) { score = score / 100; }
+
+              // Calculate duration from various possible sources
+              let duration = 0;
               
-              const { error: uploadError } = await supabaseAdmin.storage
-                .from('videos')
-                .upload(filePath, videoBlob, {
-                  contentType: 'video/mp4',
-                  upsert: true
-                });
-                
-              if (uploadError) throw uploadError;
+              // Try direct duration field first
+              if (clip.duration && clip.duration > 0) {
+                  duration = clip.duration;
+              } 
+              // Try calculating from end/start times
+              else if (clip.end_time !== undefined && clip.start_time !== undefined && clip.end_time > clip.start_time) {
+                  duration = clip.end_time - clip.start_time;
+              } 
+              // Try alternative field names
+              else if (clip.end !== undefined && clip.start !== undefined && clip.end > clip.start) {
+                  duration = clip.end - clip.start;
+              }
+              // Try length field
+              else if (clip.length && clip.length > 0) {
+                  duration = clip.length;
+              }
+              // Try clip_length field
+              else if (clip.clip_length && clip.clip_length > 0) {
+                  duration = clip.clip_length;
+              }
               
-              const { data: publicUrlData } = supabaseAdmin.storage.from('videos').getPublicUrl(filePath);
-              ownStorageUrl = publicUrlData.publicUrl;
+              const transcript = clip.transcript || clip.text || clip.caption || '';
+
+              const startTime = clip.start_time ?? clip.start ?? 0;
+              const endTime = clip.end_time ?? clip.end ?? (startTime + duration);
               
-            } catch (reuploadError) {
-              console.error(`[Klap Route] Failed to re-upload clip ${clip.id} to own storage:`, reuploadError);
+              const clipToStore = {
+                id: clip.id,
+                title: clip.name || clip.title || `Clip ${clipIndex + 1}`,
+                description: clip.virality_score_explanation || transcript || '',
+                startTime: startTime,
+                endTime: endTime,
+                duration: duration || (endTime - startTime),
+                thumbnail: clip.thumbnail || `https://klap.app/player/${clip.id}/thumbnail`,
+                tags: clip.tags || [],
+                score: score,
+                type: 'highlight' as const,
+                klapProjectId: clip.id,
+                klapFolderId: klapResult.klapFolderId,
+                previewUrl: `https://klap.app/player/${clip.id}`,
+                exportUrl: exportUrl,
+                exported: true,
+                rawKlapData: clip,
+                createdAt: clip.created_at || new Date().toISOString(),
+                viralityExplanation: clip.virality_score_explanation || '',
+                transcript: transcript,
+                publicationCaptions: clip.publication_captions || undefined,
+              };
+
+              // Store the fully processed clip
+              await ProjectService.addToFolder(projectId, 'clips', clipToStore);
+              
+              processedClips++;
+              
+            } catch (clipError) {
+              console.error(`[Klap Route] Failed to process clip ${basicClip.id}:`, clipError);
+              processedClips++;
             }
-          }
-        }
-
-        // 4. Sanitize and structure the data for storage
-        let score = clip.virality_score || 0;
-        if (score > 1) { score = score / 100; }
-
-        // Calculate duration from various possible sources
-        let duration = 0;
-        
-        // Try direct duration field first
-        if (clip.duration && clip.duration > 0) {
-            duration = clip.duration;
-        } 
-        // Try calculating from end/start times
-        else if (clip.end_time !== undefined && clip.start_time !== undefined && clip.end_time > clip.start_time) {
-            duration = clip.end_time - clip.start_time;
-        } 
-        // Try alternative field names
-        else if (clip.end !== undefined && clip.start !== undefined && clip.end > clip.start) {
-            duration = clip.end - clip.start;
-        }
-        // Try length field
-        else if (clip.length && clip.length > 0) {
-            duration = clip.length;
-        }
-        // Try clip_length field
-        else if (clip.clip_length && clip.clip_length > 0) {
-            duration = clip.clip_length;
+          }));
+          
+          // Update progress after each batch
+          const newProgress = Math.floor((processedClips / totalClips) * 100);
+          await ProjectService.updateTaskProgress(projectId, 'clips', newProgress, 'processing');
         }
         
-        const transcript = clip.transcript || clip.text || clip.caption || '';
-
-        const startTime = clip.start_time ?? clip.start ?? 0;
-        const endTime = clip.end_time ?? clip.end ?? (startTime + duration);
+        await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed');
+        console.log(`[Klap Route] Finished processing all clips for project ${projectId}.`);
         
-        const clipToStore = {
-          id: clip.id,
-          title: clip.name || clip.title || `Clip ${clipIndex + 1}`,
-          description: clip.virality_score_explanation || transcript || '',
-          startTime: startTime,
-          endTime: endTime,
-          duration: duration || (endTime - startTime),
-          thumbnail: clip.thumbnail || `https://klap.app/player/${clip.id}/thumbnail`,
-          tags: clip.tags || [],
-          score: score,
-          type: 'highlight' as const,
-          klapProjectId: clip.id,
-          klapFolderId: klapResult.klapFolderId,
-          previewUrl: `https://klap.app/player/${clip.id}`,
-          exportUrl: ownStorageUrl || klapExportUrl,
-          exported: !!ownStorageUrl || !!klapExportUrl,
-          rawKlapData: clip,
-          createdAt: clip.created_at || new Date().toISOString(),
-          viralityExplanation: clip.virality_score_explanation || '',
-          transcript: transcript,
-          publicationCaptions: clip.publication_captions || undefined,
-        };
+        return NextResponse.json({
+          success: true,
+          message: 'Clip generation started. This process typically takes 10-20 minutes.',
+          status: 'completed'
+        });
 
-        // 5. Store the fully processed clip
-        await ProjectService.addToFolder(projectId, 'clips', clipToStore);
-        
-        // Increment processed clips counter
-        processedClips++;
-        
-        // Update progress after each clip is processed
-        const newProgress = Math.floor((processedClips / totalClips) * 100);
-        await ProjectService.updateTaskProgress(projectId, 'clips', newProgress, 'processing');
-
-      } catch (clipError) {
-        console.error(`[Klap Route] Failed to process and store clip ${basicClip.id}:`, clipError);
-        processedClips++; // Still increment to continue progress
-      }
-    }
-    
-    await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed');
-    
-    console.log(`[Klap Route] Finished processing all clips for project ${projectId}.`);
-    
-    return NextResponse.json({
-      success: true,
-      message: `Successfully processed and stored ${klapResult.clips.length} clips.`,
-      clips: klapResult.clips.length
-    });
+      })
+      .catch(async (error) => {
+        console.error(`[Klap Route] Failed to process video:`, error);
+        await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+        return NextResponse.json({
+          error: 'Failed to process video. Please try again later.',
+          status: 'failed'
+        });
+      });
 
   } catch (error) {
     console.error(`[Klap Route] Critical error for project ${projectId}:`, error)
