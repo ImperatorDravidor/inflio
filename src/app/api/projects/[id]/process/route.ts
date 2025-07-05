@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { handleError } from "@/lib/error-handler";
+import { KlapAPIService } from "@/lib/klap-api";
 
 export async function POST(
   request: Request,
@@ -36,6 +37,11 @@ export async function POST(
     // Update project status first
     await ProjectService.updateProject(projectId, { status: 'processing' });
 
+    // For Vercel: construct the correct URL for internal API calls
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
     // If specific workflow is requested, only run that
     if (workflow === 'clips') {
       // Add clips task if not already present
@@ -52,13 +58,18 @@ export async function POST(
       }
 
       // Start clip generation without waiting for response
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-klap`, {
+      fetch(`${baseUrl}/api/process-klap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
         })
+      }).then(response => {
+        if (!response.ok) {
+          console.error(`Klap processing request failed with status: ${response.status}`);
+          ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+        }
       }).catch(error => {
         console.error('Failed to start Klap processing:', error);
         ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
@@ -68,10 +79,11 @@ export async function POST(
     }
 
     // Default behavior: process all pending tasks
+    
     const hasTranscriptionTask = project.tasks.some(task => task.type === 'transcription' && task.status === 'pending');
     if (hasTranscriptionTask) {
       // Start transcription without waiting
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-transcription`, {
+      fetch(`${baseUrl}/api/process-transcription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -79,6 +91,11 @@ export async function POST(
           videoUrl: project.video_url,
           language: 'en'
         })
+      }).then(response => {
+        if (!response.ok) {
+          console.error(`Transcription request failed with status: ${response.status}`);
+          ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        }
       }).catch(error => {
         console.error('Failed to start transcription:', error);
         ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
