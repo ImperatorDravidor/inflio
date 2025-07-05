@@ -37,6 +37,8 @@ export class KlapAPIService {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          'User-Agent': `Inflio/1.0 (${process.env.NODE_ENV || 'development'})`,
+          'X-Environment': process.env.NODE_ENV || 'development',
           ...options.headers,
         },
       })
@@ -91,17 +93,22 @@ export class KlapAPIService {
    * Step 1: Create a video processing task on Klap.
    */
   private static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
+    const payload = {
+      source_video_url: videoUrl, 
+      language: 'en',
+      max_duration: 30, // 30-second clips for social media platforms
+      max_clip_count: 10, // Maximum number of clips to generate
+      editing_options: {
+        intro_title: false, // Disable intro titles for cleaner clips
+      },
+    }
+    
+    console.log('[Klap] Creating video task with payload:', payload)
+    console.log('[Klap] Environment:', process.env.NODE_ENV)
+    
     return this.request('/tasks/video-to-shorts', {
       method: 'POST',
-      body: JSON.stringify({ 
-        source_video_url: videoUrl, 
-        language: 'en',
-        max_duration: 30, // 30-second clips for social media platforms
-        max_clip_count: 10, // Maximum number of clips to generate
-        editing_options: {
-          intro_title: false, // Disable intro titles for cleaner clips
-        },
-      }),
+      body: JSON.stringify(payload),
     })
   }
 
@@ -180,9 +187,32 @@ export class KlapAPIService {
     const completedTask = await this.pollTaskUntilReady(task.id)
     console.log(`[Klap] Task ${completedTask.id} completed. Output folder: ${completedTask.output_id}`)
     
-    // Step 3: Get clips
-    const clips = await this.getClipsFromFolder(completedTask.output_id)
-    console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
+    // Step 3: Get clips - with retry logic for when clips aren't immediately available
+    let clips: any[] = []
+    let retryCount = 0
+    const maxRetries = 10 // Try for up to 2.5 minutes
+    
+    while (retryCount < maxRetries) {
+      try {
+        clips = await this.getClipsFromFolder(completedTask.output_id)
+        if (clips && clips.length > 0) {
+          console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
+          break
+        }
+        console.log(`[Klap] No clips available yet (attempt ${retryCount + 1}/${maxRetries}). Waiting...`)
+      } catch (error) {
+        console.warn(`[Klap] Error fetching clips (attempt ${retryCount + 1}/${maxRetries}):`, error)
+      }
+      
+      retryCount++
+      if (retryCount < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 15000)) // Wait 15 seconds between retries
+      }
+    }
+    
+    if (clips.length === 0) {
+      console.error(`[Klap] No clips generated after ${maxRetries} attempts. Task might have failed.`)
+    }
     
     return { clips, klapFolderId: completedTask.output_id }
   }

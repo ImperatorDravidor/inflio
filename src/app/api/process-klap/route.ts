@@ -143,7 +143,9 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
     
     if (totalClips === 0) {
       console.warn(`[Klap Background] No clips generated for project ${projectId}`)
-      await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed');
+      // Don't mark as completed - Klap might still be processing
+      // Keep it in processing state so the UI continues to poll
+      await ProjectService.updateTaskProgress(projectId, 'clips', 30, 'processing');
       return;
     }
     
@@ -406,6 +408,26 @@ export async function GET(request: NextRequest) {
     // Check task status
     const clipsTask = project.tasks.find(t => t.type === 'clips')
     if (clipsTask) {
+      // If task is marked as processing but we have a klap_project_id, check if clips are ready
+      if (clipsTask.status === 'processing' && project.klap_project_id) {
+        try {
+          const klapStatus = await KlapAPIService.getProjectStatus(project.klap_project_id)
+          
+          // If Klap says it's ready but we don't have clips yet, keep polling
+          if (klapStatus.status === 'ready' && (!project.folders?.clips || project.folders.clips.length === 0)) {
+            return NextResponse.json({
+              success: true,
+              status: 'processing',
+              progress: 40, // Show some progress
+              message: 'Klap is preparing your clips...',
+              clipsCount: 0
+            })
+          }
+        } catch (error) {
+          console.error('Error checking Klap status:', error)
+        }
+      }
+      
       return NextResponse.json({
         success: true,
         status: clipsTask.status,
