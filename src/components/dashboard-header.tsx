@@ -21,6 +21,7 @@ import {
   IconTrash,
   IconX,
   IconBolt,
+  IconMenu2
 } from "@tabler/icons-react"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -44,6 +45,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { 
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 
 // Context-specific action configurations
 const pageActions: Record<string, React.ReactNode[]> = {
@@ -51,14 +59,15 @@ const pageActions: Record<string, React.ReactNode[]> = {
     <Button key="new-project" className="gap-2" size="sm" onClick={() => window.location.href = '/studio/upload'}>
       <IconPlus className="h-4 w-4" />
       <span className="hidden sm:inline">New Project</span>
+      <span className="sm:hidden">New</span>
     </Button>,
-    <Button key="refresh" variant="ghost" size="sm" className="gap-2">
+    <Button key="refresh" variant="ghost" size="sm" className="gap-2 hidden xs:flex">
       <IconRefresh className="h-4 w-4" />
       <span className="hidden lg:inline">Refresh</span>
     </Button>,
     <DropdownMenu key="date-filter">
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
           <IconCalendar className="h-4 w-4" />
           <span className="hidden lg:inline">Last 30 days</span>
         </Button>
@@ -224,6 +233,7 @@ export function DashboardHeader() {
   const router = useRouter()
   const pathname = usePathname()
   const params = useParams()
+  const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   
   const breadcrumbs = generateBreadcrumbs(pathname, params)
   
@@ -285,37 +295,49 @@ export function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center justify-between px-6 w-full">
+      <div className="flex h-14 items-center justify-between px-4 sm:px-6 w-full">
         {/* Left side - Trigger and Breadcrumbs */}
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div className="flex items-center gap-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-4" />
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <SidebarTrigger className="size-8 sm:size-7" />
+            <Separator orientation="vertical" className="h-4 hidden sm:block" />
           </div>
           
-          {/* Breadcrumbs */}
-          <Breadcrumb className="hidden md:flex">
+          {/* Breadcrumbs - Show abbreviated on mobile */}
+          <Breadcrumb className="flex">
             <BreadcrumbList>
-              <BreadcrumbItem>
+              <BreadcrumbItem className="hidden sm:block">
                 <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
               </BreadcrumbItem>
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={crumb.path}>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    {crumb.isLast ? (
-                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                    ) : (
-                      <BreadcrumbLink href={crumb.path}>{crumb.label}</BreadcrumbLink>
-                    )}
+              {breadcrumbs.length > 0 && (
+                <>
+                  {/* Mobile: Only show current page */}
+                  <BreadcrumbItem className="sm:hidden">
+                    <BreadcrumbPage className="text-sm max-w-[140px] truncate">
+                      {breadcrumbs[breadcrumbs.length - 1].label}
+                    </BreadcrumbPage>
                   </BreadcrumbItem>
-                </React.Fragment>
-              ))}
+                  
+                  {/* Desktop: Show full breadcrumb */}
+                  {breadcrumbs.map((crumb, index) => (
+                    <React.Fragment key={crumb.path}>
+                      <BreadcrumbSeparator className="hidden sm:block" />
+                      <BreadcrumbItem className="hidden sm:block">
+                        {crumb.isLast ? (
+                          <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink href={crumb.path}>{crumb.label}</BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                    </React.Fragment>
+                  ))}
+                </>
+              )}
             </BreadcrumbList>
           </Breadcrumb>
         </div>
 
-        {/* Center - Search (hidden on detail pages) */}
+        {/* Center - Search (hidden on detail pages and mobile) */}
         {!isDetailPage && (
           <div className="hidden lg:flex flex-1 max-w-md mx-6">
             <GlobalSearch />
@@ -323,10 +345,16 @@ export function DashboardHeader() {
         )}
 
         {/* Right side - Context Actions + Global Actions */}
-        <div className="flex items-center gap-2">
-          {/* Page-specific actions */}
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Page-specific actions - hide some on mobile */}
           {currentPageActions.length > 0 && (
             <>
+              {/* Mobile: Show only first action or use dropdown */}
+              <div className="flex sm:hidden">
+                {currentPageActions.slice(0, 1)}
+              </div>
+              
+              {/* Desktop: Show all actions */}
               <div className="hidden sm:flex items-center gap-2">
                 {currentPageActions}
               </div>
@@ -334,22 +362,75 @@ export function DashboardHeader() {
             </>
           )}
 
-          {/* Quick access to search on mobile/detail pages */}
-          <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9">
-            <IconSearch className="h-4 w-4" />
-            <span className="sr-only">Search</span>
-          </Button>
+          {/* Mobile Actions Menu */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="sm:hidden h-8 w-8">
+                <IconMenu2 className="h-4 w-4" />
+                <span className="sr-only">More actions</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[280px]">
+              <SheetHeader>
+                <SheetTitle>Actions</SheetTitle>
+              </SheetHeader>
+              <div className="mt-6 flex flex-col gap-2">
+                {/* Additional page actions for mobile */}
+                {currentPageActions.slice(1).map((action, index) => (
+                  <div key={index}>{action}</div>
+                ))}
+                
+                <Separator className="my-2" />
+                
+                {/* Global actions */}
+                <Button variant="outline" className="justify-start" onClick={() => {
+                  setMobileSearchOpen(true)
+                }}>
+                  <IconSearch className="h-4 w-4 mr-2" />
+                  Search
+                </Button>
+                
+                <Button variant="outline" className="justify-start">
+                  <IconCalendar className="h-4 w-4 mr-2" />
+                  Calendar
+                </Button>
+                
+                <Button variant="outline" className="justify-start">
+                  <IconChartBar className="h-4 w-4 mr-2" />
+                  Analytics
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          {/* Quick access to search on tablet/detail pages */}
+          <Sheet open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="hidden sm:flex lg:hidden h-9 w-9">
+                <IconSearch className="h-4 w-4" />
+                <span className="sr-only">Search</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="top" className="h-auto">
+              <SheetHeader>
+                <SheetTitle>Search</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4">
+                <GlobalSearch autoFocus />
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {/* Notifications */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative h-9 w-9">
+              <Button variant="ghost" size="icon" className="relative h-8 w-8 sm:h-9 sm:w-9">
                 <IconBell className="h-4 w-4" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="sr-only">Notifications</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuContent align="end" className="w-[280px] sm:w-80">
               <DropdownMenuLabel className="flex items-center justify-between">
                 Notifications
                 <Badge variant="secondary" className="ml-2">3 new</Badge>
@@ -380,8 +461,10 @@ export function DashboardHeader() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Theme Toggle */}
-          <ThemeToggle />
+          {/* Theme Toggle - Hidden on mobile */}
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
 
           {/* User Menu */}
           <UserMenu />

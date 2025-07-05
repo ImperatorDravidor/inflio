@@ -5,7 +5,7 @@ import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 
 // Increase timeout for this route to handle multiple clips
-export const maxDuration = 60; // 1 minute - Vercel Hobby plan limit
+export const maxDuration = 300; // 5 minutes - should be enough to start processing
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -59,10 +59,12 @@ export async function POST(request: NextRequest) {
     await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
     
     // Start the Klap processing in the background
-    // Use setImmediate to ensure the response is sent before processing starts
-    setImmediate(() => {
+    // Use Promise.resolve().then() to defer execution in Edge runtime
+    Promise.resolve().then(() => {
       processVideoInBackground(projectId, videoUrl, project.title).catch(error => {
         console.error(`[Klap Route] Background processing failed for project ${projectId}:`, error);
+        // Update task status on failure
+        ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed').catch(console.error);
       });
     });
     
@@ -134,8 +136,8 @@ async function processVideoInBackground(projectId: string, videoUrl: string, tit
     // Update progress after getting clips
     await ProjectService.updateTaskProgress(projectId, 'clips', 50, 'processing');
 
-    // Process clips in a more efficient way
-    const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'; // Only skip if explicitly true
+    // Process clips - download and store in our own storage
+    const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'; // Default is false - we want to download
     const totalClips = klapResult.clips.length;
     let processedClips = 0;
     

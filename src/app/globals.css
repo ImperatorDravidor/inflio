@@ -154,6 +154,70 @@
     @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
   
+  /* Mobile-first responsive utilities */
+  .mobile-container {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+  
+  .mobile-padding {
+    @apply p-4 sm:p-6 lg:p-8;
+  }
+  
+  .mobile-padding-x {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+  
+  .mobile-padding-y {
+    @apply py-4 sm:py-6 lg:py-8;
+  }
+  
+  /* Typography responsive utilities */
+  .text-responsive-xs {
+    @apply text-xs sm:text-sm;
+  }
+  
+  .text-responsive-sm {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-base {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl lg:text-2xl;
+  }
+  
+  .text-responsive-xl {
+    @apply text-xl sm:text-2xl lg:text-3xl;
+  }
+  
+  .text-responsive-2xl {
+    @apply text-2xl sm:text-3xl lg:text-4xl;
+  }
+  
+  /* Spacing responsive utilities */
+  .space-responsive {
+    @apply space-y-4 sm:space-y-6 lg:space-y-8;
+  }
+  
+  .gap-responsive {
+    @apply gap-4 sm:gap-6 lg:gap-8;
+  }
+  
+  /* Grid responsive utilities */
+  .grid-responsive-2 {
+    @apply grid-cols-1 sm:grid-cols-2;
+  }
+  
+  .grid-responsive-3 {
+    @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+  }
+  
+  .grid-responsive-4 {
+    @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+  }
+  
   /* Hide scrollbars */
   .scrollbar-none {
     -ms-overflow-style: none;  /* IE and Edge */
@@ -162,6 +226,24 @@
   
   .scrollbar-none::-webkit-scrollbar {
     display: none;  /* Chrome, Safari and Opera */
+  }
+  
+  /* Mobile-optimized scrollable containers */
+  .mobile-scroll-x {
+    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+  }
+  
+  .mobile-scroll-y {
+    @apply overflow-y-auto max-h-[70vh] sm:max-h-[80vh];
+  }
+  
+  /* Touch-friendly interactive elements */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  .touch-target-sm {
+    @apply min-h-[36px] min-w-[36px];
   }
   
   .gradient-premium {
@@ -396,6 +478,114 @@
   .animation-delay-400 {
     animation-delay: 400ms;
   }
+  
+  /* Extra small devices (phones in portrait) */
+  @media (max-width: 374px) {
+    .xs\:hidden {
+      display: none !important;
+    }
+  }
+  
+  /* Small devices (phones in landscape) */
+  @media (min-width: 375px) {
+    .xs\:block {
+      display: block !important;
+    }
+    .xs\:inline {
+      display: inline !important;
+    }
+    .xs\:flex {
+      display: flex !important;
+    }
+    .xs\:hidden {
+      display: none !important;
+    }
+  }
+  
+  /* Safe area padding for mobile devices */
+  .safe-padding-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  
+  .safe-padding-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  
+  /* Mobile-optimized card layouts */
+  .card-mobile {
+    @apply rounded-lg sm:rounded-xl;
+  }
+  
+  .card-padding-mobile {
+    @apply p-3 sm:p-4 lg:p-6;
+  }
+  
+  /* Responsive dialog/modal sizes */
+  .dialog-mobile {
+    @apply w-[calc(100vw-2rem)] sm:w-full max-w-sm sm:max-w-md lg:max-w-lg;
+  }
+  
+  .dialog-fullscreen-mobile {
+    @apply fixed inset-0 w-full h-full sm:relative sm:w-auto sm:h-auto sm:max-w-2xl;
+  }
+  
+  /* Mobile-friendly button sizes */
+  .btn-mobile {
+    @apply h-10 sm:h-9 text-sm px-3 sm:px-4;
+  }
+  
+  .btn-mobile-lg {
+    @apply h-12 sm:h-11 text-base px-4 sm:px-6;
+  }
+  
+  /* Responsive table helpers */
+  @media (max-width: 640px) {
+    .table-mobile-stack {
+      display: block;
+    }
+    
+    .table-mobile-stack thead {
+      display: none;
+    }
+    
+    .table-mobile-stack tbody,
+    .table-mobile-stack tr,
+    .table-mobile-stack td {
+      display: block;
+      width: 100%;
+    }
+    
+    .table-mobile-stack tr {
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    
+    .table-mobile-stack td {
+      text-align: right;
+      padding-left: 50%;
+      position: relative;
+    }
+    
+    .table-mobile-stack td:before {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      text-align: left;
+      font-weight: 500;
+    }
+  }
+  
+  /* Responsive video container */
+  .video-responsive {
+    @apply relative w-full pb-[56.25%];
+  }
+  
+  .video-responsive video,
+  .video-responsive iframe {
+    @apply absolute top-0 left-0 w-full h-full;
+  }
 }
 
 /* Video Player Subtitle Styles */
@@ -478,8 +668,6 @@ video:fullscreen::cue {
   }
 }
 
-
-
 /* Custom scrollbar for subtitle settings */
 .subtitle-settings-scroll::-webkit-scrollbar {
   width: 6px;
@@ -514,8 +702,6 @@ video:fullscreen::cue {
 }
 
 /* Remove aspect-video override - use Tailwind's built-in aspect-video class instead */
-
-
 
 /* Subtitle styling for when they're applied */
 video::cue {

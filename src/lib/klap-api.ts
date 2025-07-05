@@ -7,6 +7,7 @@ export class KlapAPIService {
    */
   private static getConfig() {
     const apiKey = process.env.KLAP_API_KEY || ''
+    // Note: Documentation examples show api.klap.video but api.klap.app is the correct production URL
     const apiUrl = process.env.KLAP_API_URL || 'https://api.klap.app/v2'
     
     if (!apiKey) {
@@ -95,7 +96,11 @@ export class KlapAPIService {
       body: JSON.stringify({ 
         source_video_url: videoUrl, 
         language: 'en',
-        max_duration: 60, // Explicitly set max duration for clips
+        max_duration: 30, // 30-second clips for social media platforms
+        max_clip_count: 10, // Maximum number of clips to generate
+        editing_options: {
+          intro_title: false, // Disable intro titles for cleaner clips
+        },
       }),
     })
   }

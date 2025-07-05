@@ -66,6 +66,8 @@ import {
   IconExternalLink,
   IconAlertCircle,
   IconChevronRight,
+  IconClock,
+  IconFileText,
 } from '@tabler/icons-react'
 import { ThumbnailCreator } from './thumbnail-creator'
 import { UnifiedContentSuggestion, VideoSnippet, ContentPersona } from '@/lib/unified-content-service'
@@ -623,49 +625,74 @@ export function UnifiedContentGenerator({
 
   const renderSuggestionCard = (suggestion: UnifiedContentSuggestion) => {
     const isSelected = selectedSuggestions.includes(suggestion.id)
+    const isGenerating = loading && selectedSuggestions.includes(suggestion.id) && !generatedItems.some(item => item.id === suggestion.id)
     const Icon = suggestion.type === 'thumbnail' ? IconPhoto : 
                  suggestion.type === 'social' ? IconBrandInstagram :
-                 IconArticle
+                 suggestion.type === 'blog' ? IconFileText : IconSparkles
 
     return (
       <motion.div
         key={suggestion.id}
-        layout
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.2 }}
       >
         <Card
           className={cn(
             "cursor-pointer transition-all hover:shadow-md",
-            isSelected && "border-primary ring-2 ring-primary/20"
+            isSelected && "ring-2 ring-primary border-primary",
+            isGenerating && "opacity-50 pointer-events-none"
           )}
-          onClick={() => toggleSuggestion(suggestion.id)}
+          onClick={() => !isGenerating && toggleSuggestion(suggestion.id)}
         >
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between mb-2">
+          <CardHeader className="pb-2 sm:pb-3">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Icon className="h-4 w-4 text-muted-foreground" />
-                <Badge variant="outline">{suggestion.type}</Badge>
-                {suggestion.platform && (
-                  <Badge variant="secondary">{suggestion.platform}</Badge>
+                <div className={cn(
+                  "p-1.5 sm:p-2 rounded-lg",
+                  suggestion.type === 'thumbnail' ? "bg-purple-500/10" :
+                  suggestion.type === 'social' ? "bg-pink-500/10" :
+                  suggestion.type === 'blog' ? "bg-blue-500/10" :
+                  "bg-primary/10"
+                )}>
+                  <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm sm:text-base capitalize">{suggestion.type}</CardTitle>
+                  {suggestion.platform && (
+                    <Badge variant="secondary" className="text-xs mt-1">{suggestion.platform}</Badge>
+                  )}
+                </div>
+              </div>
+              {isSelected && (
+                <IconCheck className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 line-clamp-2">
+              {suggestion.prompt}
+            </p>
+            {suggestion.preview && (
+              <div className="relative aspect-video rounded-md overflow-hidden bg-muted">
+                <img
+                  src={suggestion.preview}
+                  alt={suggestion.prompt}
+                  className="object-cover w-full h-full"
+                />
+                {isGenerating && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <IconLoader2 className="h-6 w-6 sm:h-8 sm:w-8 text-white animate-spin" />
+                  </div>
                 )}
               </div>
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => toggleSuggestion(suggestion.id)}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-            
-            <p className="text-sm font-medium mb-1">{suggestion.prompt}</p>
-            <p className="text-xs text-muted-foreground line-clamp-2">{suggestion.enhancedPrompt}</p>
-            
-            <div className="flex items-center gap-2 mt-3">
-              <div className="flex items-center gap-1">
-                <IconSparkles className="h-3 w-3" />
-                <span className="text-xs">{suggestion.relevanceScore}/10</span>
-              </div>
+            )}
+            <div className="mt-2 sm:mt-3 flex flex-wrap gap-1 sm:gap-2">
+              <Badge variant="outline" className="text-xs">
+                <IconSparkles className="h-3 w-3 mr-1" />
+                Score: {suggestion.relevanceScore}/10
+              </Badge>
               {suggestion.usePersona && (
                 <Badge variant="outline" className="text-xs">
                   <IconUser className="h-3 w-3 mr-1" />
@@ -679,39 +706,6 @@ export function UnifiedContentGenerator({
                 </Badge>
               )}
             </div>
-            
-            {isSelected && (
-              <div className="mt-3 space-y-2">
-                <Textarea
-                  placeholder="Customize prompt..."
-                  value={customPrompts[suggestion.id] || ''}
-                  onChange={(e) => setCustomPrompts(prev => ({
-                    ...prev,
-                    [suggestion.id]: e.target.value
-                  }))}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs h-16"
-                />
-                <Select
-                  value={styles[suggestion.id] || suggestion.style}
-                  onValueChange={(value) => setStyles(prev => ({
-                    ...prev,
-                    [suggestion.id]: value
-                  }))}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="modern">Modern</SelectItem>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="vibrant">Vibrant</SelectItem>
-                    <SelectItem value="minimal">Minimal</SelectItem>
-                    <SelectItem value="corporate">Corporate</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -719,85 +713,81 @@ export function UnifiedContentGenerator({
   }
 
   const renderGeneratedItem = (item: GeneratedItem) => {
-    const isSelectedForExport = selectedForExport.includes(item.id)
-    const suggestion = suggestions.find(s => s.id === item.id)
-    
+    const isSelected = selectedForExport.includes(item.id)
+
     return (
-      <Card 
+      <Card
         key={item.id}
         className={cn(
-          "overflow-hidden",
-          item.status === 'error' && "border-destructive"
+          "overflow-hidden transition-all",
+          isSelected && "ring-2 ring-primary",
+          item.status === 'error' && "opacity-60"
         )}
       >
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2 sm:pb-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Badge variant={item.status === 'success' ? 'default' : 'destructive'}>
-                {item.status === 'success' ? (
-                  <IconCheck className="h-3 w-3 mr-1" />
-                ) : (
-                  <IconX className="h-3 w-3 mr-1" />
-                )}
-                {item.status}
-              </Badge>
-              <span className="text-sm font-medium">
-                {suggestion?.prompt || item.type}
-              </span>
-            </div>
-            {item.status === 'success' && (
-              <Checkbox
-                checked={isSelectedForExport}
-                onCheckedChange={(checked) => {
-                  setSelectedForExport(prev =>
-                    checked
-                      ? [...prev, item.id]
-                      : prev.filter(id => id !== item.id)
-                  )
-                }}
-              />
-            )}
+            <CardTitle className="text-sm sm:text-base capitalize">
+              {item.platform ? `${item.type} - ${item.platform}` : item.type}
+            </CardTitle>
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={(checked) => {
+                setSelectedForExport(prev =>
+                  checked
+                    ? [...prev, item.id]
+                    : prev.filter(id => id !== item.id)
+                )
+              }}
+              disabled={item.status === 'error'}
+            />
           </div>
         </CardHeader>
         <CardContent>
           {item.status === 'success' ? (
             <>
               {item.preview && (
-                <div className="mb-3">
+                <div className="relative aspect-video rounded-md overflow-hidden bg-muted mb-3">
                   <img
                     src={item.preview}
                     alt={`Generated ${item.type}`}
-                    className="w-full rounded-md"
+                    className="object-cover w-full h-full"
                   />
+                  {item.type === 'social' && item.content.text && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 sm:p-3">
+                      <p className="text-white text-xs sm:text-sm line-clamp-2">
+                        {item.content.text}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
-              {item.type === 'blog' && item.content && (
+              {item.type === 'blog' && (
                 <div className="space-y-2">
-                  <h4 className="font-semibold">{item.content.title}</h4>
-                  <p className="text-sm text-muted-foreground line-clamp-3">
+                  <h4 className="font-medium text-sm sm:text-base">{item.content.title}</h4>
+                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">
                     {item.content.content}
                   </p>
                 </div>
               )}
               <div className="flex gap-2 mt-3">
-                <Button size="sm" variant="outline" className="gap-1">
+                <Button size="sm" variant="outline" className="gap-1 h-7 sm:h-8 text-xs sm:text-sm">
                   <IconEye className="h-3 w-3" />
-                  Preview
+                  <span className="hidden sm:inline">Preview</span>
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1">
+                <Button size="sm" variant="outline" className="gap-1 h-7 sm:h-8 text-xs sm:text-sm">
                   <IconEdit className="h-3 w-3" />
-                  Edit
+                  <span className="hidden sm:inline">Edit</span>
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1">
+                <Button size="sm" variant="outline" className="gap-1 h-7 sm:h-8 text-xs sm:text-sm">
                   <IconCopy className="h-3 w-3" />
-                  Copy
+                  <span className="hidden sm:inline">Copy</span>
                 </Button>
               </div>
             </>
           ) : (
             <Alert variant="destructive">
               <IconAlertCircle className="h-4 w-4" />
-              <AlertDescription>
+              <AlertDescription className="text-xs sm:text-sm">
                 {item.error || 'Failed to generate content'}
               </AlertDescription>
             </Alert>
@@ -819,37 +809,38 @@ export function UnifiedContentGenerator({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Unified Content Generator</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="w-[calc(100vw-2rem)] h-[calc(100vh-2rem)] sm:max-w-7xl sm:max-h-[90vh] overflow-hidden flex flex-col p-0 sm:p-6">
+          <DialogHeader className="px-4 pt-4 pb-2 sm:px-0 sm:pt-0 sm:pb-0">
+            <DialogTitle className="text-base sm:text-lg">Unified Content Generator</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               Create a complete content package with AI-powered suggestions
             </DialogDescription>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="suggestions" className="gap-2">
-                <IconSparkles className="h-4 w-4" />
-                AI Suggestions
+            <TabsList className="grid grid-cols-3 w-full mx-4 sm:mx-0" style={{ width: 'calc(100% - 2rem)' }} >
+              <TabsTrigger value="suggestions" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+                <IconSparkles className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">AI Suggestions</span>
+                <span className="xs:hidden">AI</span>
               </TabsTrigger>
-              <TabsTrigger value="settings" className="gap-2">
-                <IconUser className="h-4 w-4" />
+              <TabsTrigger value="settings" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+                <IconUser className="h-3 w-3 sm:h-4 sm:w-4" />
                 Settings
               </TabsTrigger>
-              <TabsTrigger value="results" className="gap-2">
-                <IconPhoto className="h-4 w-4" />
+              <TabsTrigger value="results" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+                <IconPhoto className="h-3 w-3 sm:h-4 sm:w-4" />
                 Results {generatedItems.length > 0 && `(${generatedItems.length})`}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="suggestions" className="flex-1 overflow-hidden">
-              <div className="h-full flex flex-col gap-4">
+            <TabsContent value="suggestions" className="flex-1 overflow-hidden px-4 sm:px-0">
+              <div className="h-full flex flex-col gap-3 sm:gap-4">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold">AI Content Suggestions</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <h3 className="text-base sm:text-lg font-semibold">AI Content Suggestions</h3>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       Select content to generate based on your video analysis
                     </p>
                   </div>
@@ -859,17 +850,20 @@ export function UnifiedContentGenerator({
                       size="sm"
                       onClick={loadAISuggestions}
                       disabled={loadingSuggestions}
+                      className="h-8 text-xs sm:h-9 sm:text-sm"
                     >
                       {loadingSuggestions ? (
-                        <IconLoader2 className="h-4 w-4 animate-spin" />
+                        <IconLoader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                       ) : (
-                        <IconRefresh className="h-4 w-4" />
+                        <IconRefresh className="h-3 w-3 sm:h-4 sm:w-4" />
                       )}
+                      <span className="hidden sm:inline ml-1">Refresh</span>
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setSelectedSuggestions(suggestions.map(s => s.id))}
+                      className="h-8 text-xs sm:h-9 sm:text-sm"
                     >
                       Select All
                     </Button>
@@ -878,7 +872,7 @@ export function UnifiedContentGenerator({
 
                 {/* Suggestions Grid */}
                 <ScrollArea className="flex-1">
-                  <div className="grid grid-cols-2 gap-3 pr-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pr-2 sm:pr-4">
                     <AnimatePresence>
                       {suggestions.map(renderSuggestionCard)}
                     </AnimatePresence>
@@ -886,14 +880,14 @@ export function UnifiedContentGenerator({
                 </ScrollArea>
 
                 {/* Actions */}
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-sm text-muted-foreground">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 sm:pt-4 border-t">
+                  <div className="text-xs sm:text-sm text-muted-foreground">
                     {selectedSuggestions.length} of {suggestions.length} selected
                   </div>
                   <Button
                     onClick={() => setActiveTab('settings')}
                     disabled={selectedSuggestions.length === 0}
-                    className="gap-2"
+                    className="gap-2 w-full sm:w-auto text-sm"
                   >
                     Next: Configure Settings
                     <IconChevronRight className="h-4 w-4" />
@@ -902,27 +896,28 @@ export function UnifiedContentGenerator({
               </div>
             </TabsContent>
 
-            <TabsContent value="settings" className="flex-1 overflow-hidden">
+            <TabsContent value="settings" className="flex-1 overflow-hidden px-4 sm:px-0">
               <ScrollArea className="h-full">
-                <div className="space-y-6 pr-4">
+                <div className="space-y-4 sm:space-y-6 pr-2 sm:pr-4">
                   {/* Persona Settings */}
                   <Card>
-                    <CardHeader>
+                    <CardHeader className="pb-3 sm:pb-4">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">Persona Settings</CardTitle>
+                        <CardTitle className="text-sm sm:text-base">Persona Settings</CardTitle>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setShowPersonaManager(!showPersonaManager)}
+                          className="h-7 text-xs sm:h-8 sm:text-sm"
                         >
-                          <IconUser className="h-4 w-4 mr-1" />
+                          <IconUser className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                           Manage
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-3 sm:space-y-4">
                       <div className="flex items-center justify-between">
-                        <Label htmlFor="use-persona">Use Persona in Images</Label>
+                        <Label htmlFor="use-persona" className="text-sm">Use Persona in Images</Label>
                         <Checkbox
                           id="use-persona"
                           checked={usePersona}
@@ -933,7 +928,7 @@ export function UnifiedContentGenerator({
                       {usePersona && (
                         <>
                           <Select value={selectedPersona} onValueChange={setSelectedPersona}>
-                            <SelectTrigger>
+                            <SelectTrigger className="h-9 text-sm">
                               <SelectValue placeholder="Select persona" />
                             </SelectTrigger>
                             <SelectContent>
@@ -956,7 +951,7 @@ export function UnifiedContentGenerator({
                                   key={idx}
                                   src={photo.url} 
                                   alt={photo.name}
-                                  className="w-16 h-16 object-cover rounded" 
+                                  className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded" 
                                 />
                               ))}
                             </div>
@@ -967,16 +962,18 @@ export function UnifiedContentGenerator({
                       {showPersonaManager && (
                         <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
                           <div className="space-y-2">
-                            <Label>New Persona</Label>
+                            <Label className="text-sm">New Persona</Label>
                             <Input
                               placeholder="Persona name"
                               value={newPersonaName}
                               onChange={(e) => setNewPersonaName(e.target.value)}
+                              className="h-9 text-sm"
                             />
                             <Input
                               placeholder="Description (optional)"
                               value={newPersonaDescription}
                               onChange={(e) => setNewPersonaDescription(e.target.value)}
+                              className="h-9 text-sm"
                             />
                             <Input
                               type="file"
@@ -992,10 +989,11 @@ export function UnifiedContentGenerator({
                                   reader.readAsDataURL(file)
                                 })
                               }}
+                              className="text-sm"
                             />
                             <div className="flex gap-2 flex-wrap">
                               {personaPhotos.map((photo, idx) => (
-                                <div key={idx} className="relative w-16 h-16">
+                                <div key={idx} className="relative w-12 h-12 sm:w-16 sm:h-16">
                                   <img 
                                     src={photo} 
                                     alt={`New photo ${idx + 1}`}
@@ -1004,7 +1002,7 @@ export function UnifiedContentGenerator({
                                   <Button
                                     size="icon"
                                     variant="destructive"
-                                    className="absolute -top-2 -right-2 h-5 w-5"
+                                    className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5"
                                     onClick={() => setPersonaPhotos(prev => prev.filter((_, i) => i !== idx))}
                                   >
                                     <IconX className="h-3 w-3" />
@@ -1012,8 +1010,8 @@ export function UnifiedContentGenerator({
                                 </div>
                               ))}
                             </div>
-                            <Button onClick={savePersona} size="sm" className="w-full">
-                              <IconDeviceFloppy className="h-4 w-4 mr-2" />
+                            <Button onClick={savePersona} size="sm" className="w-full h-8 text-sm">
+                              <IconDeviceFloppy className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                               Save Persona
                             </Button>
                           </div>
@@ -1021,14 +1019,14 @@ export function UnifiedContentGenerator({
                           <Separator />
                           
                           <div className="space-y-2">
-                            <Label>Saved Personas</Label>
+                            <Label className="text-sm">Saved Personas</Label>
                             {personas.map(persona => (
                               <div key={persona.id} className="flex items-center justify-between p-2 bg-background rounded">
-                                <span className="text-sm">{persona.name}</span>
+                                <span className="text-xs sm:text-sm">{persona.name}</span>
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-6 w-6"
+                                  className="h-5 w-5 sm:h-6 sm:w-6"
                                   onClick={() => deletePersona(persona.id)}
                                 >
                                   <IconTrash className="h-3 w-3" />
@@ -1043,12 +1041,12 @@ export function UnifiedContentGenerator({
 
                   {/* Video Snippets */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Video Snippets</CardTitle>
+                    <CardHeader className="pb-3 sm:pb-4">
+                      <CardTitle className="text-sm sm:text-base">Video Snippets</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-3 sm:space-y-4">
                       <div className="flex items-center justify-between">
-                        <Label htmlFor="use-video">Use Video Moments</Label>
+                        <Label htmlFor="use-video" className="text-sm">Use Video Moments</Label>
                         <Checkbox
                           id="use-video"
                           checked={useVideoSnippets}
@@ -1062,16 +1060,16 @@ export function UnifiedContentGenerator({
                             <div className="space-y-3">
                               <Button
                                 variant="outline"
-                                className="w-full"
+                                className="w-full h-9 text-sm"
                                 onClick={extractVideoSnippets}
                                 disabled={extractingSnippets || !projectVideoUrl}
                               >
                                 {extractingSnippets ? (
-                                  <IconLoader2 className="h-4 w-4 animate-spin mr-2" />
+                                  <IconLoader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin mr-2" />
                                 ) : (
-                                  <IconVideo className="h-4 w-4 mr-2" />
+                                  <IconVideo className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                                 )}
-                                Extract Key Moments Automatically
+                                Extract Key Moments
                               </Button>
                               
                               <div className="flex gap-2">
@@ -1080,10 +1078,12 @@ export function UnifiedContentGenerator({
                                   placeholder="Timestamp (seconds)"
                                   value={manualTimestamp}
                                   onChange={(e) => setManualTimestamp(e.target.value)}
+                                  className="h-9 text-sm"
                                 />
                                 <Button
                                   onClick={extractManualSnippet}
                                   disabled={extractingSnippets || !projectVideoUrl || !manualTimestamp}
+                                  className="h-9 text-sm"
                                 >
                                   Capture
                                 </Button>
@@ -1091,7 +1091,7 @@ export function UnifiedContentGenerator({
                             </div>
                           ) : (
                             <div className="space-y-3">
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {videoSnippets.map(snippet => (
                                   <div
                                     key={snippet.id}
@@ -1119,7 +1119,7 @@ export function UnifiedContentGenerator({
                                     </div>
                                     {selectedSnippets.includes(snippet.id) && (
                                       <div className="absolute top-1 right-1">
-                                        <IconCheck className="h-4 w-4 text-white bg-primary rounded-full p-0.5" />
+                                        <IconCheck className="h-3 w-3 sm:h-4 sm:w-4 text-white bg-primary rounded-full p-0.5" />
                                       </div>
                                     )}
                                   </div>
@@ -1132,7 +1132,7 @@ export function UnifiedContentGenerator({
                                   setVideoSnippets([])
                                   setSelectedSnippets([])
                                 }}
-                                className="w-full"
+                                className="w-full h-8 text-sm"
                               >
                                 Clear & Re-extract
                               </Button>
@@ -1145,8 +1145,8 @@ export function UnifiedContentGenerator({
 
                   {/* Platform Selection */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Target Platforms</CardTitle>
+                    <CardHeader className="pb-3 sm:pb-4">
+                      <CardTitle className="text-sm sm:text-base">Target Platforms</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 gap-3">
@@ -1165,7 +1165,7 @@ export function UnifiedContentGenerator({
                             />
                             <Label
                               htmlFor={platform}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize"
+                              className="text-xs sm:text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize"
                             >
                               {platform}
                             </Label>
@@ -1176,18 +1176,19 @@ export function UnifiedContentGenerator({
                   </Card>
 
                   {/* Generate Button */}
-                  <div className="flex justify-between items-center pt-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4">
                     <Button
                       variant="outline"
                       onClick={() => setActiveTab('suggestions')}
+                      className="text-sm"
                     >
                       Back to Suggestions
                     </Button>
                     <Button
                       onClick={generateAllContent}
                       disabled={loading || selectedSuggestions.length === 0}
-                      size="lg"
-                      className="gap-2"
+                      size="default"
+                      className="gap-2 text-sm sm:text-base"
                     >
                       {loading ? (
                         <>
@@ -1206,12 +1207,12 @@ export function UnifiedContentGenerator({
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="results" className="flex-1 overflow-hidden">
-              <div className="h-full flex flex-col gap-4">
+            <TabsContent value="results" className="flex-1 overflow-hidden px-4 sm:px-0">
+              <div className="h-full flex flex-col gap-3 sm:gap-4">
                 {/* Progress Bar */}
                 {progress.status === 'generating' && (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-xs sm:text-sm">
                       <span>{progress.current}</span>
                       <span>{progress.completed}/{progress.total}</span>
                     </div>
@@ -1221,14 +1222,14 @@ export function UnifiedContentGenerator({
 
                 {/* Results Grid */}
                 <ScrollArea className="flex-1">
-                  <div className="grid grid-cols-2 gap-4 pr-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pr-2 sm:pr-4">
                     {generatedItems.map(renderGeneratedItem)}
                   </div>
                   
                   {generatedItems.length === 0 && progress.status === 'idle' && (
-                    <div className="text-center py-12">
-                      <IconPhoto className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">
+                    <div className="text-center py-8 sm:py-12">
+                      <IconPhoto className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-3 sm:mb-4" />
+                      <p className="text-sm sm:text-base text-muted-foreground">
                         No content generated yet. Configure settings and click generate.
                       </p>
                     </div>
@@ -1237,40 +1238,43 @@ export function UnifiedContentGenerator({
 
                 {/* Actions */}
                 {generatedItems.length > 0 && (
-                  <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-3 sm:pt-4 border-t">
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={retryFailed}
-                        className="gap-2"
+                        className="gap-2 text-xs sm:text-sm h-8 sm:h-9"
                       >
-                        <IconRefresh className="h-4 w-4" />
+                        <IconRefresh className="h-3 w-3 sm:h-4 sm:w-4" />
                         Retry Failed ({progress.errors.length})
                       </Button>
                     </div>
-                    <div className="flex gap-2">
-                      <span className="text-sm text-muted-foreground mr-2">
+                    <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                      <span className="text-xs sm:text-sm text-muted-foreground text-center sm:mr-2">
                         {selectedForExport.length} selected
                       </span>
-                      <Button
-                        variant="outline"
-                        onClick={() => setSelectedForExport(
-                          generatedItems
-                            .filter(item => item.status === 'success')
-                            .map(item => item.id)
-                        )}
-                      >
-                        Select All
-                      </Button>
-                      <Button
-                        onClick={exportSelected}
-                        disabled={selectedForExport.length === 0}
-                        className="gap-2"
-                      >
-                        <IconDownload className="h-4 w-4" />
-                        Export Selected
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedForExport(
+                            generatedItems
+                              .filter(item => item.status === 'success')
+                              .map(item => item.id)
+                          )}
+                          className="text-xs sm:text-sm h-8 sm:h-9"
+                        >
+                          Select All
+                        </Button>
+                        <Button
+                          onClick={exportSelected}
+                          disabled={selectedForExport.length === 0}
+                          className="gap-2 text-xs sm:text-sm h-8 sm:h-9"
+                        >
+                          <IconDownload className="h-3 w-3 sm:h-4 sm:w-4" />
+                          Export
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}

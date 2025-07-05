@@ -39,7 +39,11 @@ interface SearchResult {
   metadata?: any
 }
 
-export function GlobalSearch() {
+interface GlobalSearchProps {
+  autoFocus?: boolean
+}
+
+export function GlobalSearch({ autoFocus = false }: GlobalSearchProps) {
   const router = useRouter()
   const { userId } = useAuth()
   const [open, setOpen] = useState(false)
@@ -77,6 +81,13 @@ export function GlobalSearch() {
       }
     }
   }, [])
+
+  // Open search with autoFocus
+  useEffect(() => {
+    if (autoFocus) {
+      setOpen(true)
+    }
+  }, [autoFocus])
 
   // Search functionality
   useEffect(() => {

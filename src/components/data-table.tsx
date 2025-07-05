@@ -105,6 +105,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import { Card } from "@/components/ui/card"
 
 export const schema = z.object({
   id: z.number(),
@@ -401,18 +402,91 @@ export function DataTable({
     }
   }
 
+  // Mobile card view for responsive tables
+  const MobileCardView = () => (
+    <div className="space-y-4 md:hidden">
+      {table.getRowModel().rows.map((row) => (
+        <Card key={row.id} className="p-4">
+          <div className="space-y-3">
+            {/* Checkbox and drag handle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={row.getIsSelected()}
+                  onCheckedChange={(value) => row.toggleSelected(!!value)}
+                  aria-label="Select row"
+                />
+                <DragHandle id={parseInt(row.id)} />
+              </div>
+              <Badge variant={row.original.status === "Done" ? "default" : "secondary"}>
+                {row.original.status}
+              </Badge>
+            </div>
+            
+            {/* Main content */}
+            <div className="space-y-2">
+              <h3 className="font-semibold text-sm">{row.original.header}</h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Type:</span>
+                  <p className="font-medium">{row.original.type}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Reviewer:</span>
+                  <p className="font-medium">{row.original.reviewer}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Target:</span>
+                  <p className="font-medium">{row.original.target}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Limit:</span>
+                  <p className="font-medium">{row.original.limit}</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2">
+              <TableCellViewer item={row.original} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <IconDotsVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>Edit</DropdownMenuItem>
+                  <DropdownMenuItem>Duplicate</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </Card>
+      ))}
+      
+      {table.getRowModel().rows.length === 0 && (
+        <Card className="p-8 text-center text-muted-foreground">
+          No results.
+        </Card>
+      )}
+    </div>
+  )
+
   return (
     <Tabs
       defaultValue="outline"
-      className="w-full flex-col justify-start gap-6"
+      className="w-full flex-col justify-start gap-4 sm:gap-6"
     >
-      <div className="flex items-center justify-between px-4 lg:px-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-4 lg:px-6">
         <Label htmlFor="view-selector" className="sr-only">
           View
         </Label>
         <Select defaultValue="outline">
           <SelectTrigger
-            className="flex w-fit @4xl/main:hidden"
+            className="flex w-full sm:w-fit @4xl/main:hidden"
             size="sm"
             id="view-selector"
           >
@@ -435,14 +509,14 @@ export function DataTable({
           </TabsTrigger>
           <TabsTrigger value="focus-documents">Focus Documents</TabsTrigger>
         </TabsList>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <IconLayoutColumns />
-                <span className="hidden lg:inline">Customize Columns</span>
-                <span className="lg:hidden">Columns</span>
-                <IconChevronDown />
+              <Button variant="outline" size="sm" className="flex-1 sm:flex-initial">
+                <IconLayoutColumns className="h-4 w-4" />
+                <span className="hidden lg:inline ml-2">Customize Columns</span>
+                <span className="lg:hidden ml-2">Columns</span>
+                <IconChevronDown className="h-4 w-4 ml-1" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
@@ -469,9 +543,10 @@ export function DataTable({
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm">
-            <IconPlus />
-            <span className="hidden lg:inline">Add Section</span>
+          <Button variant="outline" size="sm" className="flex-1 sm:flex-initial">
+            <IconPlus className="h-4 w-4" />
+            <span className="hidden lg:inline ml-2">Add Section</span>
+            <span className="lg:hidden ml-2">Add</span>
           </Button>
         </div>
       </div>
@@ -479,7 +554,11 @@ export function DataTable({
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto px-4 lg:px-6"
       >
-        <div className="overflow-hidden rounded-lg border">
+        {/* Mobile card view */}
+        <MobileCardView />
+        
+        {/* Desktop table view */}
+        <div className="hidden md:block overflow-hidden rounded-lg border">
           <DndContext
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
@@ -530,14 +609,16 @@ export function DataTable({
             </Table>
           </DndContext>
         </div>
-        <div className="flex items-center justify-between px-4">
-          <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
+        
+        {/* Pagination */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4">
+          <div className="text-muted-foreground hidden sm:flex flex-1 text-sm">
             {table.getFilteredSelectedRowModel().rows.length} of{" "}
             {table.getFilteredRowModel().rows.length} row(s) selected.
           </div>
-          <div className="flex w-full items-center gap-8 lg:w-fit">
-            <div className="hidden items-center gap-2 lg:flex">
-              <Label htmlFor="rows-per-page" className="text-sm font-medium">
+          <div className="flex w-full sm:w-auto items-center gap-4 sm:gap-8">
+            <div className="hidden sm:flex items-center gap-2">
+              <Label htmlFor="rows-per-page" className="text-sm font-medium whitespace-nowrap">
                 Rows per page
               </Label>
               <Select
@@ -560,49 +641,49 @@ export function DataTable({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex w-fit items-center justify-center text-sm font-medium">
+            <div className="flex w-full sm:w-fit items-center justify-center text-sm font-medium">
               Page {table.getState().pagination.pageIndex + 1} of{" "}
               {table.getPageCount()}
             </div>
-            <div className="ml-auto flex items-center gap-2 lg:ml-0">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Button
                 variant="outline"
-                className="hidden h-8 w-8 p-0 lg:flex"
+                className="hidden sm:flex h-8 w-8 p-0"
                 onClick={() => table.setPageIndex(0)}
                 disabled={!table.getCanPreviousPage()}
               >
                 <span className="sr-only">Go to first page</span>
-                <IconChevronsLeft />
+                <IconChevronsLeft className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
-                className="size-8"
+                className="h-8 w-8"
                 size="icon"
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
                 <span className="sr-only">Go to previous page</span>
-                <IconChevronLeft />
+                <IconChevronLeft className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
-                className="size-8"
+                className="h-8 w-8"
                 size="icon"
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
                 <span className="sr-only">Go to next page</span>
-                <IconChevronRight />
+                <IconChevronRight className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
-                className="hidden size-8 lg:flex"
+                className="hidden sm:flex h-8 w-8"
                 size="icon"
                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                 disabled={!table.getCanNextPage()}
               >
                 <span className="sr-only">Go to last page</span>
-                <IconChevronsRight />
+                <IconChevronsRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
