@@ -11,7 +11,8 @@ import {
   IconVideo,
   IconTrendingUp,
   IconShare2,
-  IconFileText
+  IconFileText,
+  IconHelp
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -26,7 +27,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
-  SidebarSeparator,
+  SidebarSeparator
 } from "@/components/ui/sidebar"
 import { InflioLogo } from "@/components/inflio-logo"
 import { Progress } from "@/components/ui/progress"
@@ -268,16 +269,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </div>
         </div>
         
-        {/* Help Link */}
+        {/* Help & Docs */}
         <div className="px-2 mb-4">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild className="h-10 px-3 rounded-xl hover:bg-sidebar-accent/60 transition-colors">
-                <Link href="/help" className="flex items-center">
+                <Link href="/docs" className="flex items-center">
                   <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-sidebar-accent/50 mr-3">
-                    <IconHelpCircle className="h-4 w-4" />
+                    <IconHelp className="h-4 w-4" />
                   </div>
-                  <span className="text-sm font-medium">Help & Support</span>
+                  <span className="text-sm font-medium">Help & Docs</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

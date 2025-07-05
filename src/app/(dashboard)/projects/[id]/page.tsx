@@ -1741,7 +1741,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                         <Badge 
                                           key={idx} 
                                           variant="outline"
-                                          className="border-accent/50 text-accent hover:bg-accent/10 transition-colors cursor-default"
+                                          className="border-accent/50 text-foreground/80 hover:bg-accent/10 hover:text-foreground transition-colors cursor-default"
                                         >
                                           {topic}
                                         </Badge>
