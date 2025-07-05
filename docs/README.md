@@ -2,6 +2,17 @@
 
 Welcome to the Inflio documentation. This guide will help you set up, understand, and work with the Inflio video content creation platform.
 
+## 🎬 Important: Klap Clip Storage
+
+By default, Inflio downloads and stores all generated clips in YOUR Supabase storage, giving you full control over your content. The system:
+
+- ✅ Downloads clips from Klap after generation
+- ✅ Stores them in your Supabase storage
+- ✅ Gives you complete ownership and control
+- ✅ Processes in background to avoid timeouts
+
+If you're experiencing timeout issues, see the [Klap Configuration Guide](KLAP_CONFIGURATION_GUIDE.md) for options.
+
 ## 📚 Documentation Structure
 
 ### 🚀 [Setup & Configuration](./setup/)
@@ -75,3 +86,5 @@ For questions or issues:
 ---
 
 Last updated: December 2024 
+
+For comprehensive setup instructions, see the [Environment Setup Guide](setup/environment-setup.md). 
