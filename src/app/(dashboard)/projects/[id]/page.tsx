@@ -169,15 +169,35 @@ export default function ProjectDetailPage() {
       const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
       
       if (isClipsProcessing) {
-        // Poll every 5 seconds for updates
+        // Function to check Klap status
+        const checkKlapStatus = async () => {
+          try {
+            const response = await fetch(`/api/process-klap?projectId=${projectId}`)
+            if (response.ok) {
+              const result = await response.json()
+              
+              // If status changed or clips are ready, reload the project
+              if (result.status !== 'processing' || result.clipsCount > 0) {
+                await loadProject()
+              }
+            }
+          } catch (error) {
+            console.error('Error checking Klap status:', error)
+          }
+        }
+        
+        // Check immediately
+        checkKlapStatus()
+        
+        // Then poll every 10 seconds
         const interval = setInterval(() => {
-          loadProject()
-        }, 5000)
+          checkKlapStatus()
+        }, 10000)
         
         return () => clearInterval(interval)
       }
     }
-  }, [project?.tasks])
+  }, [project?.tasks, projectId])
   
 
   

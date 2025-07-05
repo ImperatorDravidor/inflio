@@ -92,7 +92,7 @@ export class KlapAPIService {
   /**
    * Step 1: Create a video processing task on Klap.
    */
-  private static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
+  static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
     const payload = {
       source_video_url: videoUrl, 
       language: 'en',
@@ -170,7 +170,7 @@ export class KlapAPIService {
   /**
    * Step 3: Get all generated clips from the output folder.
    */
-  private static async getClipsFromFolder(folderId: string): Promise<any[]> {
+  static async getClipsFromFolder(folderId: string): Promise<any[]> {
     return this.request(`/projects/${folderId}`)
   }
   
