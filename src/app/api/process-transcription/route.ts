@@ -7,6 +7,10 @@ import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { TranscriptionData } from '@/lib/project-types'
 
+// Extend timeout for transcription processing
+export const maxDuration = 300; // 5 minutes
+export const dynamic = 'force-dynamic';
+
 // Mock content analysis
 const mockContentAnalysis = {
   keywords: ['introduction', 'key points', 'innovation', 'implementation', 'best practices'],

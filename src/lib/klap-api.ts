@@ -171,7 +171,28 @@ export class KlapAPIService {
    * Step 3: Get all generated clips from the output folder.
    */
   static async getClipsFromFolder(folderId: string): Promise<any[]> {
-    return this.request(`/projects/${folderId}`)
+    console.log(`[Klap] Getting clips from folder: ${folderId}`)
+    try {
+      const response: any = await this.request(`/projects/${folderId}`)
+      console.log(`[Klap] Folder API response:`, JSON.stringify(response, null, 2))
+      
+      // Handle different response formats from KLAP API
+      if (Array.isArray(response)) {
+        return response
+      } else if (response.clips && Array.isArray(response.clips)) {
+        return response.clips
+      } else if (response.data && Array.isArray(response.data)) {
+        return response.data
+      } else if (response.items && Array.isArray(response.items)) {
+        return response.items
+      } else {
+        console.warn(`[Klap] Unexpected response format from folder API:`, response)
+        return []
+      }
+    } catch (error) {
+      console.error(`[Klap] Failed to get clips from folder ${folderId}:`, error)
+      throw error
+    }
   }
   
   /**

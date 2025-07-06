@@ -119,8 +119,8 @@ export default function ProcessingPage() {
             }
           }
           
-          // Poll every 5 seconds
-          const klapInterval = setInterval(pollKlapProgress, 5000)
+          // Poll every 10 seconds
+          const klapInterval = setInterval(pollKlapProgress, 10000)
           
           const result = await response.json()
           clearInterval(klapInterval)
@@ -339,7 +339,7 @@ export default function ProcessingPage() {
             }
           }
           await checkTranscriptionStatus()
-        }, 2000) // Poll every 2 seconds
+        }, 5000) // Poll every 5 seconds (changed from 2000)
         
         pollingIntervalRef.current = interval
       }

@@ -18,6 +18,13 @@ export async function POST(request: NextRequest) {
     const { ProjectService } = await import('@/lib/services')
 
     console.log(`[Klap Route] Processing request for project: ${projectId}`)
+    console.log(`[Klap Route] Video URL received: ${videoUrl}`)
+    console.log(`[Klap Route] Video URL format check:`, {
+      isSupabaseUrl: videoUrl?.includes('supabase'),
+      isPublicUrl: videoUrl?.includes('public'),
+      urlLength: videoUrl?.length,
+      urlStart: videoUrl?.substring(0, 50) + '...'
+    })
 
     // Handle missing environment variable
     if (!process.env.KLAP_API_KEY) {
@@ -188,6 +195,7 @@ export async function GET(request: NextRequest) {
       try {
         // First, check if it's a task ID (starts with 'tsk_') or folder ID
         const isTaskId = project.klap_project_id.startsWith('tsk_')
+        console.log(`[Klap GET] Checking status for ${project.klap_project_id}, isTaskId: ${isTaskId}`)
         
         if (isTaskId) {
           // Poll the task status
@@ -197,50 +205,74 @@ export async function GET(request: NextRequest) {
             }
           })
           
-          if (taskResponse.ok) {
-            const task = await taskResponse.json()
+          console.log(`[Klap GET] Task API response status: ${taskResponse.status}`)
+          
+          if (!taskResponse.ok) {
+            const errorText = await taskResponse.text()
+            console.error(`[Klap GET] Task API error: ${taskResponse.status} - ${errorText}`)
             
-            if (task.status === 'ready' && task.output_id) {
-              // Task is complete! Now we can process the clips
-              console.log(`[Klap GET] Task ${project.klap_project_id} is ready. Processing clips...`)
-              
-              // Update project with the folder ID
-              await ProjectService.updateProject(projectId, {
-                klap_folder_id: task.output_id,
-                klap_project_id: task.output_id // Replace task ID with folder ID
-              })
-              
-              // Process the clips
-              await processClipsFromFolder(projectId, task.output_id)
-              
-              return NextResponse.json({
-                success: true,
-                status: 'processing',
-                progress: 50,
-                message: 'Clips generated, downloading to storage...'
-              })
-            } else if (task.status === 'error') {
-              // Task failed
+            if (taskResponse.status === 404) {
+              // Task not found - mark as failed
               await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
               return NextResponse.json({
                 success: false,
                 status: 'failed',
-                message: 'Klap processing failed'
-              })
-            } else {
-              // Still processing
-              return NextResponse.json({
-                success: true,
-                status: 'processing',
-                progress: 20,
-                message: 'Klap is processing your video...'
+                message: 'Klap task not found. It may have expired or been deleted.'
               })
             }
+            
+            throw new Error(`Klap API error: ${taskResponse.status}`)
+          }
+          
+          const task = await taskResponse.json()
+          console.log(`[Klap GET] Task status: ${task.status}, has output_id: ${!!task.output_id}`)
+          
+          if (task.status === 'ready' && task.output_id) {
+            // Task is complete! Now we can process the clips
+            console.log(`[Klap GET] Task ${project.klap_project_id} is ready. Processing clips...`)
+            
+            // Update project with the folder ID
+            await ProjectService.updateProject(projectId, {
+              klap_folder_id: task.output_id,
+              klap_project_id: task.output_id // Replace task ID with folder ID
+            })
+            
+            // Process the clips
+            await processClipsFromFolder(projectId, task.output_id)
+            
+            return NextResponse.json({
+              success: true,
+              status: 'processing',
+              progress: 50,
+              message: 'Clips generated, downloading to storage...'
+            })
+          } else if (task.status === 'error' || task.status === 'failed') {
+            // Task failed
+            console.error(`[Klap GET] Task failed with status: ${task.status}, error: ${task.error || 'Unknown error'}`)
+            await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
+            return NextResponse.json({
+              success: false,
+              status: 'failed',
+              message: task.error || 'Klap processing failed. Please try again with a different video.'
+            })
+          } else {
+            // Still processing
+            const elapsedTime = clipsTask.startedAt ? 
+              Math.floor((Date.now() - new Date(clipsTask.startedAt).getTime()) / 1000) : 0
+            const estimatedProgress = Math.min(20 + Math.floor(elapsedTime / 10), 90) // Progress based on time
+            
+            return NextResponse.json({
+              success: true,
+              status: 'processing',
+              progress: estimatedProgress,
+              message: `Klap is processing your video... (${Math.floor(elapsedTime / 60)}m ${elapsedTime % 60}s elapsed)`
+            })
           }
         } else {
           // We have a folder ID, check if clips are processed
           if (!project.folders?.clips || project.folders.clips.length === 0) {
             // No clips yet, process them
+            console.log(`[Klap GET] Processing clips from folder ${project.klap_project_id}`)
             await processClipsFromFolder(projectId, project.klap_project_id)
           }
           
@@ -254,6 +286,14 @@ export async function GET(request: NextRequest) {
         }
       } catch (error) {
         console.error('[Klap GET] Error checking status:', error)
+        // Don't fail the whole request, just log the error
+        return NextResponse.json({
+          success: true,
+          status: 'processing',
+          progress: clipsTask.progress || 20,
+          message: 'Processing clips...',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
       }
     }
 
@@ -279,12 +319,17 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
   const { ProjectService, KlapAPIService } = await import('@/lib/services')
   const { supabaseAdmin } = await import('@/lib/supabase/admin')
   
+  console.log(`[Klap processClipsFromFolder] Starting to process clips for project ${projectId}, folder ${folderId}`)
+  
   try {
     // Get clips from folder
     const clips = await KlapAPIService.getClipsFromFolder(folderId)
     
+    console.log(`[Klap processClipsFromFolder] Received clips response:`, JSON.stringify(clips, null, 2))
+    
     if (!clips || clips.length === 0) {
       console.warn(`[Klap] No clips found in folder ${folderId}`)
+      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
       return
     }
     
@@ -295,13 +340,27 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
     
     // Process each clip
     const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'
+    console.log(`[Klap] Skip video reupload: ${skipVideoReupload}`)
     const processedClips = []
     
     for (let i = 0; i < clips.length; i++) {
       const clip = clips[i]
       try {
+        console.log(`[Klap] Processing clip ${i + 1}/${clips.length}: ${clip.id || clip}`)
+        
+        // Handle different clip data structures
+        const clipId = clip.id || clip
+        
         // Get clip details
-        const clipDetails = await KlapAPIService.getClipDetails(folderId, clip.id)
+        let clipDetails: any = {}
+        try {
+          clipDetails = await KlapAPIService.getClipDetails(folderId, clipId)
+          console.log(`[Klap] Got clip details for ${clipId}:`, JSON.stringify(clipDetails, null, 2))
+        } catch (detailError) {
+          console.error(`[Klap] Failed to get clip details for ${clipId}:`, detailError)
+          // Use basic clip info if details fail
+          clipDetails = { id: clipId }
+        }
         
         // Handle video storage
         let exportUrl = `https://klap.app/player/${clip.id}`

@@ -189,10 +189,10 @@ export default function ProjectDetailPage() {
         // Check immediately
         checkKlapStatus()
         
-        // Then poll every 10 seconds
+        // Then poll every 30 seconds
         const interval = setInterval(() => {
           checkKlapStatus()
-        }, 10000)
+        }, 30000) // Changed from 10000 to 30000 (30 seconds)
         
         return () => clearInterval(interval)
       }
