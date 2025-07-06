@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { handleError } from "@/lib/error-handler";
 import { KlapAPIService } from "@/lib/klap-api";
+import { auth } from "@clerk/nextjs/server";
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Authenticate the user first
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const params = await context.params;
     const projectId = params.id;
     
@@ -42,6 +49,9 @@ export async function POST(
       ? `https://${process.env.VERCEL_URL}` 
       : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+    console.log(`[Process Route] Using base URL: ${baseUrl}`);
+    console.log(`[Process Route] Processing project ${projectId} with workflow: ${workflow || 'all'}`);
+
     // If specific workflow is requested, only run that
     if (workflow === 'clips') {
       // Add clips task if not already present
@@ -57,23 +67,8 @@ export async function POST(
         await ProjectService.updateProject(projectId, { tasks: updatedTasks });
       }
 
-      // Start clip generation without waiting for response
-      fetch(`${baseUrl}/api/process-klap`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: project.id,
-          videoUrl: project.video_url,
-        })
-      }).then(response => {
-        if (!response.ok) {
-          console.error(`Klap processing request failed with status: ${response.status}`);
-          ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
-        }
-      }).catch(error => {
-        console.error('Failed to start Klap processing:', error);
-        ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
-      });
+      // Start KLAP processing directly without HTTP call
+      startKlapProcessing(projectId, project.video_url);
 
       return NextResponse.json({ message: "Clip generation started" });
     }
@@ -85,7 +80,11 @@ export async function POST(
       // Start transcription without waiting
       fetch(`${baseUrl}/api/process-transcription`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          // Pass along authorization if present
+          ...(request.headers.get('authorization') ? { 'authorization': request.headers.get('authorization')! } : {})
+        },
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
@@ -104,18 +103,8 @@ export async function POST(
 
     const hasClipsTask = project.tasks.some(task => task.type === 'clips' && task.status === 'pending');
     if (hasClipsTask) {
-      // Start clips generation without waiting
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-klap`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: project.id,
-          videoUrl: project.video_url,
-        })
-      }).catch(error => {
-        console.error('Failed to start Klap processing:', error);
-        ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
-      });
+      // Start KLAP processing directly without HTTP call
+      startKlapProcessing(projectId, project.video_url);
     }
 
     return NextResponse.json({ 
@@ -128,5 +117,43 @@ export async function POST(
   } catch (error) {
     const errorResult = handleError(error, "Failed to start processing");
     return NextResponse.json({ error: errorResult.error }, { status: errorResult.statusCode });
+  }
+}
+
+// Helper function to start KLAP processing without HTTP call
+async function startKlapProcessing(projectId: string, videoUrl: string) {
+  console.log(`[Process Route] Starting KLAP processing for project ${projectId}`);
+  
+  try {
+    // Check if KLAP API key is configured
+    if (!process.env.KLAP_API_KEY) {
+      console.error('[Process Route] KLAP_API_KEY is not configured');
+      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+      return;
+    }
+
+    // Update task status to processing
+    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+    
+    // Create the KLAP task
+    const task = await KlapAPIService.createVideoTask(videoUrl);
+    console.log(`[Process Route] Klap task created successfully: ${task.id}`);
+    
+    // Store the task ID for later polling
+    await ProjectService.updateProject(projectId, {
+      klap_project_id: task.id
+    });
+    
+    // Update progress to show task was created
+    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
+    
+    console.log(`[Process Route] Klap processing started successfully for project ${projectId}`);
+  } catch (error) {
+    console.error(`[Process Route] Failed to start Klap processing:`, error);
+    await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+    
+    if (error instanceof Error && error.message.includes('401')) {
+      console.error('[Process Route] Klap authentication failed. Please check API configuration.');
+    }
   }
 } 
