@@ -185,10 +185,25 @@ export class KlapAPIService {
         return response.data
       } else if (response.items && Array.isArray(response.items)) {
         return response.items
-      } else {
-        console.warn(`[Klap] Unexpected response format from folder API:`, response)
-        return []
+      } else if (response.projects && Array.isArray(response.projects)) {
+        // Sometimes Klap returns clips under "projects"
+        return response.projects
+      } else if (response.videos && Array.isArray(response.videos)) {
+        // Or under "videos"
+        return response.videos
+      } else if (typeof response === 'object' && response !== null) {
+        // If it's an object, try to find any array property
+        const arrayProps = Object.keys(response).filter(key => Array.isArray(response[key]))
+        if (arrayProps.length > 0) {
+          console.log(`[Klap] Found array property: ${arrayProps[0]}`)
+          return response[arrayProps[0]]
+        }
       }
+      
+      console.warn(`[Klap] Unexpected response format from folder API:`, response)
+      console.warn(`[Klap] Response type:`, typeof response)
+      console.warn(`[Klap] Response keys:`, response ? Object.keys(response) : 'null')
+      return []
     } catch (error) {
       console.error(`[Klap] Failed to get clips from folder ${folderId}:`, error)
       throw error

@@ -230,6 +230,8 @@ export async function GET(request: NextRequest) {
           if (task.status === 'ready' && task.output_id) {
             // Task is complete! Now we can process the clips
             console.log(`[Klap GET] Task ${project.klap_project_id} is ready. Processing clips...`)
+            console.log(`[Klap GET] Output folder ID: ${task.output_id}`)
+            console.log(`[Klap GET] Full task response:`, JSON.stringify(task, null, 2))
             
             // Update project with the folder ID
             await ProjectService.updateProject(projectId, {
@@ -326,9 +328,17 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
     const clips = await KlapAPIService.getClipsFromFolder(folderId)
     
     console.log(`[Klap processClipsFromFolder] Received clips response:`, JSON.stringify(clips, null, 2))
+    console.log(`[Klap processClipsFromFolder] Number of clips: ${clips?.length || 0}`)
+    console.log(`[Klap processClipsFromFolder] Clips type: ${typeof clips}, isArray: ${Array.isArray(clips)}`)
     
     if (!clips || clips.length === 0) {
       console.warn(`[Klap] No clips found in folder ${folderId}`)
+      console.warn(`[Klap] Empty clips response details:`, {
+        clips,
+        isNull: clips === null,
+        isUndefined: clips === undefined,
+        isEmptyArray: Array.isArray(clips) && clips.length === 0
+      })
       await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
       return
     }
