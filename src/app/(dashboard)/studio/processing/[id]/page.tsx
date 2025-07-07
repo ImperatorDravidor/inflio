@@ -43,7 +43,7 @@ const taskDetails = {
     title: "Smart Clips",
     description: "Identifying and extracting key moments",
     color: "from-pink-500 to-rose-500",
-    estimatedTime: { min: 5, max: 7 }
+    estimatedTime: { min: 10, max: 20 }
   }
 }
 
@@ -69,6 +69,18 @@ export default function ProcessingPage() {
         return
       }
       setProject(proj)
+      
+      // Check and update transcription status
+      const transcriptionTask = proj.tasks.find(t => t.type === 'transcription')
+      if (transcriptionTask) {
+        if (transcriptionTask.status === 'completed' && proj.transcription?.text) {
+          setTranscriptionStatus('completed')
+        } else if (transcriptionTask.status === 'failed') {
+          setTranscriptionStatus('failed')
+        } else if (transcriptionTask.status === 'processing') {
+          setTranscriptionStatus('processing')
+        }
+      }
     } catch (error) {
       console.error("Failed to load project:", error)
       toast.error("Failed to load project")
@@ -89,7 +101,7 @@ export default function ProcessingPage() {
     
     await ProjectService.updateProject(projectId, { status: 'processing' })
     await ProjectService.updateTaskProgress(projectId, 'transcription', 10, 'processing')
-    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
 
     try {
       // Start Klap processing
@@ -102,31 +114,9 @@ export default function ProcessingPage() {
         })
       }).then(async (response) => {
         if (response.ok) {
-          // Start polling for Klap progress
-          const pollKlapProgress = async () => {
-            try {
-              const updatedProject = await ProjectService.getProject(projectId)
-              const clipsTask = updatedProject?.tasks.find(t => t.type === 'clips')
-              if (clipsTask && clipsTask.status === 'processing') {
-                // Estimate progress based on time elapsed (Klap usually takes 5-7 minutes)
-                const elapsed = Date.now() - new Date(clipsTask.startedAt!).getTime()
-                const estimatedDuration = 6 * 60 * 1000 // 6 minutes
-                const progress = Math.min(90, Math.floor((elapsed / estimatedDuration) * 90))
-                await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
-              }
-            } catch (error) {
-              console.error('Error polling Klap progress:', error)
-            }
-          }
-          
-          // Poll every 10 seconds
-          const klapInterval = setInterval(pollKlapProgress, 10000)
-          
+          // Don't poll or update progress here - the Klap task takes 10-20 minutes
+          // The main polling interval in the useEffect will check the actual status
           const result = await response.json()
-          clearInterval(klapInterval)
-          
-          // Update to 100% when complete
-          await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
           return { success: true, result }
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -270,6 +260,18 @@ export default function ProcessingPage() {
       
       const progress = ProjectService.calculateProjectProgress(proj)
       
+      // Check transcription status on initial load
+      const transcriptionTask = proj.tasks.find(t => t.type === 'transcription')
+      if (transcriptionTask) {
+        if (transcriptionTask.status === 'completed' && proj.transcription?.text) {
+          setTranscriptionStatus('completed')
+        } else if (transcriptionTask.status === 'failed') {
+          setTranscriptionStatus('failed')
+        } else if (transcriptionTask.status === 'processing') {
+          setTranscriptionStatus('processing')
+        }
+      }
+      
       // If project is complete, redirect immediately
       if (proj.status === 'ready' || progress === 100) {
         if (proj.status !== 'draft') {
@@ -294,6 +296,26 @@ export default function ProcessingPage() {
             // Check if clips are still processing
             const clipsTask = updatedProject.tasks.find(t => t.type === 'clips')
             const areClipsProcessing = clipsTask && clipsTask.status === 'processing'
+            
+            // If clips are processing, check actual Klap status
+            if (areClipsProcessing && updatedProject.klap_project_id) {
+              try {
+                const klapStatusResponse = await fetch(`/api/process-klap?projectId=${projectId}`)
+                if (klapStatusResponse.ok) {
+                  const klapStatus = await klapStatusResponse.json()
+                  // The GET endpoint updates progress internally, we just need to reload
+                  if (klapStatus.status !== 'processing' || klapStatus.clipsCount > 0) {
+                    // Status changed or clips are ready, reload project
+                    const refreshedProject = await ProjectService.getProject(projectId)
+                    if (refreshedProject) {
+                      setProject(refreshedProject)
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('Error checking Klap status:', error)
+              }
+            }
             
             // Redirect as soon as transcription is done, even if clips are still processing
             if (isTranscriptionComplete) {

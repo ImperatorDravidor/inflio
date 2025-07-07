@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
         klap_project_id: task.id // Store task ID temporarily until we get the folder ID
       })
       
-      // Update progress to show task was created
-      await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+      // Update progress to show task was created (keep at 5% to be consistent)
+      // Progress will increase based on elapsed time in the GET endpoint
       
       return NextResponse.json({
         success: true,
@@ -261,7 +261,12 @@ export async function GET(request: NextRequest) {
             // Still processing
             const elapsedTime = clipsTask.startedAt ? 
               Math.floor((Date.now() - new Date(clipsTask.startedAt).getTime()) / 1000) : 0
-            const estimatedProgress = Math.min(20 + Math.floor(elapsedTime / 10), 90) // Progress based on time
+            const estimatedProgress = Math.min(5 + Math.floor(elapsedTime / 20), 45) // Start at 5%, add 1% every 20 seconds, max 45%
+            
+            // Update the progress in the database
+            if (estimatedProgress > (clipsTask.progress || 5)) {
+              await ProjectService.updateTaskProgress(projectId, 'clips', estimatedProgress, 'processing')
+            }
             
             return NextResponse.json({
               success: true,
