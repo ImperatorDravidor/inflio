@@ -129,11 +129,6 @@ export async function GET(request: NextRequest) {
   // Check for common issues
   const commonIssues = []
   
-  if (typeof setImmediate === 'undefined') {
-    commonIssues.push('setImmediate is not available in Edge Runtime - this might cause background processing to fail')
-    diagnostics.recommendations.push('The code uses setImmediate which is not available in Edge Runtime. This needs to be fixed.')
-  }
-
   if (diagnostics.environment.isProduction && diagnostics.environment.vercelEnv) {
     commonIssues.push('Running on Vercel with 1-minute function timeout - Klap processing needs 10-20 minutes')
     diagnostics.recommendations.push('Klap processing takes 10-20 minutes but Vercel functions timeout at 1 minute. The app should handle this gracefully.')

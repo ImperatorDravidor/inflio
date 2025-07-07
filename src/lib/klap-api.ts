@@ -119,7 +119,7 @@ export class KlapAPIService {
   private static async pollTaskUntilReady(taskId: string): Promise<{ id: string; status: string; output_id: string }> {
     const startTime = Date.now();
     const maxDuration = 25 * 60 * 1000; // 25 minutes in milliseconds
-    const baseDelay = 15000; // 15 seconds base polling interval
+    const baseDelay = 30000; // 30 seconds polling interval as requested
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
     

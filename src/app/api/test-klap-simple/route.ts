@@ -28,11 +28,11 @@ export async function GET() {
 
   // Check for critical issues
   if (!process.env.KLAP_API_KEY) {
-    config.criticalIssues.push('❌ KLAP_API_KEY is not set')
+    config.criticalIssues.push('❌ CRITICAL: KLAP_API_KEY is not set - clips WILL NOT work')
     config.quickFix.push(
       '1. Get your API key from https://klap.app → Developer Settings',
-      '2. Add to .env.local: KLAP_API_KEY=klap_xxxxx',
-      '3. Restart your dev server'
+      '2. Add to .env.local: KLAP_API_KEY=klap_xxxxxxxxxxxx',
+      '3. Restart your development server'
     )
   }
 
@@ -41,12 +41,6 @@ export async function GET() {
     config.quickFix.push(
       'Add to .env.local: NEXT_PUBLIC_APP_URL=https://inflio.ai'
     )
-  }
-
-  // Test setImmediate availability
-  const hasSetImmediate = typeof setImmediate !== 'undefined'
-  if (!hasSetImmediate) {
-    config.criticalIssues.push('✅ FIXED: setImmediate issue has been resolved (using Promise.resolve().then())')
   }
 
   const status = config.criticalIssues.filter(issue => issue.startsWith('❌')).length === 0 ? 'READY' : 'NOT READY'
