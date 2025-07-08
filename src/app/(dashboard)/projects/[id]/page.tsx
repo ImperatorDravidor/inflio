@@ -280,7 +280,7 @@ export default function ProjectDetailPage() {
     if (!videoRef.current || !project?.transcription) return
 
     const handleTimeUpdate = () => {
-      if (!videoRef.current) return; // Add null check
+      if (!videoRef.current) return;
       const time = videoRef.current.currentTime
       
       const activeSegment = TranscriptionService.getSegmentAtTime(
@@ -291,20 +291,36 @@ export default function ProjectDetailPage() {
       if (activeSegment && activeSegment.id !== activeSegmentId) {
         setActiveSegmentId(activeSegment.id)
         
-        // Auto-scroll to active segment
+        // Auto-scroll to active segment with smooth animation
         if (transcriptionScrollRef.current) {
           const element = document.getElementById(`segment-${activeSegment.id}`)
           if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            // Calculate scroll position to center the segment
+            const containerRect = transcriptionScrollRef.current.getBoundingClientRect()
+            const elementRect = element.getBoundingClientRect()
+            const scrollTop = transcriptionScrollRef.current.scrollTop
+            const elementTop = elementRect.top - containerRect.top + scrollTop
+            const scrollPosition = elementTop - (containerRect.height / 2) + (elementRect.height / 2)
+            
+            // Smooth scroll to position
+            transcriptionScrollRef.current.scrollTo({
+              top: Math.max(0, scrollPosition),
+              behavior: 'smooth'
+            })
           }
         }
       }
     }
 
-    const video = videoRef.current; // Store reference
+    const video = videoRef.current;
     video.addEventListener('timeupdate', handleTimeUpdate)
+    
+    // Also handle seeking
+    video.addEventListener('seeked', handleTimeUpdate)
+    
     return () => {
       video?.removeEventListener('timeupdate', handleTimeUpdate)
+      video?.removeEventListener('seeked', handleTimeUpdate)
     }
   }, [project?.transcription, activeSegmentId])
 

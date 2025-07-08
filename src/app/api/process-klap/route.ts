@@ -8,6 +8,20 @@ import { createClient } from '@supabase/supabase-js'
 export const maxDuration = 300; // 5 minutes - should be enough to start processing
 export const dynamic = 'force-dynamic';
 
+const PROCESSING_TIMEOUT = 270000 // 4.5 minutes to leave buffer before Vercel timeout
+const SKIP_VIDEO_REUPLOAD = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'
+
+// Store processing status in memory (in production, use Redis or database)
+const processingStatus = new Map<string, {
+  status: 'processing' | 'completed' | 'failed'
+  progress: number
+  totalClips: number
+  processedClips: number
+  clips: any[]
+  error?: string
+  startTime: number
+}>()
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

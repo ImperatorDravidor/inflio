@@ -10,8 +10,59 @@ const publishSchema = z.object({
   platforms: z.array(z.string()).min(1),
   media: z.array(z.string()).optional(),
   scheduledFor: z.string().datetime().optional(),
-  projectId: z.string().uuid().optional()
+  projectId: z.string().uuid().optional(),
+  clipIds: z.array(z.string()).optional() // Add support for clip IDs
 })
+
+// Helper function to ensure clips are downloaded
+async function ensureClipsDownloaded(clipIds: string[], projectId: string) {
+  const downloadedUrls: string[] = []
+  
+  for (const clipId of clipIds) {
+    try {
+      // Check if clip needs downloading
+      const checkResponse = await fetch(
+        `/api/download-clip?clipId=${clipId}&projectId=${projectId}`,
+        { method: 'GET' }
+      )
+      
+      if (!checkResponse.ok) {
+        console.error(`Failed to check clip ${clipId} status`)
+        continue
+      }
+      
+      const { needsDownload, currentUrl } = await checkResponse.json()
+      
+      if (needsDownload) {
+        // Download the clip
+        console.log(`Downloading clip ${clipId} for social media posting...`)
+        const downloadResponse = await fetch('/api/download-clip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clipId, projectId })
+        })
+        
+        if (downloadResponse.ok) {
+          const { url } = await downloadResponse.json()
+          downloadedUrls.push(url)
+        } else {
+          console.error(`Failed to download clip ${clipId}`)
+          // Fall back to current URL if available
+          if (currentUrl) {
+            downloadedUrls.push(currentUrl)
+          }
+        }
+      } else {
+        // Clip already downloaded
+        downloadedUrls.push(currentUrl)
+      }
+    } catch (error) {
+      console.error(`Error processing clip ${clipId}:`, error)
+    }
+  }
+  
+  return downloadedUrls
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,8 +86,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { content, platforms, media, scheduledFor, projectId } = validation.data
+    const { content, platforms, media, scheduledFor, projectId, clipIds } = validation.data
     const supabase = createSupabaseBrowserClient()
+    
+    // If we have clip IDs and a project ID, ensure clips are downloaded
+    let finalMediaUrls = media || []
+    if (clipIds && clipIds.length > 0 && projectId) {
+      console.log(`Ensuring ${clipIds.length} clips are downloaded before posting...`)
+      const downloadedUrls = await ensureClipsDownloaded(clipIds, projectId)
+      // Add downloaded URLs to media
+      finalMediaUrls = [...finalMediaUrls, ...downloadedUrls]
+    }
 
     // Get connected integrations for the requested platforms
     const { data: integrations, error: integrationsError } = await supabase
@@ -69,10 +129,11 @@ export async function POST(request: NextRequest) {
             state: scheduledFor ? 'scheduled' : 'publishing',
             publish_date: scheduledFor || new Date().toISOString(),
             content,
-            media_urls: media || [],
+            media_urls: finalMediaUrls,
             settings: {
               platform: integration.platform,
-              autoHashtags: true
+              autoHashtags: true,
+              clipIds: clipIds || [] // Store clip IDs for reference
             }
           })
           .select()
@@ -130,7 +191,8 @@ export async function POST(request: NextRequest) {
       success: posts.length > 0,
       posts,
       errors: errors.length > 0 ? errors : undefined,
-      scheduled: !!scheduledFor
+      scheduled: !!scheduledFor,
+      mediaUrls: finalMediaUrls // Return the final media URLs used
     })
 
   } catch (error) {
