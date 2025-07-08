@@ -283,6 +283,9 @@ export async function GET(request: NextRequest) {
             // No clips yet, process them
             console.log(`[Klap GET] Processing clips from folder ${project.klap_project_id}`)
             await processClipsFromFolder(projectId, project.klap_project_id)
+          } else {
+            // Clips already exist, don't reprocess
+            console.log(`[Klap GET] Clips already exist (${project.folders.clips.length}), skipping reprocessing`)
           }
           
           return NextResponse.json({
@@ -331,6 +334,18 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
   console.log(`[Klap processClipsFromFolder] Starting to process clips for project ${projectId}, folder ${folderId}`)
   
   try {
+    // Clear any existing clips first to avoid duplicates
+    const project = await ProjectService.getProject(projectId)
+    if (project?.folders?.clips && project.folders.clips.length > 0) {
+      console.log(`[Klap] Clearing ${project.folders.clips.length} existing clips before reprocessing`)
+      await ProjectService.updateProject(projectId, {
+        folders: {
+          ...project.folders,
+          clips: []
+        }
+      })
+    }
+    
     // Get clips from folder
     const clips = await KlapAPIService.getClipsFromFolder(folderId)
     
@@ -356,15 +371,25 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
     await ProjectService.updateTaskProgress(projectId, 'clips', 60, 'processing')
     
     // Process each clip
-    const skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'
+    let skipVideoReupload = process.env.SKIP_KLAP_VIDEO_REUPLOAD === 'true'
     console.log(`[Klap] Skip video reupload: ${skipVideoReupload}`)
     const processedClips = []
+    
+    // Get the clips task for timing check
+    const clipsTask = project?.tasks.find(t => t.type === 'clips')
     
     for (let i = 0; i < clips.length; i++) {
       const clip = clips[i]
       try {
         console.log(`[Klap] Processing clip ${i + 1}/${clips.length}: ${clip.id || clip}`)
         console.log(`[Klap] Clip type: ${typeof clip}, value:`, clip)
+        
+        // Check if we're approaching Vercel timeout (4.5 minutes to be safe)
+        const elapsedTime = Date.now() - new Date(clipsTask?.startedAt || Date.now()).getTime()
+        if (elapsedTime > 270000 && !skipVideoReupload) { // 270 seconds = 4.5 minutes
+          console.warn(`[Klap] Approaching Vercel timeout, skipping video downloads for remaining clips`)
+          skipVideoReupload = true
+        }
         
         // Handle different clip data structures
         // Clips can be returned as:
@@ -391,6 +416,13 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
         // Handle video storage
         let exportUrl = `https://klap.app/player/${clipId}`
         let storedVideoUrl = exportUrl
+        
+        // Note: If skipVideoReupload is true, we use Klap's URLs directly
+        // This is faster but means:
+        // - Videos are hosted by Klap (not in your Supabase)
+        // - Social media posting might need the actual file
+        // - Downloads will come from Klap's servers
+        // Consider implementing a background job to download videos later
         
         if (!skipVideoReupload) {
           // Download and store clip
@@ -431,14 +463,14 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
         // Prepare clip data
         const clipData: any = {
           id: clipId,
-          title: clipDetails.name || clipDetails.title || `Clip ${i + 1}`,
-          description: clipDetails.virality_score_explanation || '',
-          startTime: clipDetails.start_time || 0,
-          endTime: clipDetails.end_time || 0,
+          title: clipDetails.name || clipDetails.title || clipDetails.clip_title || `Clip ${i + 1}`,
+          description: clipDetails.virality_score_explanation || clipDetails.explanation || clipDetails.description || '',
+          startTime: clipDetails.start_time || clipDetails.startTime || 0,
+          endTime: clipDetails.end_time || clipDetails.endTime || 0,
           duration: clipDetails.duration || (clipDetails.end_time - clipDetails.start_time) || 0,
-          thumbnail: clipDetails.thumbnail || `https://klap.app/player/${clipId}/thumbnail`,
-          tags: clipDetails.tags || [],
-          score: (clipDetails.virality_score || 0) / 100,
+          thumbnail: clipDetails.thumbnail || clipDetails.thumbnail_url || `https://klap.app/player/${clipId}/thumbnail`,
+          tags: clipDetails.tags || clipDetails.keywords || [],
+          score: typeof clipDetails.virality_score === 'number' ? (clipDetails.virality_score / 100) : (clipDetails.score || 0),
           type: 'highlight' as const,
           klapProjectId: clipId,
           klapFolderId: folderId,
@@ -446,6 +478,25 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
           exportUrl: storedVideoUrl,
           exported: true,
           storedInSupabase: !skipVideoReupload && storedVideoUrl !== exportUrl,
+          
+          // Additional fields that might be in the response
+          transcript: clipDetails.transcript || clipDetails.transcript_text || clipDetails.captions || clipDetails.subtitles || '',
+          viralityExplanation: clipDetails.virality_score_explanation || clipDetails.virality_explanation || '',
+          captions: clipDetails.captions || clipDetails.caption_text || clipDetails.subtitle_text || '',
+          captionStyle: clipDetails.caption_style || clipDetails.subtitle_style || 'default',
+          highlights: clipDetails.highlights || clipDetails.key_moments || [],
+          emotions: clipDetails.emotions || clipDetails.detected_emotions || [],
+          topics: clipDetails.topics || clipDetails.detected_topics || [],
+          
+          // Platform-specific captions
+          publicationCaptions: clipDetails.publication_captions || {},
+          platformCaptions: {
+            tiktok: clipDetails.publication_captions?.tiktok || '',
+            youtube: clipDetails.publication_captions?.youtube || '',
+            instagram: clipDetails.publication_captions?.instagram || '',
+            linkedin: clipDetails.publication_captions?.linkedin || ''
+          },
+          
           rawKlapData: clipDetails,
           createdAt: new Date().toISOString()
         }
