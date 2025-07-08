@@ -176,10 +176,15 @@ export class KlapAPIService {
       const response: any = await this.request(`/projects/${folderId}`)
       console.log(`[Klap] Folder API response:`, JSON.stringify(response, null, 2))
       
-      // Handle different response formats from KLAP API
+      // IMPORTANT: Klap API returns clips directly as an array at /projects/{folderId}
+      // Not wrapped in an object with a "clips" property
       if (Array.isArray(response)) {
+        console.log(`[Klap] Response is array with ${response.length} clips`)
         return response
-      } else if (response.clips && Array.isArray(response.clips)) {
+      }
+      
+      // Fallback: Handle different response formats from KLAP API (just in case)
+      if (response.clips && Array.isArray(response.clips)) {
         return response.clips
       } else if (response.data && Array.isArray(response.data)) {
         return response.data

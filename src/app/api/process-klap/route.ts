@@ -362,9 +362,18 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
       const clip = clips[i]
       try {
         console.log(`[Klap] Processing clip ${i + 1}/${clips.length}: ${clip.id || clip}`)
+        console.log(`[Klap] Clip type: ${typeof clip}, value:`, clip)
         
         // Handle different clip data structures
-        const clipId = clip.id || clip
+        // Clips can be returned as:
+        // 1. Simple strings (just the clip ID)
+        // 2. Objects with an id property
+        const clipId = typeof clip === 'string' ? clip : (clip.id || clip)
+        
+        if (!clipId) {
+          console.error(`[Klap] Invalid clip data at index ${i}:`, clip)
+          continue
+        }
         
         // Get clip details
         let clipDetails: any = {}
@@ -378,13 +387,13 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
         }
         
         // Handle video storage
-        let exportUrl = `https://klap.app/player/${clip.id}`
+        let exportUrl = `https://klap.app/player/${clipId}`
         let storedVideoUrl = exportUrl
         
         if (!skipVideoReupload) {
           // Download and store clip
           try {
-            const exportedData = await KlapAPIService.exportMultipleClips(folderId, [clip.id])
+            const exportedData = await KlapAPIService.exportMultipleClips(folderId, [clipId])
             
             if (exportedData.length > 0 && exportedData[0].url) {
               exportUrl = exportedData[0].url
@@ -395,7 +404,7 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
                 const clipBuffer = await clipResponse.arrayBuffer()
                 const clipBlob = Buffer.from(clipBuffer)
                 
-                const clipFileName = `${projectId}/clips/clip_${i + 1}_${clip.id}.mp4`
+                const clipFileName = `${projectId}/clips/clip_${i + 1}_${clipId}.mp4`
                 const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
                   .from('videos')
                   .upload(clipFileName, clipBlob, {
@@ -413,25 +422,25 @@ async function processClipsFromFolder(projectId: string, folderId: string) {
               }
             }
           } catch (error) {
-            console.error(`[Klap] Failed to download/store clip ${clip.id}:`, error)
+            console.error(`[Klap] Failed to download/store clip ${clipId}:`, error)
           }
         }
         
         // Prepare clip data
         const clipData: any = {
-          id: clip.id,
+          id: clipId,
           title: clipDetails.name || clipDetails.title || `Clip ${i + 1}`,
           description: clipDetails.virality_score_explanation || '',
           startTime: clipDetails.start_time || 0,
           endTime: clipDetails.end_time || 0,
           duration: clipDetails.duration || (clipDetails.end_time - clipDetails.start_time) || 0,
-          thumbnail: clipDetails.thumbnail || `https://klap.app/player/${clip.id}/thumbnail`,
+          thumbnail: clipDetails.thumbnail || `https://klap.app/player/${clipId}/thumbnail`,
           tags: clipDetails.tags || [],
           score: (clipDetails.virality_score || 0) / 100,
           type: 'highlight' as const,
-          klapProjectId: clip.id,
+          klapProjectId: clipId,
           klapFolderId: folderId,
-          previewUrl: `https://klap.app/player/${clip.id}`,
+          previewUrl: `https://klap.app/player/${clipId}`,
           exportUrl: storedVideoUrl,
           exported: true,
           storedInSupabase: !skipVideoReupload && storedVideoUrl !== exportUrl,

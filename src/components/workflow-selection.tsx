@@ -37,7 +37,7 @@ export function WorkflowSelection({
 }: WorkflowSelectionProps) {
   const workflows = [
     {
-      id: 'transcription',
+      id: 'transcription' as const,
       name: 'Transcript & AI Summary',
       description: 'Convert speech to text and generate AI project insights',
       icon: IconFileText,
@@ -45,18 +45,20 @@ export function WorkflowSelection({
       estimatedTime: '2-3 minutes',
       features: ['99% accuracy', 'Speaker detection', 'AI summary', 'Key insights'],
       required: true,
-      checked: true
+      checked: true,
+      popular: false
     },
     {
-      id: 'clips',
+      id: 'clips' as const,
       name: 'Generate Short-Form Clips',
       description: 'AI extracts the best moments for viral social media content',
       icon: IconScissors,
       color: 'from-purple-500 to-purple-600',
-      estimatedTime: '5-7 minutes',
+      estimatedTime: '10-20 minutes',
       features: ['Viral detection', 'Auto-captions', 'Multiple formats', '5-10 clips'],
       required: false,
-      checked: options.clips
+      checked: options.clips,
+      popular: true
     }
   ]
 
@@ -66,7 +68,7 @@ export function WorkflowSelection({
     
     onChange({
       ...options,
-      [workflowId]: !options[workflowId as keyof typeof options]
+      [workflowId as keyof typeof options]: !options[workflowId as keyof typeof options]
     })
   }
 
@@ -124,6 +126,11 @@ export function WorkflowSelection({
                               <Badge variant="secondary" className="text-xs">
                                 <IconLock className="h-3 w-3 mr-1" />
                                 Required
+                              </Badge>
+                            )}
+                            {workflow.popular && !workflow.required && (
+                              <Badge className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                Popular
                               </Badge>
                             )}
                           </h3>
@@ -194,7 +201,8 @@ export function WorkflowSelection({
         {!options.clips && (
           <Alert className="mt-3 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
             <AlertDescription className="text-sm">
-              <strong>Note:</strong> You can generate clips later from your project if you skip this step.
+              <strong>Skipping clips?</strong> You won't get auto-generated short-form content with captions for TikTok, Instagram Reels, or YouTube Shorts. 
+              You can still generate clips later from your project dashboard, but it will take additional processing time.
             </AlertDescription>
           </Alert>
         )}
