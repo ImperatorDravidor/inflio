@@ -30,8 +30,8 @@ export async function GET() {
   if (!process.env.KLAP_API_KEY) {
     config.criticalIssues.push('❌ CRITICAL: KLAP_API_KEY is not set - clips WILL NOT work')
     config.quickFix.push(
-      '1. Get your API key from https://klap.app → Developer Settings',
-      '2. Add to .env.local: KLAP_API_KEY=klap_xxxxxxxxxxxx',
+      '1. Get API key from https://klap.app',
+      '2. Add to .env.local: KLAP_API_KEY=your_api_key_here',
       '3. Restart your development server'
     )
   }

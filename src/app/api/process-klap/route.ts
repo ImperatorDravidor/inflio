@@ -193,9 +193,10 @@ export async function GET(request: NextRequest) {
     // If we have a klap_project_id and task is processing, check the Klap task status
     if (project.klap_project_id && clipsTask.status === 'processing') {
       try {
-        // First, check if it's a task ID (starts with 'tsk_') or folder ID
-        const isTaskId = project.klap_project_id.startsWith('tsk_')
-        console.log(`[Klap GET] Checking status for ${project.klap_project_id}, isTaskId: ${isTaskId}`)
+        // Check if it's a task ID or folder ID based on length
+        // Task IDs are 16 characters, folder IDs are 8 characters
+        const isTaskId = project.klap_project_id.length === 16 || project.klap_project_id.length === 12
+        console.log(`[Klap GET] Checking status for ${project.klap_project_id} (length: ${project.klap_project_id.length}), isTaskId: ${isTaskId}`)
         
         if (isTaskId) {
           // Poll the task status
@@ -226,6 +227,7 @@ export async function GET(request: NextRequest) {
           
           const task = await taskResponse.json()
           console.log(`[Klap GET] Task status: ${task.status}, has output_id: ${!!task.output_id}`)
+          console.log(`[Klap GET] Full task object:`, JSON.stringify(task, null, 2))
           
           if (task.status === 'ready' && task.output_id) {
             // Task is complete! Now we can process the clips

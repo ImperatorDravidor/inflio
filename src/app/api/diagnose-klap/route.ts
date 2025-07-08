@@ -44,15 +44,10 @@ export async function GET(request: NextRequest) {
       message: 'KLAP_API_KEY environment variable is not set' 
     }
     diagnostics.recommendations.push('Add KLAP_API_KEY to your environment variables')
-  } else if (!process.env.KLAP_API_KEY.startsWith('klap_')) {
-    diagnostics.tests.apiKeyValidation = { 
-      status: 'warning', 
-      message: 'API key does not start with "klap_" - might be invalid' 
-    }
   } else {
     diagnostics.tests.apiKeyValidation = { 
       status: 'passed', 
-      message: 'API key format looks valid' 
+      message: 'API key is set' 
     }
   }
 

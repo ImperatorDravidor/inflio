@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
     console.log(`[Check Klap Task] Checking task: ${taskIdToCheck}`)
     
     // Check if it looks like a task ID or folder ID
-    const isLikelyTaskId = taskIdToCheck.startsWith('tsk_') || taskIdToCheck.length === 12
+    // Task IDs are typically 16 or 12 characters, folder IDs are 8 characters
+    const isLikelyTaskId = taskIdToCheck.length === 16 || taskIdToCheck.length === 12
     const isLikelyFolderId = taskIdToCheck.length === 8
     const isUnknownFormat = !isLikelyTaskId && !isLikelyFolderId
     
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
           isLikelyTaskId,
           isLikelyFolderId,
           isUnknownFormat,
-          startsWithTsk: taskIdToCheck.startsWith('tsk_')
+          length: taskIdToCheck.length
         }
       },
       taskApi: {
