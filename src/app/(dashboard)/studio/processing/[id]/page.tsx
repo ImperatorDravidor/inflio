@@ -138,6 +138,7 @@ export default function ProcessingPage() {
       const transcriptionPromise = fetch('/api/process-transcription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
