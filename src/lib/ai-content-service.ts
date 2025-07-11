@@ -249,6 +249,238 @@ Return JSON:
   }
 
   /**
+<<<<<<< HEAD
+=======
+   * Generate enhanced social media content with platform optimization
+   */
+  static async generateEnhancedSocialContent(
+    content: string,
+    platform: string,
+    options: {
+      style?: 'professional' | 'casual' | 'friendly' | 'bold'
+      includeEmojis?: boolean
+      includeHashtags?: boolean
+      includeCTA?: boolean
+      emojiLevel?: 'none' | 'minimal' | 'moderate' | 'heavy'
+      targetAudience?: string
+      brandVoice?: string
+      maxLength?: number
+    } = {}
+  ): Promise<string> {
+    try {
+      const openai = getOpenAI()
+      
+      const platformConfigs = {
+        instagram: {
+          maxLength: 2200,
+          hashtagLimit: 30,
+          features: 'visual storytelling, lifestyle content, hashtag discovery',
+          tone: 'inspirational, personal, visual-focused'
+        },
+        twitter: {
+          maxLength: 280,
+          hashtagLimit: 2,
+          features: 'concise messaging, trending topics, retweet-worthy',
+          tone: 'witty, timely, conversational'
+        },
+        linkedin: {
+          maxLength: 3000,
+          hashtagLimit: 5,
+          features: 'professional insights, thought leadership, industry trends',
+          tone: 'professional, informative, value-driven'
+        },
+        tiktok: {
+          maxLength: 2200,
+          hashtagLimit: 8,
+          features: 'trendy, entertaining, challenge-based, sound-synced',
+          tone: 'fun, trendy, youthful, creative'
+        },
+        facebook: {
+          maxLength: 63206,
+          hashtagLimit: 10,
+          features: 'community building, shareable content, discussion starter',
+          tone: 'friendly, inclusive, conversational'
+        }
+      }
+      
+      const config = platformConfigs[platform as keyof typeof platformConfigs] || platformConfigs.instagram
+      const style = options.style || 'professional'
+      const emojiLevel = options.emojiLevel || 'moderate'
+      
+      const systemPrompt = `You are an expert social media content strategist specializing in ${platform} content.
+Your task is to transform content into highly engaging, platform-optimized posts that drive engagement.
+
+Platform: ${platform}
+Style: ${style}
+Features: ${config.features}
+Tone: ${config.tone}
+Max Length: ${config.maxLength} characters
+Hashtag Limit: ${config.hashtagLimit}
+
+Writing Style Guidelines:
+- ${style === 'professional' ? 'Maintain authority and credibility while being approachable' : ''}
+- ${style === 'casual' ? 'Be conversational and relatable, like talking to a friend' : ''}
+- ${style === 'friendly' ? 'Warm, welcoming, and inclusive tone that builds community' : ''}
+- ${style === 'bold' ? 'Confident, assertive, and attention-grabbing statements' : ''}
+
+Emoji Usage (${emojiLevel}):
+- none: No emojis at all
+- minimal: 1-2 strategic emojis for emphasis
+- moderate: 3-5 emojis to enhance readability and emotion
+- heavy: 6+ emojis for maximum visual appeal and energy
+
+Create content that:
+1. Hooks attention in the first line
+2. Delivers value or emotion
+3. Encourages engagement (likes, comments, shares)
+4. Fits naturally on the platform
+5. Uses platform-specific best practices`
+
+      const userPrompt = `Transform this content into an engaging ${platform} post:
+
+"${content}"
+
+Requirements:
+- Style: ${style}
+- Emoji Level: ${emojiLevel} (${emojiLevel === 'none' ? 'NO emojis' : `use ${emojiLevel} amount of emojis`})
+- Include Hashtags: ${options.includeHashtags ? `YES (max ${config.hashtagLimit})` : 'NO'}
+- Include CTA: ${options.includeCTA ? 'YES (platform-appropriate)' : 'NO'}
+- Max Length: ${options.maxLength || config.maxLength} characters
+
+${options.targetAudience ? `Target Audience: ${options.targetAudience}` : ''}
+${options.brandVoice ? `Brand Voice: ${options.brandVoice}` : ''}
+
+Create a post that feels native to ${platform} and drives maximum engagement.`
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4-turbo-preview',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 1000
+      })
+
+      const enhancedContent = completion.choices[0].message.content || content
+      
+      // Validate length
+      if (enhancedContent.length > (options.maxLength || config.maxLength)) {
+        // Truncate intelligently
+        return this.truncateIntelligently(enhancedContent, options.maxLength || config.maxLength)
+      }
+      
+      return enhancedContent
+      
+    } catch (error) {
+      console.error('Error generating enhanced social content:', error)
+      // Fallback enhancement
+      return this.basicEnhancement(content, platform, options)
+    }
+  }
+
+  /**
+   * Intelligently truncate content while preserving meaning
+   */
+  private static truncateIntelligently(content: string, maxLength: number): string {
+    if (content.length <= maxLength) return content
+    
+    // Try to cut at sentence boundary
+    const sentences = content.match(/[^.!?]+[.!?]+/g) || []
+    let truncated = ''
+    
+    for (const sentence of sentences) {
+      if ((truncated + sentence).length <= maxLength - 3) {
+        truncated += sentence
+      } else {
+        break
+      }
+    }
+    
+    // If no complete sentences fit, truncate at word boundary
+    if (!truncated) {
+      const words = content.split(' ')
+      for (const word of words) {
+        if ((truncated + word + ' ').length <= maxLength - 3) {
+          truncated += word + ' '
+        } else {
+          break
+        }
+      }
+    }
+    
+    return truncated.trim() + '...'
+  }
+
+  /**
+   * Basic enhancement fallback
+   */
+  private static basicEnhancement(
+    content: string,
+    platform: string,
+    options: any
+  ): string {
+    let enhanced = content
+    
+    // Add emojis based on level
+    if (options.includeEmojis && options.emojiLevel !== 'none') {
+      const emojiMap = {
+        minimal: ['✨', '🎯'],
+        moderate: ['✨', '🚀', '💡', '🎯', '✅'],
+        heavy: ['✨', '🚀', '💡', '🎯', '✅', '🔥', '💪', '🌟', '⚡']
+      }
+      
+      const emojis = emojiMap[options.emojiLevel as keyof typeof emojiMap] || emojiMap.moderate
+      enhanced = emojis[0] + ' ' + enhanced + ' ' + emojis[1]
+    }
+    
+    // Add hashtags
+    if (options.includeHashtags) {
+      const hashtags = this.generateHashtags(content, platform)
+      enhanced += '\n\n' + hashtags
+    }
+    
+    // Add CTA
+    if (options.includeCTA) {
+      const ctas = {
+        instagram: '👉 Follow for more content like this!',
+        twitter: '♻️ RT if you agree!',
+        linkedin: '💭 What are your thoughts?',
+        tiktok: '➕ Follow for more!',
+        facebook: '👍 Like and share if this helped!'
+      }
+      
+      enhanced += '\n\n' + (ctas[platform as keyof typeof ctas] || ctas.instagram)
+    }
+    
+    return enhanced
+  }
+
+  /**
+   * Generate relevant hashtags for content
+   */
+  private static generateHashtags(content: string, platform: string): string {
+    const words = content.toLowerCase().split(/\s+/)
+    const keywords = words
+      .filter(w => w.length > 5 && !['the', 'and', 'for', 'with', 'this', 'that', 'from', 'about'].includes(w))
+      .slice(0, 3)
+    
+    const platformTags = {
+      instagram: ['#instagood', '#contentcreator', '#viral'],
+      twitter: ['#trending', '#thoughts'],
+      linkedin: ['#business', '#leadership', '#innovation'],
+      tiktok: ['#fyp', '#foryoupage', '#viral'],
+      facebook: ['#facebook', '#community']
+    }
+    
+    const baseTags = keywords.map(k => '#' + k).join(' ')
+    const extraTags = (platformTags[platform as keyof typeof platformTags] || []).slice(0, 2).join(' ')
+    
+    return baseTags + ' ' + extraTags
+  }
+
+  /**
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
    * Fallback analysis when OpenAI is unavailable
    */
   private static generateFallbackAnalysis(transcription: TranscriptionData): ContentAnalysis {

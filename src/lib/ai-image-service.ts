@@ -1,6 +1,7 @@
 import { getOpenAI } from './openai'
 import { ContentAnalysis } from './ai-content-service'
 
+<<<<<<< HEAD
 export interface ImageSuggestion {
   id: string
   prompt: string
@@ -14,6 +15,30 @@ export interface ImageSuggestion {
   keyMomentRef?: string // Reference to specific key moment
   topicRef?: string // Reference to specific topic
   carouselSlides?: number // Number of slides if type is carousel
+=======
+export interface GenerateImageOptions {
+  prompt: string
+  style?: 'thumbnail' | 'social' | 'quote' | 'infographic' | 'carousel'
+  size?: '1080x1080' | '1920x1080' | '1080x1920' | '1200x630'
+  theme?: 'light' | 'dark' | 'auto'
+  brandColors?: string[]
+  includeText?: boolean
+  textOverlay?: string
+  context?: {
+    projectTitle?: string
+    contentType?: string
+    platform?: string
+    keywords?: string[]
+  }
+}
+
+export interface ImageSuggestion {
+  id: string
+  prompt: string
+  style: string
+  reasoning: string
+  estimatedEngagement: number
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
 }
 
 export const predefinedStyles = [
@@ -144,6 +169,7 @@ Return as JSON:
       return suggestions.map((suggestion: any, index: number) => ({
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `suggest-${Date.now()}-${index}`,
         prompt: suggestion.prompt,
+<<<<<<< HEAD
         originalPrompt: suggestion.prompt,
         type: suggestion.type || 'visual',
         style: suggestion.style || this.suggestStyleForContent(contentAnalysis),
@@ -154,6 +180,11 @@ Return as JSON:
         keyMomentRef: suggestion.keyMomentRef,
         topicRef: suggestion.topicRef,
         carouselSlides: suggestion.carouselSlides
+=======
+        style: suggestion.style || this.suggestStyleForContent(contentAnalysis),
+        reasoning: suggestion.description || 'AI-generated visual content',
+        estimatedEngagement: suggestion.contentRelevance ? suggestion.contentRelevance * 10 : 80
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       }))
     } catch (error) {
       console.error('Error generating image suggestions:', error)
@@ -204,6 +235,7 @@ Return as JSON:
       {
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `fallback-${Date.now()}-1`,
         prompt: `Split-screen composition: left side shows "${keyMoment?.description || 'key insight'}" as bold, modern typography in white text on dark background, right side features abstract geometric visualization of ${mainTopic} concept with vibrant gradient colors, professional lighting, 4K quality`,
+<<<<<<< HEAD
         originalPrompt: `Split-screen quote and concept visualization`,
         type: 'quote',
         style: 'gradient',
@@ -213,10 +245,16 @@ Return as JSON:
         contentRelevance: 9,
         keyMomentRef: keyMoment?.description,
         topicRef: mainTopic
+=======
+        style: 'gradient',
+        reasoning: `Powerful quote graphic featuring key insight from the video about ${mainTopic}`,
+        estimatedEngagement: 90
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       },
       {
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `fallback-${Date.now()}-2`,
         prompt: `Cinematic hero shot of ${primaryKeyword} visualization: photorealistic scene featuring modern ${mainTopic} concept, dramatic lighting with warm golden hour glow, shallow depth of field, professional composition, inspiring and aspirational mood, ultra-high detail`,
+<<<<<<< HEAD
         originalPrompt: `Hero visualization of main concept`,
         type: 'concept',
         style: 'photorealistic',
@@ -225,10 +263,16 @@ Return as JSON:
         recommendedQuality: 'high',
         contentRelevance: 10,
         topicRef: mainTopic
+=======
+        style: 'photorealistic',
+        reasoning: `Stunning hero image that embodies the core message about ${mainTopic}`,
+        estimatedEngagement: 95
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       },
       {
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `fallback-${Date.now()}-3`,
         prompt: `YouTube thumbnail design: close-up of expressive face showing ${contentAnalysis.sentiment} emotion, bold text overlay "${projectTitle.split(' ').slice(0, 3).join(' ')}" in eye-catching font, bright contrasting colors, high energy composition, optimized for mobile viewing`,
+<<<<<<< HEAD
         originalPrompt: `Engaging video thumbnail`,
         type: 'thumbnail',
         style: 'corporate',
@@ -236,10 +280,16 @@ Return as JSON:
         recommendedSize: '1536x1024',
         recommendedQuality: 'high',
         contentRelevance: 8
+=======
+        style: 'corporate',
+        reasoning: `Click-worthy thumbnail that conveys the video's emotional impact`,
+        estimatedEngagement: 80
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       },
       {
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `fallback-${Date.now()}-4`,
         prompt: `Educational carousel slide 1 of 3: clean infographic layout showing "Key Insights About ${mainTopic}" with three main points as large, readable text blocks, modern flat design icons, consistent brand colors, Instagram-optimized dimensions`,
+<<<<<<< HEAD
         originalPrompt: `Educational carousel series`,
         type: 'carousel',
         style: 'flat-design',
@@ -249,10 +299,16 @@ Return as JSON:
         contentRelevance: 9,
         carouselSlides: 3,
         topicRef: mainTopic
+=======
+        style: 'flat-design',
+        reasoning: `Multi-slide educational content breaking down key concepts`,
+        estimatedEngagement: 85
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       },
       {
         id: typeof window !== 'undefined' ? crypto.randomUUID() : `fallback-${Date.now()}-5`,
         prompt: `Attention-grabbing hook image: split composition showing "before vs after" or "problem vs solution" related to ${primaryKeyword}, use contrasting warm and cool tones, add subtle motion blur effects, include text overlay "You won't believe what happens next", designed to stop infinite scroll`,
+<<<<<<< HEAD
         originalPrompt: `Scroll-stopping hook image`,
         type: 'hook',
         style: 'gradient',
@@ -260,6 +316,11 @@ Return as JSON:
         recommendedSize: '1024x1024',
         recommendedQuality: 'high',
         contentRelevance: 8
+=======
+        style: 'gradient',
+        reasoning: `Irresistible hook image designed to maximize engagement and clicks`,
+        estimatedEngagement: 75
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       }
     ]
   }
@@ -325,4 +386,223 @@ Return as JSON:
     
     return prompts
   }
+<<<<<<< HEAD
+=======
+
+  static async generateEnhancedImage(options: GenerateImageOptions): Promise<string> {
+    try {
+      // Enhance prompt based on style and context
+      let enhancedPrompt = options.prompt
+      
+      // Add style-specific enhancements
+      switch (options.style) {
+        case 'thumbnail':
+          enhancedPrompt = `Create an eye-catching YouTube/video thumbnail: ${options.prompt}. Bold text, high contrast, photorealistic elements, vibrant colors.`
+          break
+        case 'social':
+          enhancedPrompt = `Design a modern social media image: ${options.prompt}. Clean, minimalist, engaging, perfect for ${options.context?.platform || 'Instagram'}.`
+          break
+        case 'quote':
+          enhancedPrompt = `Create a beautiful quote image: ${options.prompt}. Elegant typography, inspiring background, readable text.`
+          break
+        case 'infographic':
+          enhancedPrompt = `Design a clear infographic: ${options.prompt}. Data visualization, clean layout, easy to understand.`
+          break
+        case 'carousel':
+          enhancedPrompt = `Create a carousel slide image: ${options.prompt}. Consistent design, numbered slide, part of a series.`
+          break
+      }
+      
+      // Add platform-specific requirements
+      if (options.context?.platform) {
+        const platformStyles: Record<string, string> = {
+          instagram: 'Instagram-optimized, square format, visually stunning',
+          linkedin: 'Professional, business-appropriate, informative',
+          twitter: 'Eye-catching, works in feed, high contrast',
+          tiktok: 'Trendy, youth-oriented, vertical format'
+        }
+        
+        enhancedPrompt += `. ${platformStyles[options.context.platform] || ''}`
+      }
+      
+      // Add brand colors if provided
+      if (options.brandColors && options.brandColors.length > 0) {
+        enhancedPrompt += `. Use brand colors: ${options.brandColors.join(', ')}`
+      }
+      
+      // Generate the image
+      const response = await fetch('/api/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: enhancedPrompt,
+          count: 1,
+          size: options.size || '1080x1080',
+          quality: 'hd'
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate image')
+      }
+      
+      const data = await response.json()
+      return data.urls[0]
+      
+    } catch (error) {
+      console.error('Error generating enhanced image:', error)
+      throw error
+    }
+  }
+
+  static async generateSmartImageSuggestions(
+    content: string,
+    contentType: 'clip' | 'blog' | 'social',
+    context?: any
+  ): Promise<ImageSuggestion[]> {
+    try {
+      const response = await fetch('/api/generate-unified-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          contentType,
+          context,
+          requestType: 'image-suggestions'
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate suggestions')
+      }
+      
+      const suggestions = await response.json()
+      
+      // Process and rank suggestions
+      return suggestions.map((s: any, index: number) => ({
+        id: `suggestion-${index}`,
+        prompt: s.prompt,
+        style: s.style || 'social',
+        reasoning: s.reasoning || 'AI-optimized for engagement',
+        estimatedEngagement: s.score || (5 - index) * 20
+      }))
+      
+    } catch (error) {
+      console.error('Error generating image suggestions:', error)
+      // Return default suggestions
+      return [
+        {
+          id: 'default-1',
+          prompt: `Modern social media graphic featuring key points from: ${content.slice(0, 50)}...`,
+          style: 'social',
+          reasoning: 'Clean design that highlights main message',
+          estimatedEngagement: 75
+        },
+        {
+          id: 'default-2',
+          prompt: `Eye-catching thumbnail with bold text overlay for: ${content.slice(0, 50)}...`,
+          style: 'thumbnail',
+          reasoning: 'High-contrast design for maximum visibility',
+          estimatedEngagement: 65
+        }
+      ]
+    }
+  }
+
+  static async generateImageFromText(
+    text: string,
+    style: 'quote' | 'key-points' | 'visual-metaphor' = 'quote'
+  ): Promise<string> {
+    try {
+      let prompt = ''
+      
+      switch (style) {
+        case 'quote':
+          // Extract key quote or create one
+          const keyPhrase = this.extractKeyPhrase(text)
+          prompt = `Beautiful quote card with text "${keyPhrase}" on an inspiring background, modern typography, social media ready`
+          break
+          
+        case 'key-points':
+          // Extract bullet points
+          const points = this.extractKeyPoints(text)
+          prompt = `Clean infographic showing ${points.length} key points: ${points.join(', ')}. Modern design, easy to read`
+          break
+          
+        case 'visual-metaphor':
+          // Generate visual representation
+          const concept = this.extractMainConcept(text)
+          prompt = `Abstract visual metaphor representing "${concept}". Artistic, thought-provoking, suitable for social media`
+          break
+      }
+      
+      return await this.generateEnhancedImage({
+        prompt,
+        style: style === 'quote' ? 'quote' : 'infographic',
+        size: '1080x1080'
+      })
+      
+    } catch (error) {
+      console.error('Error generating image from text:', error)
+      throw error
+    }
+  }
+
+  static async createCarouselImages(
+    content: string[],
+    theme: string,
+    brandColors?: string[]
+  ): Promise<string[]> {
+    try {
+      const images: string[] = []
+      
+      for (let i = 0; i < content.length; i++) {
+        const image = await this.generateEnhancedImage({
+          prompt: `Carousel slide ${i + 1}/${content.length}: ${content[i]}. Consistent design theme: ${theme}`,
+          style: 'carousel',
+          size: '1080x1080',
+          brandColors,
+          includeText: true,
+          textOverlay: `${i + 1}/${content.length}`
+        })
+        
+        images.push(image)
+      }
+      
+      return images
+      
+    } catch (error) {
+      console.error('Error creating carousel images:', error)
+      throw error
+    }
+  }
+
+  // Helper methods
+  private static extractKeyPhrase(text: string): string {
+    // Simple extraction - in production, use NLP
+    const sentences = text.split(/[.!?]/).filter(s => s.trim())
+    const shortest = sentences.reduce((a, b) => 
+      a.length < b.length && a.length > 20 ? a : b
+    )
+    return shortest.trim().slice(0, 60) + '...'
+  }
+
+  private static extractKeyPoints(text: string): string[] {
+    // Extract main points - in production, use NLP
+    const sentences = text.split(/[.!?]/).filter(s => s.trim())
+    return sentences
+      .slice(0, 3)
+      .map(s => s.trim().slice(0, 40) + '...')
+  }
+
+  private static extractMainConcept(text: string): string {
+    // Extract main concept - in production, use NLP
+    const words = text.toLowerCase().split(/\s+/)
+    const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for']
+    const significantWords = words.filter(w => 
+      !commonWords.includes(w) && w.length > 4
+    )
+    return significantWords.slice(0, 3).join(' ')
+  }
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
 } 

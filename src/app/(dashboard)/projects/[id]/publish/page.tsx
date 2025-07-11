@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+<<<<<<< HEAD
 import { useParams, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -208,11 +209,68 @@ export default function PublishProjectPage() {
     } catch (error) {
       console.error("Failed to load project:", error)
       toast.error("Failed to load project")
+=======
+import { useRouter, useParams } from "next/navigation"
+import { PublishingWorkflow } from "@/components/publishing-workflow"
+import { ContentStager } from "@/components/staging/content-stager"
+import { StagingReview } from "@/components/staging/staging-review"
+import { ProjectService } from "@/lib/project-service"
+import { Project } from "@/lib/project-types"
+import { useClerkUser } from "@/hooks/use-clerk-user"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+import { 
+  IconArrowLeft, 
+  IconLoader2,
+  IconCheck,
+  IconCircleCheck,
+  IconCircle
+} from "@tabler/icons-react"
+import { cn } from "@/lib/utils"
+
+type PublishingStep = 'select' | 'stage' | 'review'
+type Platform = 'instagram' | 'x' | 'linkedin' | 'facebook'
+
+export default function PublishPage() {
+  const router = useRouter()
+  const params = useParams()
+  const projectId = params.id as string
+  const { user } = useClerkUser()
+  
+  const [project, setProject] = useState<Project | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [publishingStep, setPublishingStep] = useState<PublishingStep>('select')
+  const [selectedPublishContent, setSelectedPublishContent] = useState<any[]>([])
+  const [stagedContent, setStagedContent] = useState<any[]>([])
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  useEffect(() => {
+    if (!user?.id) return
+    loadProject()
+  }, [user?.id, projectId])
+
+  const loadProject = async () => {
+    if (!user?.id) return
+    
+    try {
+      const fetchedProject = await ProjectService.getProject(projectId, user.id)
+      if (!fetchedProject) {
+        toast.error('Project not found')
+        router.push('/projects')
+        return
+      }
+      setProject(fetchedProject)
+    } catch (error) {
+      console.error('Error loading project:', error)
+      toast.error('Failed to load project')
+      router.push('/projects')
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
     } finally {
       setLoading(false)
     }
   }
 
+<<<<<<< HEAD
   const initializePublishableContent = (proj: Project, preSelectedContent?: any[]) => {
     const content: PublishableContent[] = []
 
@@ -444,11 +502,25 @@ export default function PublishProjectPage() {
     } catch (error) {
       console.error("Publishing failed:", error)
       toast.error("Failed to publish content")
+=======
+  const handlePublish = async () => {
+    setIsPublishing(true)
+    try {
+      // Implement actual publishing logic here
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      toast.success('Content published successfully!')
+      router.push(`/projects/${projectId}`)
+    } catch (error) {
+      toast.error('Failed to publish content')
+      console.error('Publishing error:', error)
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
     } finally {
       setIsPublishing(false)
     }
   }
 
+<<<<<<< HEAD
   const getSelectedContentCount = () => publishableContent.filter(item => item.selected).length
   const getTotalPlatformCount = () => {
     return publishableContent.reduce((total, item) => {
@@ -472,10 +544,17 @@ export default function PublishProjectPage() {
             <LoadingSpinner size="lg" />
           </CardContent>
         </Card>
+=======
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <IconLoader2 className="h-8 w-8 animate-spin text-primary" />
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       </div>
     )
   }
 
+<<<<<<< HEAD
   if (!project) return null
 
   return (
@@ -988,6 +1067,178 @@ export default function PublishProjectPage() {
             <IconChevronRight className="h-4 w-4 ml-2" />
           </Button>
         </div>
+=======
+  if (!project) {
+    return null
+  }
+
+  const steps = [
+    { id: 'select', label: 'Select Content', icon: IconCircle },
+    { id: 'stage', label: 'Customize', icon: IconCircle },
+    { id: 'review', label: 'Review & Publish', icon: IconCircle }
+  ]
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push(`/projects/${projectId}`)}
+              >
+                <IconArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-semibold">Publish Content</h1>
+                <p className="text-sm text-muted-foreground">{project.title}</p>
+              </div>
+            </div>
+
+            {/* Progress Steps */}
+            <div className="hidden md:flex items-center gap-8">
+              {steps.map((step, index) => {
+                const isActive = step.id === publishingStep
+                const isPassed = steps.findIndex(s => s.id === publishingStep) > index
+                const Icon = isPassed ? IconCircleCheck : step.icon
+                
+                return (
+                  <div key={step.id} className="flex items-center gap-2">
+                    <Icon className={cn(
+                      "h-5 w-5 transition-colors",
+                      isPassed && "text-green-600",
+                      isActive && "text-primary",
+                      !isPassed && !isActive && "text-muted-foreground"
+                    )} />
+                    <span className={cn(
+                      "text-sm font-medium transition-colors",
+                      isActive ? "text-primary" : "text-muted-foreground"
+                    )}>
+                      {step.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {publishingStep === 'select' && (
+          <PublishingWorkflow
+            project={project}
+            onPublish={(selectedContent) => {
+              setSelectedPublishContent(selectedContent)
+              setPublishingStep('stage')
+            }}
+          />
+        )}
+
+        {publishingStep === 'stage' && (
+          <ContentStager
+            content={selectedPublishContent.map(item => {
+              // Transform ContentItem to StagedContent format
+              const platforms: Platform[] = ['instagram', 'x', 'linkedin', 'facebook']
+              const platformContent: Record<Platform, any> = {} as Record<Platform, any>
+              
+              // Initialize platform content for each platform
+              platforms.forEach(platform => {
+                // Check for existing publication captions from clips
+                let existingCaption = ''
+                let existingHashtags: string[] = []
+                
+                if (item.type === 'clip' && item.publicationCaptions) {
+                  // Use platform-specific captions if available
+                  const platformKey = platform === 'x' ? 'twitter' : platform
+                  existingCaption = item.publicationCaptions[platformKey] || item.publicationCaptions[platform] || ''
+                } else if (item.type === 'social' && item.metadata?.content) {
+                  existingCaption = item.metadata.content
+                  existingHashtags = item.metadata?.hashtags || []
+                }
+                
+                platformContent[platform] = {
+                  caption: existingCaption,
+                  hashtags: existingHashtags,
+                  characterCount: existingCaption.length,
+                  isValid: true,
+                  validationErrors: [],
+                  cta: '',
+                  altText: '',
+                  link: ''
+                }
+              })
+              
+              // Map content type correctly
+              let contentType: 'clip' | 'blog' | 'image' | 'carousel' = 'clip'
+              if (item.type === 'blog') contentType = 'blog'
+              else if (item.type === 'image') contentType = 'image'
+              else if (item.type === 'carousel') contentType = 'carousel'
+              else contentType = 'clip'
+              
+              return {
+                id: item.id,
+                type: contentType,
+                title: item.title,
+                description: item.description || '',
+                originalData: {
+                  ...item.metadata,
+                  ...item, // Include all top-level fields
+                  projectId: project?.id,
+                  score: item.score || item.metadata?.score,
+                  transcript: item.transcript || item.metadata?.transcript,
+                  viralityExplanation: item.viralityExplanation || item.metadata?.viralityExplanation,
+                  publicationCaptions: item.publicationCaptions || item.metadata?.publicationCaptions,
+                  exportUrl: item.exportUrl || item.metadata?.exportUrl,
+                  previewUrl: item.previewUrl || item.metadata?.previewUrl,
+                  thumbnail: item.thumbnail || item.metadata?.thumbnail,
+                  duration: item.duration || item.metadata?.duration
+                },
+                platforms,
+                platformContent,
+                mediaUrls: item.exportUrl ? [item.exportUrl] : (item.metadata?.exportUrl ? [item.metadata.exportUrl] : []),
+                thumbnailUrl: item.preview || item.thumbnail || item.metadata?.thumbnail || item.metadata?.url,
+                duration: item.duration || item.metadata?.duration,
+                analytics: {
+                  estimatedReach: 0,
+                  bestPostingTime: new Date()
+                },
+                // Pass through important fields directly
+                publicationCaptions: item.publicationCaptions,
+                viralityExplanation: item.viralityExplanation,
+                score: item.score,
+                transcript: item.transcript
+              }
+            })}
+            onUpdate={(updatedContent) => setStagedContent(updatedContent)}
+            onNext={() => setPublishingStep('review')}
+          />
+        )}
+
+        {publishingStep === 'review' && (
+          <StagingReview
+            scheduledPosts={stagedContent.map(content => ({
+              stagedContent: content,
+              scheduledDate: new Date(),
+              platforms: content.platforms || [],
+              optimizationReason: 'Optimal time for engagement',
+              suggestedHashtags: content.platformContent[content.platforms[0]]?.hashtags || [],
+              engagementPrediction: {
+                score: 0.8,
+                bestTime: true,
+                reasoning: 'High engagement expected based on content type and timing'
+              }
+            }))}
+            onPublish={handlePublish}
+            onBack={() => setPublishingStep('stage')}
+            publishing={isPublishing}
+          />
+        )}
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       </div>
     </div>
   )

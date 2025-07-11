@@ -29,7 +29,15 @@ import {
   IconClock,
   IconDeviceFloppy,
   IconTrash,
+<<<<<<< HEAD
   IconInfoCircle
+=======
+  IconInfoCircle,
+  IconLayoutGrid,
+  IconChevronRight,
+  IconSend,
+  IconLoader2
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -102,6 +110,7 @@ export default function ProjectStagePage() {
     }
   ]
 
+<<<<<<< HEAD
   // Load draft on mount
   useEffect(() => {
     if (projectId && user?.id) {
@@ -109,6 +118,21 @@ export default function ProjectStagePage() {
       loadProjectAndContent()
     }
   }, [projectId, user])
+=======
+  useEffect(() => {
+    if (!user?.id) return
+    
+    // Load project and content after component mounts (client-side only)
+    loadProjectAndContent()
+  }, [user?.id, projectId])
+
+  useEffect(() => {
+    // Check for draft when component mounts (client-side)
+    if (typeof window !== 'undefined') {
+      checkForDraft()
+    }
+  }, [])
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
 
   // Auto-save draft when content changes
   useEffect(() => {
@@ -294,7 +318,11 @@ export default function ProjectStagePage() {
       setProject(projectData)
       
       // Check if we have selected content from PublishingWorkflow
+<<<<<<< HEAD
       const selectedContentData = sessionStorage.getItem('selectedContent')
+=======
+      const selectedContentData = typeof window !== 'undefined' ? sessionStorage.getItem('selectedContent') : null
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
       
       if (selectedContentData) {
         try {
@@ -307,11 +335,32 @@ export default function ProjectStagePage() {
           
           // Initialize platform content for each platform
           platforms.forEach((platform: string) => {
+<<<<<<< HEAD
             platformContent[platform] = {
               caption: '',
               hashtags: [],
               cta: '',
               characterCount: 0,
+=======
+            // Extract existing captions from clips if available
+            let existingCaption = ''
+            let existingHashtags: string[] = []
+            
+            if (item.type === 'clip' && item.publicationCaptions) {
+              // Check for platform-specific captions from clips
+              existingCaption = item.publicationCaptions[platform] || ''
+            } else if (item.type === 'social' && item.content) {
+              // For social posts, use the content
+              existingCaption = item.content
+              existingHashtags = item.hashtags || []
+            }
+            
+            platformContent[platform] = {
+              caption: existingCaption,
+              hashtags: existingHashtags,
+              cta: '',
+              characterCount: existingCaption.length,
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
               isValid: true,
               validationErrors: [],
               altText: '',
@@ -342,7 +391,18 @@ export default function ProjectStagePage() {
               duration: item.duration,
             analytics: {
                 estimatedReach: item.score ? Math.floor(item.score * 10000) : 5000
+<<<<<<< HEAD
             }
+=======
+            },
+            // Preserve all clip-specific data
+            publicationCaptions: item.publicationCaptions,
+            viralityExplanation: item.viralityExplanation,
+            score: item.score,
+            transcript: item.transcript,
+            hashtags: item.hashtags,
+            content: item.content
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
           }
         })
         
@@ -392,7 +452,38 @@ export default function ProjectStagePage() {
   }
 
   const handleContentUpdate = (updatedContent: any[]) => {
+<<<<<<< HEAD
     setStagedContent(updatedContent)
+=======
+    // The EnhancedContentStager returns posts in its own format
+    // We need to merge this back with our staged content
+    if (updatedContent && updatedContent.length > 0) {
+      // Update existing staged content with new data from EnhancedContentStager
+      const mergedContent = stagedContent.map(item => {
+        const updatedItem = updatedContent.find(u => 
+          u.id && (u.id === item.id || u.elements?.some((e: any) => e.content?.id === item.id))
+        )
+        
+        if (updatedItem) {
+          // Extract any new captions or content from the updated posts
+          const textElement = updatedItem.elements?.find((e: any) => e.type === 'text')
+          if (textElement && item.platformContent) {
+            // Update platform captions with the new text
+            item.platforms.forEach((platform: string) => {
+              if (item.platformContent[platform]) {
+                item.platformContent[platform].caption = textElement.content
+                item.platformContent[platform].characterCount = textElement.content.length
+              }
+            })
+          }
+        }
+        
+        return item
+      })
+      
+      setStagedContent(mergedContent)
+    }
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
     setIsDirty(true)
   }
 
@@ -460,6 +551,48 @@ export default function ProjectStagePage() {
     router.push(`/projects/${projectId}`)
   }
 
+<<<<<<< HEAD
+=======
+  // Transform staged content for EnhancedContentStager
+  const prepareContentForStager = () => {
+    if (!stagedContent || stagedContent.length === 0) return []
+    
+    return stagedContent.map(item => {
+      // Extract the actual content data
+      const contentData = item.originalData || item
+      
+      // Determine content type for EnhancedContentStager format
+      let stagerType: 'clip' | 'blog' | 'social' | 'image' | 'carousel' = 'social'
+      
+      if (item.type === 'clip') {
+        stagerType = 'clip'
+      } else if (item.type === 'blog') {
+        stagerType = 'blog'
+      } else if (item.type === 'image') {
+        stagerType = 'image'
+      }
+      
+      // Build the content object expected by EnhancedContentStager
+      return {
+        id: item.id,
+        type: stagerType,
+        content: {
+          ...contentData,
+          title: item.title || contentData.title || 'Untitled',
+          exportUrl: contentData.exportUrl || contentData.url || item.mediaUrls?.[0],
+          publicationCaptions: contentData.publicationCaptions || item.publicationCaptions,
+          viralityExplanation: contentData.viralityExplanation || item.viralityExplanation,
+          score: contentData.score || item.score,
+          transcript: contentData.transcript || item.transcript,
+          duration: contentData.duration || item.duration,
+          url: contentData.url || item.thumbnailUrl || item.mediaUrls?.[0]
+        },
+        platforms: item.platforms || ['instagram', 'twitter']
+      }
+    })
+  }
+
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -580,7 +713,11 @@ export default function ProjectStagePage() {
         <div className="space-y-6">
           {currentStep === 0 && (
             <EnhancedContentStager
+<<<<<<< HEAD
               content={stagedContent}
+=======
+              content={prepareContentForStager()}
+>>>>>>> 7184e73 (Add new files and configurations for project setup)
               onUpdate={handleContentUpdate}
               onNext={handleNext}
             />

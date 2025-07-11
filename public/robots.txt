@@ -1,0 +1,18 @@
+# Inflio Robots.txt
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# Disallow admin/auth pages
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /onboarding
+Disallow: /api/
+Disallow: /studio/processing/
+Disallow: /projects/*/edit
+Disallow: /projects/*/stage
+Disallow: /editor/
+
+# Sitemap
+Sitemap: https://your-domain.com/sitemap.xml 
