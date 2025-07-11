@@ -1,6 +1,8 @@
 // Correct Klap API Service using v2 Task-Based Workflow
 // Aligned with documentation at /documentation/klap_api/
 
+import { logger } from './logger'
+
 export class KlapAPIService {
   /**
    * Get API configuration lazily to avoid client-side errors
@@ -11,7 +13,10 @@ export class KlapAPIService {
     const apiUrl = process.env.KLAP_API_URL || 'https://api.klap.app/v2'
     
     if (!apiKey) {
-      console.error('[Klap] KLAP_API_KEY is not configured')
+      logger.error('[Klap] KLAP_API_KEY is not configured', {
+        action: 'api_config',
+        metadata: { service: 'klap' }
+      })
       throw new Error('Clip generation service is not configured. Please set KLAP_API_KEY in environment variables.')
     }
     
@@ -29,7 +34,14 @@ export class KlapAPIService {
     const { apiKey, apiUrl } = this.getConfig()
 
     const url = `${apiUrl}${endpoint}`
-    console.log(`[Klap] Requesting: ${options.method || 'GET'} ${url}`)
+    logger.debug(`[Klap] Requesting: ${options.method || 'GET'} ${url}`, {
+      action: 'klap_api_request',
+      metadata: { 
+        method: options.method || 'GET',
+        url,
+        endpoint
+      }
+    })
 
     try {
       const response = await fetch(url, {
@@ -53,15 +65,21 @@ export class KlapAPIService {
           errorMessage = `[Klap] API Error: ${errorJson.message || errorJson.error || errorMessage}`
           errorDetails = JSON.stringify(errorJson, null, 2)
         } catch {
-          console.error('[Klap] Raw non-JSON error response:', errorText)
+          logger.error('[Klap] Raw non-JSON error response', {
+            action: 'klap_api_error',
+            metadata: { errorText }
+          })
         }
         
-        console.error(`[Klap] API request failed:`, {
-          url,
-          status: response.status,
-          statusText: response.statusText,
-          method: options.method || 'GET',
-          details: errorDetails
+        logger.error('[Klap] API request failed', {
+          action: 'klap_api_error',
+          metadata: {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            method: options.method || 'GET',
+            details: errorDetails
+          }
         })
         
         // Provide more specific error messages based on status code

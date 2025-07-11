@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { AIContentService } from '@/lib/ai-content-service'
+// import { AIContentService } from '@/lib/ai-content-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,6 +9,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // This endpoint is temporarily disabled as it uses a method that doesn't exist
+    return NextResponse.json(
+      { error: 'This endpoint is temporarily disabled' },
+      { status: 503 }
+    )
+
+    /*
     const { clips } = await request.json()
 
     if (!clips || !Array.isArray(clips) || clips.length === 0) {
@@ -81,6 +88,7 @@ export async function POST(request: NextRequest) {
       stats,
       message: `Successfully optimized captions for ${optimizedClips.length} clips`
     })
+    */
 
   } catch (error) {
     console.error('Error optimizing captions:', error)

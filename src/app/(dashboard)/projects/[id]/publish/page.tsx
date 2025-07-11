@@ -24,7 +24,7 @@ import {
   IconBrandInstagram,
   IconBrandTiktok,
   IconBrandYoutube,
-  IconArrowLeft,
+  IconArrowLeft, 
   IconPlayerPlay,
   IconClock,
   IconCalendar,
@@ -483,34 +483,34 @@ export default function PublishProjectPage() {
       <AnimatedBackground variant="subtle" />
       
       <div className="relative mx-auto max-w-7xl px-4 py-8">
-        {/* Header */}
+      {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <Button
-              variant="ghost"
+              <Button
+                variant="ghost"
               size="sm"
-              onClick={() => router.push(`/projects/${projectId}`)}
-            >
+                onClick={() => router.push(`/projects/${projectId}`)}
+              >
               <IconArrowLeft className="h-4 w-4 mr-2" />
               Back to Project
-            </Button>
-          </div>
+              </Button>
+              </div>
           
           <h1 className="text-3xl font-bold mb-2">Publish Your Content</h1>
           <p className="text-muted-foreground">
             Schedule and publish your content across multiple platforms
           </p>
-        </div>
+            </div>
 
-        {/* Progress Steps */}
+            {/* Progress Steps */}
         <div className="mb-8">
           <div className="flex items-center justify-between max-w-3xl">
-            {steps.map((step, index) => {
+              {steps.map((step, index) => {
               const Icon = step.icon
               const isActive = currentStep === index
               const isComplete = currentStep > index
-              
-              return (
+                
+                return (
                 <div key={step.id} className="flex items-center">
                   <button
                     onClick={() => setCurrentStep(index)}
@@ -724,11 +724,11 @@ export default function PublishProjectPage() {
                                               )}
                                             >
                                               <Icon className="h-3.5 w-3.5" />
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
                                     
                                     <div className="flex items-center gap-3">
                                       <Popover>
@@ -756,9 +756,9 @@ export default function PublishProjectPage() {
                                         <Label htmlFor={`immediate-${item.id}`} className="text-sm">
                                           Post immediately
                                         </Label>
-                                      </div>
-                                    </div>
-                                    
+        </div>
+      </div>
+
                                     {item.type === 'clip' && (
                                       <div className="space-y-2">
                                         <Label htmlFor={`caption-${item.id}`} className="text-sm">

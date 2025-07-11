@@ -13,6 +13,8 @@ import {
   IconExternalLink
 } from "@tabler/icons-react"
 import { toast } from "sonner"
+import { logger } from "@/lib/logger"
+import * as Sentry from "@sentry/nextjs"
 
 interface ErrorBoundaryState {
   hasError: boolean
@@ -153,16 +155,28 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       errorInfo
     })
 
-    // Log error to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo)
-    }
+    // Log error using centralized logger
+    logger.error('React ErrorBoundary caught an error', {
+      action: 'error_boundary',
+      metadata: {
+        componentStack: errorInfo.componentStack,
+        errorBoundary: this.constructor.name,
+        url: typeof window !== 'undefined' ? window.location.href : 'unknown'
+      }
+    }, error)
 
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo)
 
-    // In production, you might want to send this to an error reporting service
-    // reportError(error, errorInfo)
+    // Send to Sentry in production
+    if (process.env.NODE_ENV === 'production') {
+      Sentry.withScope((scope) => {
+        scope.setContext('errorInfo', {
+          componentStack: errorInfo.componentStack
+        })
+        Sentry.captureException(error)
+      })
+    }
   }
 
   resetError = () => {
@@ -294,14 +308,69 @@ export function FileError({
 // Hook for error handling
 export function useErrorHandler() {
   const handleError = React.useCallback((error: Error, context?: string) => {
-    console.error(`Error ${context ? `in ${context}` : ''}:`, error)
+    // Log error using centralized logger
+    logger.error(`Error ${context ? `in ${context}` : ''}`, {
+      action: 'user_error',
+      metadata: {
+        context,
+        url: typeof window !== 'undefined' ? window.location.href : 'unknown',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+      }
+    }, error)
     
     // Show user-friendly toast
-    toast.error(error.message || 'An unexpected error occurred')
+    const userMessage = getErrorMessage(error)
+    toast.error(userMessage)
     
-    // In production, report to error tracking service
-    // reportError(error, { context })
+    // In production, also send to Sentry
+    if (process.env.NODE_ENV === 'production') {
+      Sentry.captureException(error, {
+        contexts: {
+          custom: { context }
+        }
+      })
+    }
   }, [])
 
   return handleError
+}
+
+// Helper to get user-friendly error messages
+function getErrorMessage(error: Error): string {
+  // Map common error types to user-friendly messages
+  const errorMap: Record<string, string> = {
+    'Network Error': 'Connection error. Please check your internet and try again.',
+    'TypeError': 'Something went wrong. Please refresh the page.',
+    'SyntaxError': 'Invalid data format. Please try again.',
+    'ValidationError': error.message || 'Please check your input and try again.',
+    'AuthError': 'Authentication failed. Please sign in again.',
+    'QuotaExceededError': 'Storage limit reached. Please free up some space.',
+    'AbortError': 'Operation cancelled.',
+    'TimeoutError': 'Request timed out. Please try again.',
+    'NotFoundError': 'The requested resource was not found.',
+    'PermissionError': 'You don\'t have permission to perform this action.'
+  }
+
+  // Check if error name matches any in our map
+  if (error.name && errorMap[error.name]) {
+    return errorMap[error.name]
+  }
+
+  // Check error message for common patterns
+  const message = error.message?.toLowerCase() || ''
+  if (message.includes('network') || message.includes('fetch')) {
+    return errorMap['Network Error']
+  }
+  if (message.includes('unauthorized') || message.includes('401')) {
+    return errorMap['AuthError']
+  }
+  if (message.includes('not found') || message.includes('404')) {
+    return errorMap['NotFoundError']
+  }
+  if (message.includes('timeout')) {
+    return errorMap['TimeoutError']
+  }
+
+  // Default to the error message or generic message
+  return error.message || 'An unexpected error occurred. Please try again.'
 } 

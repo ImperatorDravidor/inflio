@@ -1502,7 +1502,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-5 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1534,6 +1534,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Blog</span>
                         <span className="text-[10px] text-muted-foreground">
                           {stats.totalBlogs} posts
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="social" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconShare2 className="h-5 w-5" />
+                        <span className="text-xs font-medium">Social</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {stats.totalSocialPosts} posts
                         </span>
                       </TabsTrigger>
                       
@@ -1997,15 +2008,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           preload="metadata"
                                           controls={false}
                                           crossOrigin="anonymous"
-                                          onLoadedMetadata={(e) => {
-                                                // Set initial frame to 1 second
-                                            const video = e.currentTarget
-                                            video.currentTime = 1
-                                              }}
+
                                               onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
                                           onMouseLeave={(e) => {
                                             e.currentTarget.pause()
                                             e.currentTarget.currentTime = 1
+                                          }}
+                                          onError={(e) => {
+                                            console.error(`Failed to load video for clip ${clip.id}`)
+                                            e.currentTarget.style.display = 'none'
+                                            // Show error state
+                                            const parent = e.currentTarget.parentElement
+                                            if (parent) {
+                                              const errorDiv = document.createElement('div')
+                                              errorDiv.className = 'flex flex-col items-center justify-center h-full text-gray-400'
+                                              errorDiv.innerHTML = `
+                                                <svg class="h-12 w-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                                </svg>
+                                                <span class="text-sm">Video unavailable</span>
+                                              `
+                                              parent.appendChild(errorDiv)
+                                            }
                                           }}
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
@@ -2040,7 +2064,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     {/* Duration */}
                                     <div className="absolute bottom-3 right-3">
                                       <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
-                                            {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
+                                            <span data-duration-id={clip.id}>
+                                              {clip.duration ? formatDuration(clip.duration) : formatDuration(clip.endTime - clip.startTime)}
+                                            </span>
                                       </div>
                                     </div>
                                   </div>
@@ -2356,6 +2382,50 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             )}
                           </div>
                         </div>
+
+                        {/* Social Content Info */}
+                        {project.transcription && project.content_analysis ? (
+                          <Card>
+                            <CardContent className="p-6 text-center">
+                              <IconShare2 className="h-12 w-12 mx-auto text-primary/30 mb-4" />
+                              <h3 className="font-semibold mb-2">Social Media Ready</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Your content is ready to be staged for social media publishing
+                              </p>
+                              <Button 
+                                onClick={() => router.push(`/projects/${projectId}/stage`)}
+                                className="gap-2"
+                              >
+                                <IconRocket className="h-4 w-4" />
+                                Stage Content
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          <Card>
+                            <CardContent className="p-8 text-center">
+                              <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                              <h3 className="text-lg font-semibold mb-2">Transcript Required</h3>
+                              <p className="text-muted-foreground">
+                                Generate a transcript first to create AI-powered social posts
+                              </p>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Divider */}
+                        {project.folders.social.length > 0 && (
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                              <span className="bg-background px-2 text-muted-foreground">
+                                Saved Posts
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Combined Social Content */}
                         {(project.folders.social.length > 0 || (project.folders.images?.length || 0) > 0) ? (
@@ -2868,7 +2938,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       <PublishingWorkflow
                         project={project}
                         onPublish={handlePublishContent}
-                        onEditBlog={handleEditBlog}
                         className="border-0 shadow-none"
                       />
                     </TabsContent>
@@ -3048,7 +3117,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <IconX className="h-6 w-6" />
             </Button>
             
-            <div className="bg-background rounded-lg overflow-hidden shadow-2xl">
+            <div className="rounded-lg overflow-hidden shadow-2xl">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
                 {/* Left: Video Player */}
                 <div className="bg-black relative flex items-center justify-center">
@@ -3065,12 +3134,43 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           playsInline
                           muted={false}
                           crossOrigin="anonymous"
+                          onLoadedMetadata={(e) => {
+                            const durationElement = document.querySelector(`[data-modal-clip-duration="${selectedClip.id}"]`)
+                            if (durationElement && e.currentTarget.duration) {
+                              durationElement.textContent = formatDuration(e.currentTarget.duration)
+                            }
+                          }}
+                          onError={(e) => {
+                            console.error(`Failed to load video for clip ${selectedClip.id}`)
+                            // Try to fall back to previewUrl if exportUrl fails
+                            if (e.currentTarget.src === selectedClip.exportUrl && selectedClip.previewUrl) {
+                              console.log('Falling back to preview URL')
+                              e.currentTarget.src = selectedClip.previewUrl
+                            } else {
+                              // Show error state
+                              e.currentTarget.style.display = 'none'
+                              const parent = e.currentTarget.parentElement
+                              if (parent && !parent.querySelector('.error-state')) {
+                                const errorDiv = document.createElement('div')
+                                errorDiv.className = 'error-state flex flex-col items-center justify-center h-full text-gray-400'
+                                errorDiv.innerHTML = `
+                                  <svg class="h-12 w-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                  </svg>
+                                  <p class="text-sm">Video playback failed</p>
+                                  <p class="text-xs mt-1">The video might still be processing</p>
+                                `
+                                parent.appendChild(errorDiv)
+                              }
+                            }
+                          }}
                         />
                       ) : (
                         <div className="flex items-center justify-center h-full">
                           <div className="text-center">
                             <IconVideoOff className="h-16 w-16 mx-auto mb-2 text-gray-600" />
                             <p className="text-gray-400">Video not available</p>
+                            <p className="text-xs text-gray-500 mt-1">The clip might still be processing</p>
                           </div>
                         </div>
                       )}
@@ -3079,7 +3179,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 </div>
                 
                 {/* Right: Clip Details */}
-                <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh]">
+                <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh] bg-background">
                   {/* Title and Stats */}
                   <div>
                     <h2 className="text-2xl font-bold mb-3">{selectedClip.title || 'Untitled Clip'}</h2>

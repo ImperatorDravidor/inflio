@@ -554,23 +554,23 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
       {/* Header with Progress */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+            <div className="flex items-center justify-between">
+                <div>
               <CardTitle>Content Preparation</CardTitle>
               <CardDescription>
                 Complete all required fields for each platform
-              </CardDescription>
-            </div>
-            <Button
+                  </CardDescription>
+              </div>
+              <Button
               onClick={onNext}
               disabled={!isAllContentReady()}
               className="bg-gradient-to-r from-primary to-primary/80"
             >
               Continue to Schedule
               <IconChevronRight className="h-4 w-4 ml-2" />
-            </Button>
-          </div>
-        </CardHeader>
+              </Button>
+            </div>
+          </CardHeader>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -596,21 +596,21 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                     )}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                        <div className="flex-1">
                         <p className="font-medium text-sm">{item.title}</p>
                         <p className="text-xs text-muted-foreground">{item.type}</p>
-                      </div>
+                        </div>
                       {isComplete ? (
                         <IconCircleCheck className="h-5 w-5 text-green-500" />
                       ) : (
                         <IconCircleX className="h-5 w-5 text-orange-500" />
                       )}
-                    </div>
+                      </div>
                   </button>
                 )
               })}
-            </CardContent>
-          </Card>
+                    </CardContent>
+                  </Card>
 
           {/* Platform Selector */}
           <Card>
@@ -633,17 +633,17 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                         : "border-border hover:bg-accent/50"
                     )}
                   >
-                    <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
                       <div className={cn(
                         "p-2 rounded-lg text-white bg-gradient-to-br",
                         platformColors[platform]
                       )}>
                         <Icon className="h-4 w-4" />
-                      </div>
+              </div>
                       <div className="flex-1">
                         <p className="font-medium text-sm">{platformNames[platform]}</p>
                         <Progress value={percentage} className="h-1.5 mt-1" />
-                      </div>
+            </div>
                       {complete && (
                         <IconCircleCheck className="h-5 w-5 text-green-500" />
                       )}
@@ -651,8 +651,8 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                   </button>
                 )
               })}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
 
           {/* Task Checklist */}
           <Card>
@@ -693,10 +693,10 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                       {task.error && !task.completed && (
                         <p className="text-xs text-red-500 mt-1">{task.error}</p>
                       )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                                </div>
+                                  </div>
+                                ))}
+                              </div>
             </CardContent>
           </Card>
         </div>
@@ -704,9 +704,9 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
         {/* Right Panel - Form Fields */}
         <div className="lg:col-span-2">
           {currentPlatform && formDef ? (
-            <Card>
+          <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={cn(
                       "p-2 rounded-lg text-white bg-gradient-to-br",
@@ -715,17 +715,17 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                       {platformIcons[currentPlatform] && (
                         <>{React.createElement(platformIcons[currentPlatform], { className: "h-5 w-5" })}</>
                       )}
-                    </div>
+                </div>
                     <div>
                       <CardTitle>{platformNames[currentPlatform]} Content</CardTitle>
                       <CardDescription>
                         {contentType.charAt(0).toUpperCase() + contentType.slice(1)} requirements
                       </CardDescription>
+                      </div>
                     </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                                  <Button
+                                    variant="outline"
+                                  size="sm"
                     onClick={generateAIContent}
                     disabled={isGenerating[currentPlatform]}
                   >
@@ -734,8 +734,8 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                       isGenerating[currentPlatform] && "animate-spin"
                     )} />
                     AI Generate
-                  </Button>
-                </div>
+                                </Button>
+                              </div>
               </CardHeader>
               <CardContent>
                 <motion.div
@@ -772,8 +772,8 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
                   {formDef.fields.map(field => (
                     <div key={field.name}>
                       {renderField(field)}
-                    </div>
-                  ))}
+                          </div>
+                        ))}
 
                   {/* Platform Tips */}
                   <Alert className="bg-primary/5 border-primary/20">
@@ -802,7 +802,7 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
           )}
         </div>
       </div>
-    </div>
+        </div>
   )
 }
 
