@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { AIContentService } from '@/lib/ai-content-service'
-<<<<<<< HEAD
 import { SocialPost } from '@/lib/project-types'
 import { v4 as uuidv4 } from 'uuid'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-=======
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +12,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-<<<<<<< HEAD
     const { projectId, platforms } = await request.json()
 
     if (!projectId || !platforms || !Array.isArray(platforms)) {
@@ -92,51 +88,6 @@ export async function POST(request: NextRequest) {
     console.error('Error generating social posts:', error)
     return NextResponse.json(
       { error: 'Failed to generate social posts.' },
-=======
-    const { 
-      content, 
-      platform = 'instagram',
-      style = 'professional',
-      includeEmojis = true,
-      includeHashtags = true,
-      includeCTA = false,
-      emojiLevel = 'moderate',
-      targetAudience,
-      brandVoice,
-      maxLength
-    } = await request.json()
-
-    if (!content) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 })
-    }
-
-    // Generate enhanced social content
-    const enhancedContent = await AIContentService.generateEnhancedSocialContent(
-      content,
-      platform,
-      {
-        style,
-        includeEmojis,
-        includeHashtags,
-        includeCTA,
-        emojiLevel,
-        targetAudience,
-        brandVoice,
-        maxLength
-      }
-    )
-
-    return NextResponse.json({ 
-      enhancedContent,
-      platform,
-      characterCount: enhancedContent.length
-    })
-
-  } catch (error) {
-    console.error('Error generating social content:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate social content' },
->>>>>>> 7184e73 (Add new files and configurations for project setup)
       { status: 500 }
     )
   }

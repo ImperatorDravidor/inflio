@@ -228,19 +228,6 @@ export class SupabaseProjectService {
 
     // Type-safe folder update - access array explicitly
     const currentFolder = project.folders[folderType] as any[]
-<<<<<<< HEAD
-=======
-    
-    // Check for duplicates when adding clips
-    if (folderType === 'clips' && content.id) {
-      const isDuplicate = currentFolder.some((item: any) => item.id === content.id)
-      if (isDuplicate) {
-        console.warn(`[SupabaseProjectService] Skipping duplicate clip with ID: ${content.id}`)
-        return
-      }
-    }
-    
->>>>>>> 7184e73 (Add new files and configurations for project setup)
     const updatedFolder = [...currentFolder, content]
     
     const updatedFolders = {
@@ -253,33 +240,6 @@ export class SupabaseProjectService {
     await this.saveProject(project)
   }
 
-<<<<<<< HEAD
-=======
-  // Remove duplicate clips from a project
-  static async removeDuplicateClips(projectId: string): Promise<void> {
-    const project = await this.getProject(projectId)
-    if (!project) return
-
-    const uniqueClips = new Map<string, any>()
-    
-    // Keep only the first occurrence of each clip ID
-    project.folders.clips.forEach((clip: any) => {
-      if (clip.id && !uniqueClips.has(clip.id)) {
-        uniqueClips.set(clip.id, clip)
-      }
-    })
-
-    const deduplicatedClips = Array.from(uniqueClips.values())
-    
-    if (deduplicatedClips.length < project.folders.clips.length) {
-      console.log(`[SupabaseProjectService] Removed ${project.folders.clips.length - deduplicatedClips.length} duplicate clips from project ${projectId}`)
-      
-      project.folders.clips = deduplicatedClips
-      await this.saveProject(project)
-    }
-  }
-
->>>>>>> 7184e73 (Add new files and configurations for project setup)
   // Get all projects (filtered by user if userId provided)
   static async getAllProjects(userId?: string): Promise<Project[]> {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {

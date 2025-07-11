@@ -76,10 +76,7 @@ import { Input } from "@/components/ui/input"
 import { TranscriptionService } from "@/lib/transcription-service"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-<<<<<<< HEAD
 import { PublishingWorkflow } from "@/components/publishing-workflow"
-=======
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -90,7 +87,6 @@ import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/b
 import { ImageCarousel } from "@/components/image-carousel"
 import { ThumbnailCreator } from "@/components/thumbnail-creator"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
-<<<<<<< HEAD
 import { ContentStager } from "@/components/staging/content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
 import type { StagedContent } from "@/lib/staging/staging-service"
@@ -98,13 +94,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
-=======
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Progress } from "@/components/ui/progress"
-import { SocialPostGenerator } from "@/components/social/social-post-generator"
-import { v4 as uuidv4 } from 'uuid'
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 
 
 const platformIcons = {
@@ -161,7 +150,6 @@ export default function ProjectDetailPage() {
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
-<<<<<<< HEAD
   
   // Publishing Dialog States
   const [showPublishDialog, setShowPublishDialog] = useState(false)
@@ -169,8 +157,6 @@ export default function ProjectDetailPage() {
   const [selectedPublishContent, setSelectedPublishContent] = useState<any[]>([])
   const [stagedContent, setStagedContent] = useState<StagedContent[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
-=======
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 
   useEffect(() => {
     loadProject()
@@ -347,19 +333,7 @@ export default function ProjectDetailPage() {
         return
       }
       
-<<<<<<< HEAD
       setProject(proj)
-=======
-      // Remove any duplicate clips
-      if (proj.folders.clips && proj.folders.clips.length > 0) {
-        await ProjectService.removeDuplicateClips(projectId)
-        // Reload project after deduplication
-        const cleanedProj = await ProjectService.getProject(projectId)
-        setProject(cleanedProj)
-      } else {
-        setProject(proj)
-      }
->>>>>>> 7184e73 (Add new files and configurations for project setup)
     } catch (error) {
       console.error("Failed to load project:", error)
       toast.error("Failed to load project")
@@ -423,15 +397,11 @@ export default function ProjectDetailPage() {
     }
   }
 
-<<<<<<< HEAD
   const handlePublishContent = (selectedContent: any[]) => {
     // Save selected content to session storage to pass to staging page
     sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
     router.push(`/projects/${projectId}/stage`)
   }
-=======
-
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 
   const handleEditBlog = (blogId: string) => {
     // Navigate to blog editor with project context
@@ -721,19 +691,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     setSelectedSuggestion(suggestion)
     setCustomPrompt(suggestion.prompt)
     setSelectedStyle(suggestion.style || 'gradient')
-<<<<<<< HEAD
     setSelectedQuality(suggestion.recommendedQuality)
     setSelectedSize(suggestion.recommendedSize)
     
     // If it's a carousel, generate multiple images
     if (suggestion.type === 'carousel') {
-=======
-    setSelectedQuality('standard')
-    setSelectedSize('1024x1024')
-    
-    // If it's a carousel suggestion, generate multiple images
-    if (suggestion.prompt.toLowerCase().includes('carousel')) {
->>>>>>> 7184e73 (Add new files and configurations for project setup)
       const slides = carouselSlides[suggestion.id] || 3
       setIsGeneratingImage(true)
       toast.info(`Generating ${slides}-slide carousel...`)
@@ -742,11 +704,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         // Generate all slides with different prompts
         const prompts = []
         for (let i = 0; i < slides; i++) {
-<<<<<<< HEAD
           prompts.push(`${suggestion.prompt} - Slide ${i + 1} of ${slides}, ${suggestion.description}`)
-=======
-          prompts.push(`${suggestion.prompt} - Slide ${i + 1} of ${slides}`)
->>>>>>> 7184e73 (Add new files and configurations for project setup)
         }
         
         const response = await fetch('/api/generate-images', {
@@ -755,13 +713,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           body: JSON.stringify({
             projectId: project!.id,
             prompt: prompts[0], // Use first prompt as base
-<<<<<<< HEAD
             quality: suggestion.recommendedQuality,
             size: suggestion.recommendedSize,
-=======
-            quality: 'standard',
-            size: '1024x1024',
->>>>>>> 7184e73 (Add new files and configurations for project setup)
             style: suggestion.style || 'gradient',
             n: slides,  // Generate multiple images
             isCarousel: true,
@@ -1004,11 +957,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <Button 
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
-<<<<<<< HEAD
                   onClick={() => setShowPublishDialog(true)}
-=======
-                  onClick={() => router.push(`/projects/${projectId}/publish`)}
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                   disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
@@ -1553,11 +1502,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20">
                   <div className="px-6 pt-6 pb-0">
-<<<<<<< HEAD
                     <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50">
-=======
-                    <TabsList className="grid w-full grid-cols-5 h-auto p-1 bg-muted/50">
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1593,20 +1538,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </TabsTrigger>
                       
                       <TabsTrigger 
-<<<<<<< HEAD
-=======
-                        value="social" 
-                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        <IconShare2 className="h-5 w-5" />
-                        <span className="text-xs font-medium">Social</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {stats.totalSocialPosts} posts
-                        </span>
-                      </TabsTrigger>
-                      
-                      <TabsTrigger 
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                         value="graphics" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                       >
@@ -2056,17 +1987,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   setSelectedClip(clip)
                                   setShowVideoModal(true)
                                 }}>
-<<<<<<< HEAD
                                     {clip.exportUrl ? (
                                       <>
                                         <video
                                           src={clip.exportUrl}
-=======
-                                    {clip.exportUrl || clip.previewUrl ? (
-                                      <>
-                                        <video
-                                          src={clip.exportUrl || clip.previewUrl}
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                           className="absolute inset-0 w-full h-full object-cover"
                                           muted
                                           playsInline
@@ -2078,40 +2002,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                             const video = e.currentTarget
                                             video.currentTime = 1
                                               }}
-<<<<<<< HEAD
                                               onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
                                           onMouseLeave={(e) => {
                                             e.currentTarget.pause()
                                             e.currentTarget.currentTime = 1
-=======
-                                              onMouseEnter={(e) => {
-                                                const video = e.currentTarget
-                                                video.play().catch(() => {
-                                                  // If autoplay fails, don't worry about it
-                                                })
-                                              }}
-                                          onMouseLeave={(e) => {
-                                            const video = e.currentTarget
-                                            video.pause()
-                                            video.currentTime = 1
-                                          }}
-                                          onError={(e) => {
-                                            console.error(`Failed to load video for clip ${clip.id}`)
-                                            e.currentTarget.style.display = 'none'
-                                            // Show error state
-                                            const parent = e.currentTarget.parentElement
-                                            if (parent) {
-                                              const errorDiv = document.createElement('div')
-                                              errorDiv.className = 'flex flex-col items-center justify-center h-full text-gray-400'
-                                              errorDiv.innerHTML = `
-                                                <svg class="h-12 w-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                                </svg>
-                                                <span class="text-sm">Video unavailable</span>
-                                              `
-                                              parent.appendChild(errorDiv)
-                                            }
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                           }}
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
@@ -2146,13 +2040,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     {/* Duration */}
                                     <div className="absolute bottom-3 right-3">
                                       <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
-<<<<<<< HEAD
                                             {formatDuration(clip.duration || (clip.endTime - clip.startTime))}
-=======
-                                            <span data-duration-id={clip.id}>
-                                              {clip.duration ? formatDuration(clip.duration) : formatDuration(clip.endTime - clip.startTime)}
-                                            </span>
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                       </div>
                                     </div>
                                   </div>
@@ -2445,11 +2333,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           <div>
                             <h2 className="text-2xl font-bold">Social Media Content</h2>
                             <p className="text-sm text-muted-foreground mt-1">
-<<<<<<< HEAD
                               Ready-to-publish posts and graphics for all platforms
-=======
-                              Create AI-powered posts tailored for each platform
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                             </p>
                           </div>
                           <div className="flex gap-2">
@@ -2473,56 +2357,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           </div>
                         </div>
 
-<<<<<<< HEAD
-=======
-                        {/* Social Post Generator */}
-                        {project.transcription && project.content_analysis ? (
-                          <SocialPostGenerator
-                            transcript={project.transcription.text}
-                            contentAnalysis={project.content_analysis}
-                            projectTitle={project.title}
-                            onPostGenerated={async (post) => {
-                              // Add the generated post to the project
-                              const newPost: SocialPost = {
-                                id: uuidv4(),
-                                platform: post.platform as any,
-                                content: post.content,
-                                hashtags: [],
-                                status: 'draft',
-                                createdAt: new Date().toISOString()
-                              }
-                              
-                              await ProjectService.addToFolder(projectId, 'social', newPost)
-                              await loadProject()
-                            }}
-                          />
-                        ) : (
-                          <Card>
-                            <CardContent className="p-8 text-center">
-                              <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                              <h3 className="text-lg font-semibold mb-2">Transcript Required</h3>
-                              <p className="text-muted-foreground">
-                                Generate a transcript first to create AI-powered social posts
-                              </p>
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Divider */}
-                        {project.folders.social.length > 0 && (
-                          <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                              <div className="w-full border-t" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                              <span className="bg-background px-2 text-muted-foreground">
-                                Saved Posts
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                         {/* Combined Social Content */}
                         {(project.folders.social.length > 0 || (project.folders.images?.length || 0) > 0) ? (
                           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -2839,16 +2673,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     iconColor: 'text-pink-600 dark:text-pink-400',
                                     emoji: '🪝'
                                   }
-<<<<<<< HEAD
                                 }[suggestion.type] || { 
-=======
-                                }[suggestion.prompt.toLowerCase().includes('quote') ? 'quote' :
-                                  suggestion.prompt.toLowerCase().includes('carousel') ? 'carousel' :
-                                  suggestion.prompt.toLowerCase().includes('infographic') ? 'infographic' :
-                                  suggestion.prompt.toLowerCase().includes('thumbnail') ? 'thumbnail' :
-                                  suggestion.prompt.toLowerCase().includes('hook') ? 'hook' :
-                                  'visual'] || { 
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                   icon: IconPhoto, 
                                   color: 'from-gray-500 to-gray-600',
                                   bgColor: 'bg-gray-100 dark:bg-gray-900/20',
@@ -2882,24 +2707,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           </div>
                                           <div>
                                             <Badge variant="secondary" className="font-semibold capitalize">
-<<<<<<< HEAD
                                               {typeConfig.emoji} {suggestion.type}
                                             </Badge>
                                           </div>
                                         </div>
                                         {suggestion.type === 'carousel' && (
-=======
-                                              {typeConfig.emoji} {suggestion.prompt.toLowerCase().includes('quote') ? 'quote' :
-                                                suggestion.prompt.toLowerCase().includes('carousel') ? 'carousel' :
-                                                suggestion.prompt.toLowerCase().includes('infographic') ? 'infographic' :
-                                                suggestion.prompt.toLowerCase().includes('thumbnail') ? 'thumbnail' :
-                                                suggestion.prompt.toLowerCase().includes('hook') ? 'hook' :
-                                                'visual'}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                        {suggestion.prompt.toLowerCase().includes('carousel') && (
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                           <Select 
                                             value={(carouselSlides[suggestion.id] || 3).toString()}
                                             onValueChange={(value) => {
@@ -2920,11 +2732,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                       </div>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
-<<<<<<< HEAD
                                       <p className="text-sm font-semibold line-clamp-2">{suggestion.description}</p>
-=======
-                                      <p className="text-sm font-semibold line-clamp-2">{suggestion.reasoning}</p>
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                                       <p className="text-xs text-muted-foreground line-clamp-2 italic">
                                         "{suggestion.prompt}"
                                       </p>
@@ -3056,7 +2864,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </div>
                     </TabsContent>
 
-<<<<<<< HEAD
                     <TabsContent value="publish" className="mt-0">
                       <PublishingWorkflow
                         project={project}
@@ -3065,9 +2872,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         className="border-0 shadow-none"
                       />
                     </TabsContent>
-=======
-
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                 </div>
               </Tabs>
             </Card>
@@ -3244,27 +3048,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <IconX className="h-6 w-6" />
             </Button>
             
-<<<<<<< HEAD
             <div className="bg-background rounded-lg overflow-hidden shadow-2xl">
-=======
-            <div className="rounded-lg overflow-hidden shadow-2xl">
->>>>>>> 7184e73 (Add new files and configurations for project setup)
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
                 {/* Left: Video Player */}
                 <div className="bg-black relative flex items-center justify-center">
                   <div className="w-full max-w-sm">
                     <div className="aspect-[9/16] relative bg-black rounded-lg overflow-hidden">
-<<<<<<< HEAD
                       {selectedClip.exportUrl ? (
                         <video
                           key={selectedClip.id}
                           src={selectedClip.exportUrl}
-=======
-                      {selectedClip.exportUrl || selectedClip.previewUrl ? (
-                        <video
-                          key={selectedClip.id}
-                          src={selectedClip.exportUrl || selectedClip.previewUrl}
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                           className="w-full h-full object-contain"
                           controls
                           controlsList="nodownload"
@@ -3272,49 +3065,12 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           playsInline
                           muted={false}
                           crossOrigin="anonymous"
-<<<<<<< HEAD
-=======
-                          onError={(e) => {
-                            console.error(`Failed to load video for clip ${selectedClip.id}`)
-                            // Try to fall back to previewUrl if exportUrl fails
-                            if (e.currentTarget.src === selectedClip.exportUrl && selectedClip.previewUrl) {
-                              console.log('Falling back to preview URL')
-                              e.currentTarget.src = selectedClip.previewUrl
-                            } else {
-                              // Show error state
-                              e.currentTarget.style.display = 'none'
-                              const parent = e.currentTarget.parentElement
-                              if (parent && !parent.querySelector('.error-state')) {
-                                const errorDiv = document.createElement('div')
-                                errorDiv.className = 'error-state flex flex-col items-center justify-center h-full text-gray-400'
-                                errorDiv.innerHTML = `
-                                  <svg class="h-16 w-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                  </svg>
-                                  <p class="text-sm">Video playback failed</p>
-                                  <p class="text-xs mt-1">The video might still be processing</p>
-                                `
-                                parent.appendChild(errorDiv)
-                              }
-                            }
-                          }}
-                          onLoadedMetadata={(e) => {
-                            const durationElement = document.querySelector(`[data-modal-clip-duration="${selectedClip.id}"]`)
-                            if (durationElement && e.currentTarget.duration) {
-                              durationElement.textContent = formatDuration(e.currentTarget.duration)
-                            }
-                          }}
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                         />
                       ) : (
                         <div className="flex items-center justify-center h-full">
                           <div className="text-center">
                             <IconVideoOff className="h-16 w-16 mx-auto mb-2 text-gray-600" />
                             <p className="text-gray-400">Video not available</p>
-<<<<<<< HEAD
-=======
-                            <p className="text-xs text-gray-500 mt-1">The clip might still be processing</p>
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                           </div>
                         </div>
                       )}
@@ -3323,11 +3079,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 </div>
                 
                 {/* Right: Clip Details */}
-<<<<<<< HEAD
                 <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh]">
-=======
-                <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh] bg-background">
->>>>>>> 7184e73 (Add new files and configurations for project setup)
                   {/* Title and Stats */}
                   <div>
                     <h2 className="text-2xl font-bold mb-3">{selectedClip.title || 'Untitled Clip'}</h2>
@@ -3480,7 +3232,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         </div>
       )}
 
-<<<<<<< HEAD
       {/* Publishing Dialog */}
       <Dialog open={showPublishDialog} onOpenChange={setShowPublishDialog}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -3622,9 +3373,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           )}
         </DialogContent>
       </Dialog>
-=======
-
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 
       {/* Delete Project Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

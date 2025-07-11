@@ -257,21 +257,7 @@ export class ProjectService {
     
     // Update the specific folder with type safety
     if (folderType === 'clips') {
-<<<<<<< HEAD
       updatedFolders.clips = [...project.folders.clips, content as ClipData]
-=======
-      // Check for duplicates before adding clips
-      const newClip = content as ClipData
-      const existingClips = project.folders.clips
-      const isDuplicate = existingClips.some(clip => clip.id === newClip.id)
-      
-      if (!isDuplicate) {
-        updatedFolders.clips = [...existingClips, newClip]
-      } else {
-        console.warn(`[ProjectService] Skipping duplicate clip with ID: ${newClip.id}`)
-        return // Don't update if it's a duplicate
-      }
->>>>>>> 7184e73 (Add new files and configurations for project setup)
     } else if (folderType === 'blog') {
       updatedFolders.blog = [...project.folders.blog, content as BlogPost]
     } else if (folderType === 'social') {
@@ -457,35 +443,4 @@ export class ProjectService {
       overallProgress: this.calculateProjectProgress(project)
     }
   }
-<<<<<<< HEAD
-=======
-
-  // Remove duplicate clips from a project
-  static async removeDuplicateClips(projectId: string): Promise<void> {
-    const project = await this.getProject(projectId)
-    if (!project) return
-
-    const uniqueClips = new Map<string, ClipData>()
-    
-    // Keep only the first occurrence of each clip ID
-    project.folders.clips.forEach(clip => {
-      if (!uniqueClips.has(clip.id)) {
-        uniqueClips.set(clip.id, clip)
-      }
-    })
-
-    const deduplicatedClips = Array.from(uniqueClips.values())
-    
-    if (deduplicatedClips.length < project.folders.clips.length) {
-      console.log(`[ProjectService] Removed ${project.folders.clips.length - deduplicatedClips.length} duplicate clips from project ${projectId}`)
-      
-      await this.updateProject(projectId, {
-        folders: {
-          ...project.folders,
-          clips: deduplicatedClips
-        }
-      })
-    }
-  }
->>>>>>> 7184e73 (Add new files and configurations for project setup)
 } 
