@@ -1,4 +1,5 @@
 // Health check utilities for monitoring system status
+
 import { createClient } from '@supabase/supabase-js'
 import { logger } from './logger'
 import { validateEnv } from './env-validation'

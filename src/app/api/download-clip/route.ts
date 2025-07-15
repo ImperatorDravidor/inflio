@@ -15,30 +15,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { clipId, projectId, folderId } = await request.json()
+    const { projectId, clipId, folderId } = await request.json()
     
     if (!clipId || !projectId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    console.log(`[Download Clip] Starting download for clip ${clipId} in project ${projectId}`)
-
-    // Get project to verify ownership
+    // Get project to verify clip exists
     const project = await ProjectService.getProject(projectId)
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
     // Find the clip in the project
-    const clip = project.folders?.clips?.find((c: any) => c.id === clipId)
+    const clip = project.folders.clips.find((c: any) => c.id === clipId || c.klapProjectId === clipId)
     if (!clip) {
       return NextResponse.json({ error: 'Clip not found in project' }, { status: 404 })
     }
 
     // Check if already downloaded
     const clipData = clip as any
-    if (clipData.storedInSupabase && clipData.exportUrl && !clipData.exportUrl.includes('klap.app')) {
-      console.log(`[Download Clip] Clip already stored in Supabase`)
+    if (clipData.storedInSupabase && clipData.exportUrl && !clipData.exportUrl.includes('klap.app') && !clipData.exportUrl.includes('amazonaws.com')) {
       return NextResponse.json({ 
         success: true, 
         url: clipData.exportUrl,
@@ -54,7 +51,6 @@ export async function POST(request: NextRequest) {
 
     try {
       // Export the clip from Klap
-      console.log(`[Download Clip] Exporting clip from Klap...`)
       const exportedData = await KlapAPIService.exportMultipleClips(klapFolderId, [clipId])
       
       if (!exportedData || exportedData.length === 0 || !exportedData[0].url) {
@@ -62,7 +58,6 @@ export async function POST(request: NextRequest) {
       }
 
       const exportUrl = exportedData[0].url
-      console.log(`[Download Clip] Got export URL from Klap`)
 
       // Download the video
       const response = await fetch(exportUrl)
@@ -75,7 +70,6 @@ export async function POST(request: NextRequest) {
       
       // Upload to Supabase
       const clipFileName = `${projectId}/clips/clip_${clipId}_${Date.now()}.mp4`
-      console.log(`[Download Clip] Uploading to Supabase: ${clipFileName}`)
       
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from('videos')
@@ -93,7 +87,6 @@ export async function POST(request: NextRequest) {
         .from('videos')
         .getPublicUrl(clipFileName)
       
-      console.log(`[Download Clip] Successfully uploaded to Supabase`)
 
       // Update the clip in the project
       const updatedClips = project.folders.clips.map((c: any) => 

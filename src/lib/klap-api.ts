@@ -74,11 +74,11 @@ export class KlapAPIService {
         logger.error('[Klap] API request failed', {
           action: 'klap_api_error',
           metadata: {
-            url,
-            status: response.status,
-            statusText: response.statusText,
-            method: options.method || 'GET',
-            details: errorDetails
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          method: options.method || 'GET',
+          details: errorDetails
           }
         })
         
@@ -121,9 +121,6 @@ export class KlapAPIService {
       },
     }
     
-    console.log('[Klap] Creating video task with payload:', payload)
-    console.log('[Klap] Environment:', process.env.NODE_ENV)
-    
     return this.request('/tasks/video-to-shorts', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -152,8 +149,7 @@ export class KlapAPIService {
         if (!task.output_id) {
             throw new Error('[Klap] Task is ready but has no output_id.')
         }
-          console.log(`[Klap] Task completed successfully after ${elapsedMinutes} minutes`)
-        return { id: task.id, status: task.status, output_id: task.output_id };
+          return { id: task.id, status: task.status, output_id: task.output_id };
       }
       
       if (task.status === 'error') {
@@ -189,15 +185,12 @@ export class KlapAPIService {
    * Step 3: Get all generated clips from the output folder.
    */
   static async getClipsFromFolder(folderId: string): Promise<any[]> {
-    console.log(`[Klap] Getting clips from folder: ${folderId}`)
     try {
       const response: any = await this.request(`/projects/${folderId}`)
-      console.log(`[Klap] Folder API response:`, JSON.stringify(response, null, 2))
       
       // IMPORTANT: Klap API returns clips directly as an array at /projects/{folderId}
       // Not wrapped in an object with a "clips" property
       if (Array.isArray(response)) {
-        console.log(`[Klap] Response is array with ${response.length} clips`)
         return response
       }
       
@@ -218,7 +211,6 @@ export class KlapAPIService {
         // If it's an object, try to find any array property
         const arrayProps = Object.keys(response).filter(key => Array.isArray(response[key]))
         if (arrayProps.length > 0) {
-          console.log(`[Klap] Found array property: ${arrayProps[0]}`)
           return response[arrayProps[0]]
         }
       }
@@ -240,11 +232,9 @@ export class KlapAPIService {
   static async processVideo(videoUrl: string, title: string) {
     // Step 1: Create task
     const task = await this.createVideoTask(videoUrl)
-    console.log(`[Klap] Task creation successful. Received Task ID: ${task.id}`, task)
     
     // Step 2: Poll until ready
     const completedTask = await this.pollTaskUntilReady(task.id)
-    console.log(`[Klap] Task ${completedTask.id} completed. Output folder: ${completedTask.output_id}`)
     
     // Step 3: Get clips - with retry logic for when clips aren't immediately available
     let clips: any[] = []
@@ -255,10 +245,8 @@ export class KlapAPIService {
       try {
         clips = await this.getClipsFromFolder(completedTask.output_id)
         if (clips && clips.length > 0) {
-          console.log(`[Klap] Successfully fetched ${clips.length} clips.`)
           break
         }
-        console.log(`[Klap] No clips available yet (attempt ${retryCount + 1}/${maxRetries}). Waiting...`)
       } catch (error) {
         console.warn(`[Klap] Error fetching clips (attempt ${retryCount + 1}/${maxRetries}):`, error)
       }
@@ -328,7 +316,6 @@ export class KlapAPIService {
       
       try {
         // Create export task for this clip
-        console.log(`[Klap] Creating export for clip ${clipId}`)
         
         const exportPayload: any = {}
         if (watermark) {
@@ -344,7 +331,6 @@ export class KlapAPIService {
           }
         )
         
-        console.log(`[Klap] Export task created: ${exportTask.id}`)
         
         // Poll for export completion
         let exportResult: any
@@ -389,7 +375,6 @@ export class KlapAPIService {
    * Get a single clip's details
    */
   static async getClipDetails(folderId: string, clipId: string): Promise<any> {
-    console.log(`[Klap] Getting details for clip ${clipId} in folder ${folderId}`)
     try {
       return await this.request(`/projects/${folderId}/${clipId}`)
     } catch (error) {

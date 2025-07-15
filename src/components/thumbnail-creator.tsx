@@ -840,8 +840,8 @@ export function ThumbnailCreator({
           )}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0">
-        <div className="px-6 pt-6 pb-4 border-b">
+      <DialogContent className="max-w-4xl max-h-[75vh] flex flex-col p-0 overflow-hidden">
+        <div className="px-4 pt-4 pb-3 border-b flex-shrink-0">
         <DialogHeader>
           <DialogTitle>Create Video Thumbnail</DialogTitle>
           <DialogDescription>
@@ -854,7 +854,7 @@ export function ThumbnailCreator({
         <video ref={videoRef} className="hidden" crossOrigin="anonymous" />
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "generate" | "upload" | "history")} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="mx-6 grid w-auto grid-cols-3">
+          <TabsList className="mx-4 mt-3 grid w-auto grid-cols-3 flex-shrink-0">
             <TabsTrigger value="generate" className="gap-2">
               <IconSparkles className="h-4 w-4" />
               AI Generate
@@ -869,8 +869,8 @@ export function ThumbnailCreator({
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
-            <TabsContent value="generate" className="space-y-6 mt-6">
+          <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+            <TabsContent value="generate" className="space-y-4 mt-0">
               {/* YouTube Thumbnail Best Practices Alert */}
               {!isEditMode && selectedPhotos.length === 0 && (
                 <Alert className="border-yellow-500/50 bg-yellow-500/10">
@@ -905,23 +905,17 @@ export function ThumbnailCreator({
 
               {/* Preset Templates Section - NEW */}
               {!isEditMode && (
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-base">Quick Templates</Label>
-                    <p className="text-sm text-muted-foreground">Start with a proven thumbnail style</p>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {presetTemplates.map((template) => {
+                <div className="space-y-2">
+                  <Label className="text-sm">Quick Templates</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {presetTemplates.slice(0, 3).map((template) => {
                       const Icon = template.icon
                       return (
-                        <Card
+                        <Button
                           key={template.id}
-                          className={cn(
-                            "cursor-pointer transition-all hover:shadow-md",
-                            selectedStyle === template.style && generatedPrompt.includes(template.prompt.substring(0, 20)) 
-                              ? "border-primary ring-2 ring-primary/20" 
-                              : "hover:border-primary/50"
-                          )}
+                          variant={selectedStyle === template.style && generatedPrompt.includes(template.prompt.substring(0, 20)) ? "default" : "outline"}
+                          size="sm"
+                          className="h-auto p-3 justify-start"
                           onClick={() => {
                             const adaptedPrompt = template.prompt.replace('{TITLE}', projectTitle)
                             setGeneratedPrompt(adaptedPrompt)
@@ -929,39 +923,9 @@ export function ThumbnailCreator({
                             toast.success(`${template.name} template applied!`)
                           }}
                         >
-                          <CardContent className="p-4">
-                            <div className="flex items-start gap-3">
-                              <div className={cn(
-                                "p-2 rounded-lg",
-                                template.id === 'viral' && "bg-red-500/10",
-                                template.id === 'tutorial' && "bg-blue-500/10",
-                                template.id === 'gaming' && "bg-purple-500/10",
-                                template.id === 'vlog' && "bg-pink-500/10",
-                                template.id === 'tech' && "bg-green-500/10"
-                              )}>
-                                <Icon className={cn(
-                                  "h-5 w-5",
-                                  template.id === 'viral' && "text-red-500",
-                                  template.id === 'tutorial' && "text-blue-500",
-                                  template.id === 'gaming' && "text-purple-500",
-                                  template.id === 'vlog' && "text-pink-500",
-                                  template.id === 'tech' && "text-green-500"
-                                )} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-sm">{template.name}</h4>
-                                <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {template.examples.slice(0, 2).map((example, idx) => (
-                                    <Badge key={idx} variant="secondary" className="text-xs">
-                                      {example}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
+                          <Icon className="h-4 w-4 mr-2 flex-shrink-0" />
+                          <span className="text-xs">{template.name}</span>
+                        </Button>
                       )
                     })}
                   </div>
@@ -970,23 +934,23 @@ export function ThumbnailCreator({
 
               {/* Video Snippets Section */}
               {projectVideoUrl && !isEditMode && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-base">Video Frames</Label>
-                      <p className="text-sm text-muted-foreground">Select key moments from your video</p>
-                    </div>
+                    <Label className="text-sm">Video Frames</Label>
                     <div className="flex items-center gap-2">
-                      <Badge variant={selectedSnippetCount > 0 ? "default" : "secondary"}>
-                        {selectedSnippetCount} selected
-                      </Badge>
+                      {selectedSnippetCount > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {selectedSnippetCount} selected
+                        </Badge>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={generateVideoSnippets}
                         disabled={loadingSnippets}
+                        className="h-7 px-2"
                       >
-                        <IconRefresh className={cn("h-4 w-4", loadingSnippets && "animate-spin")} />
+                        <IconRefresh className={cn("h-3 w-3", loadingSnippets && "animate-spin")} />
                       </Button>
                     </div>
                   </div>
@@ -1038,12 +1002,9 @@ export function ThumbnailCreator({
               )}
 
               {/* Personal Photos Section */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-base">Personal Photos & Personas</Label>
-                    <p className="text-sm text-muted-foreground">Add photos of yourself for personalized thumbnails (max 3)</p>
-                  </div>
+                  <Label className="text-sm">Personal Photos</Label>
                   <div className="flex items-center gap-2">
                     {userPersonas.length > 0 && (
                       <Select value={selectedUserPersona || ""} onValueChange={(value) => {
@@ -1200,20 +1161,18 @@ export function ThumbnailCreator({
               </div>
 
               {/* AI Suggestions Section */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-base flex items-center gap-2">
-                      <IconSparkles className="h-4 w-4 text-primary" />
-                      AI Suggestions
-                    </Label>
-                    <p className="text-sm text-muted-foreground">Get AI-powered thumbnail ideas using GPT-4.1</p>
-                  </div>
+                  <Label className="text-sm flex items-center gap-2">
+                    <IconSparkles className="h-3 w-3 text-primary" />
+                    AI Suggestions
+                  </Label>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={loadAiSuggestions}
                     disabled={loadingAiSuggestions}
+                    className="h-7 text-xs"
                   >
                     {loadingAiSuggestions ? (
                       <>
@@ -1230,69 +1189,46 @@ export function ThumbnailCreator({
                 </div>
 
                 {aiSuggestions.length > 0 && (
-                  <ScrollArea className="h-[300px] w-full rounded-md border p-2">
-                    <div className="space-y-3 pr-4">
-                      {aiSuggestions.map((suggestion) => (
-                        <Card
-                          key={suggestion.id}
-                          className={cn(
-                            "cursor-pointer transition-all",
-                            selectedSuggestion === suggestion.id && "border-primary shadow-md"
-                          )}
-                          onClick={() => useSuggestion(suggestion)}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {suggestion.emotion}
-                                  </Badge>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {suggestion.audience}
-                                  </Badge>
-                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                    <IconSparkles className="h-3 w-3" />
-                                    {suggestion.clickabilityScore}/10
-                                  </div>
-                                </div>
-                                
-                                <p className="text-sm font-medium line-clamp-2">
-                                  {suggestion.prompt}
-                                </p>
-                                
-                                {suggestion.textOverlay && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Text:</span>
-                                    <Badge variant="outline" className="text-xs font-bold">
-                                      {suggestion.textOverlay}
-                                    </Badge>
-                                  </div>
-                                )}
-                                
-                                <p className="text-xs text-muted-foreground italic">
-                                  {suggestion.rationale}
-                                </p>
-                              </div>
-                              
-                              <div className="flex flex-col items-end gap-2">
-                                <Badge 
-                                  variant={selectedSuggestion === suggestion.id ? "default" : "outline"}
-                                  className="text-xs"
-                                >
-                                  {suggestion.style}
-                                </Badge>
-                                {selectedSuggestion === suggestion.id && (
-                                  <IconCheck className="h-4 w-4 text-primary" />
-                                )}
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto rounded-md border p-2">
+                    {aiSuggestions.slice(0, 3).map((suggestion) => (
+                      <Card
+                        key={suggestion.id}
+                        className={cn(
+                          "cursor-pointer transition-all p-3",
+                          selectedSuggestion === suggestion.id && "border-primary shadow-md"
+                        )}
+                        onClick={() => useSuggestion(suggestion)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {suggestion.emotion}
+                              </Badge>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <IconSparkles className="h-3 w-3" />
+                                {suggestion.clickabilityScore}/10
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                    <ScrollBar orientation="vertical" />
-                  </ScrollArea>
+                            
+                            <p className="text-sm font-medium line-clamp-1">
+                              {suggestion.prompt}
+                            </p>
+                            
+                            {suggestion.textOverlay && (
+                              <Badge variant="outline" className="text-xs font-bold">
+                                {suggestion.textOverlay}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          {selectedSuggestion === suggestion.id && (
+                            <IconCheck className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
                 )}
 
                 {!loadingAiSuggestions && aiSuggestions.length === 0 && (
@@ -1590,7 +1526,7 @@ export function ThumbnailCreator({
             )}
           </TabsContent>
 
-            <TabsContent value="upload" className="space-y-6 mt-6">
+            <TabsContent value="upload" className="space-y-4 mt-0">
             <div className="space-y-4">
                 <div>
                   <Label className="text-base">Upload Custom Thumbnail</Label>
@@ -1650,7 +1586,7 @@ export function ThumbnailCreator({
             </div>
           </TabsContent>
 
-            <TabsContent value="history" className="space-y-6 mt-6">
+            <TabsContent value="history" className="space-y-4 mt-0">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                 <div>

@@ -42,7 +42,7 @@ export default function UploadPage() {
   const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
     transcription: true,
-    clips: false,
+    clips: true,  // Changed from false to true
     blog: false,
     social: false
   })
@@ -147,7 +147,7 @@ export default function UploadPage() {
     setShowWorkflowSelection(false)
     setWorkflowOptions({
       transcription: true,
-      clips: false,
+      clips: true,  // Changed from false to true
       blog: false,
       social: false
     })

@@ -7,6 +7,9 @@
       "maxDuration": 300
     },
     "src/app/api/process-klap/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/worker/klap/route.ts": {
       "maxDuration": 300
     },
     "src/app/api/process-transcription/route.ts": {
@@ -69,6 +72,10 @@
     {
       "path": "/api/social/publish-scheduled",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/klap",
+      "schedule": "* * * * *"
     }
   ]
 } 

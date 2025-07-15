@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
+import { 
   IconScissors,
   IconArticle,
   IconPhoto,
@@ -656,7 +656,7 @@ export function PublishingWorkflow({
         isHighlighted && "animate-pulse"
       )}>
         <div className="flex items-center justify-between">
-          <div>
+        <div>
             <CardTitle className="flex items-center gap-2 text-xl">
               <IconSparkles className="h-5 w-5" />
               Select Content to Publish
@@ -664,14 +664,14 @@ export function PublishingWorkflow({
             <CardDescription className="mt-1">
               Choose the content you want to publish and continue to the staging tool
             </CardDescription>
-          </div>
+        </div>
           <div className="flex items-center gap-3">
             {selectedCount > 0 && (
               <Badge variant="secondary" className="text-sm px-3 py-1">
                 {selectedCount} selected
               </Badge>
             )}
-            <Button
+            <Button 
               onClick={handleContinue}
               disabled={selectedCount === 0 || isNavigating}
               className={cn(
@@ -685,16 +685,16 @@ export function PublishingWorkflow({
                   <IconSparkles className="h-4 w-4 mr-2 animate-spin" />
                   Preparing...
                 </>
-              ) : (
-                <>
+      ) : (
+        <>
                   <IconSparkles className="h-4 w-4 mr-2" />
                   Continue to Stage
                   <IconArrowRight className="h-4 w-4 ml-1" />
                 </>
               )}
             </Button>
-          </div>
-        </div>
+                      </div>
+                    </div>
       </CardHeader>
       
       <CardContent>
@@ -706,7 +706,7 @@ export function PublishingWorkflow({
           />
         ) : (
           <>
-            {/* Quick Actions */}
+          {/* Quick Actions */}
             {contentItems.length > 1 && (
               <div className="flex items-center justify-between mb-6 pb-4 border-b">
                 <div className="text-sm text-muted-foreground">
@@ -716,14 +716,14 @@ export function PublishingWorkflow({
                   }
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
+            <Button
+              size="sm"
                     variant="outline"
-                    onClick={handleSelectAll}
+              onClick={handleSelectAll}
                     disabled={selectedCount === contentItems.filter(item => item.ready).length}
-                  >
+            >
                     Select All
-                  </Button>
+            </Button>
                   {selectedCount > 0 && (
                     <Button
                       size="sm"
@@ -733,7 +733,7 @@ export function PublishingWorkflow({
                       Clear
                     </Button>
                   )}
-                </div>
+          </div>
               </div>
             )}
             
@@ -755,7 +755,7 @@ export function PublishingWorkflow({
                           onToggle={handleContentToggle}
                         />
                       ))}
-                    </div>
+                </div>
                   </div>
                 )}
 
@@ -767,17 +767,17 @@ export function PublishingWorkflow({
                       Video Clips ({groupedContent.clip.length})
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {groupedContent.clip.map(item => (
+                  {groupedContent.clip.map(item => (
                         <ContentCard
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedContent[item.id] || false}
-                          onToggle={handleContentToggle}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedContent[item.id] || false}
+                      onToggle={handleContentToggle}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
                 {/* Blog Posts */}
                 {groupedContent.blog && groupedContent.blog.length > 0 && (
@@ -815,7 +815,7 @@ export function PublishingWorkflow({
                           onToggle={handleContentToggle}
                         />
                       ))}
-                    </div>
+                  </div>
                   </div>
                 )}
 
@@ -828,69 +828,69 @@ export function PublishingWorkflow({
                     </h3>
                     <div className="space-y-3">
                       {groupedContent.social.map(item => (
-                        <ContentCard
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedContent[item.id] || false}
-                          onToggle={handleContentToggle}
-                        />
-                      ))}
-                    </div>
+                      <ContentCard
+                        key={item.id}
+                        item={item}
+                        isSelected={selectedContent[item.id] || false}
+                        onToggle={handleContentToggle}
+                      />
+                    ))}
                   </div>
+                </div>
                 )}
-              </div>
+          </div>
             </ScrollArea>
 
             {/* Bottom Action Bar */}
-            {selectedCount > 0 && (
+                {selectedCount > 0 && (
               <div className="mt-6 pt-4 border-t">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-muted-foreground">Selected content:</span>
                     <div className="flex items-center gap-2">
-                      {Object.entries(
-                        getSelectedItems().reduce((acc, item) => {
-                          acc[item.type] = (acc[item.type] || 0) + 1
-                          return acc
-                        }, {} as Record<string, number>)
-                      ).map(([type, count]) => {
+                    {Object.entries(
+                      getSelectedItems().reduce((acc, item) => {
+                        acc[item.type] = (acc[item.type] || 0) + 1
+                        return acc
+                      }, {} as Record<string, number>)
+                    ).map(([type, count]) => {
                         const Icon = getContentIcon(type)
-                        return (
+                      return (
                           <Badge key={type} variant="secondary" className="gap-1">
-                            <Icon className="h-3 w-3" />
+                          <Icon className="h-3 w-3" />
                             {count} {type}{count > 1 ? 's' : ''}
-                          </Badge>
-                        )
-                      })}
-                    </div>
+                        </Badge>
+                      )
+                    })}
                   </div>
-                  <Button
-                    onClick={handleContinue}
+              </div>
+              <Button
+                onClick={handleContinue}
                     disabled={isNavigating}
-                    className={cn(
+                className={cn(
                       "bg-gradient-to-r from-blue-600 to-purple-600",
                       "hover:from-blue-700 hover:to-purple-700",
                       isNavigating && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {isNavigating ? (
-                      <>
+                )}
+              >
+                {isNavigating ? (
+                  <>
                         <IconSparkles className="h-4 w-4 mr-2 animate-spin" />
                         Preparing...
-                      </>
-                    ) : (
-                      <>
-                        <IconSparkles className="h-4 w-4 mr-2" />
+                  </>
+                ) : (
+                  <>
+                    <IconSparkles className="h-4 w-4 mr-2" />
                         Continue with {selectedCount} items
-                        <IconArrowRight className="h-4 w-4 ml-1" />
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
+                    <IconArrowRight className="h-4 w-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
             )}
-          </>
-        )}
+        </>
+      )}
       </CardContent>
     </Card>
   )
@@ -904,7 +904,7 @@ function ContentCard({
 }: { 
   item: ContentItem
   isSelected: boolean
-  onToggle: (id: string) => void 
+  onToggle: (id: string) => void
 }) {
   const Icon = getContentIcon(item.type)
   
@@ -946,12 +946,12 @@ function ContentCard({
                   video.currentTime = 0
                 }}
               />
-            </div>
+                </div>
           </div>
-        ) : (
+          ) : (
           <div className="aspect-[9/16] bg-muted rounded-lg flex items-center justify-center max-w-[160px] mx-auto">
             <IconVideo className="h-8 w-8 text-muted-foreground" />
-          </div>
+            </div>
         )
       
       case 'longform':
@@ -996,7 +996,7 @@ function ContentCard({
         ) : (
           <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
             <IconVideo className="h-8 w-8 text-muted-foreground" />
-          </div>
+            </div>
         )
       
       case 'image':
@@ -1012,7 +1012,7 @@ function ContentCard({
         ) : (
           <div className="w-full h-full bg-muted rounded-lg flex items-center justify-center">
             <IconPhoto className="h-8 w-8 text-muted-foreground" />
-          </div>
+        </div>
         )
       
       case 'blog':
@@ -1023,7 +1023,7 @@ function ContentCard({
         return null
     }
   }
-
+  
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
@@ -1056,30 +1056,30 @@ function ContentCard({
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-medium truncate">{item.title}</h4>
                 <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-              </div>
+        </div>
             </div>
           </div>
         ) : (
           /* Default layout for other content types */
-          <div className="flex items-start gap-3">
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => onToggle(item.id)}
-              disabled={!item.ready}
-              className="mt-0.5"
-              onClick={(e) => e.stopPropagation()}
-            />
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggle(item.id)}
+            disabled={!item.ready}
+            className="mt-0.5"
+            onClick={(e) => e.stopPropagation()}
+          />
             
             <div className="flex-1 space-y-2">
               <div className="flex items-start justify-between">
                 <div>
                   <h4 className="font-medium flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+              <Icon className="h-4 w-4 text-muted-foreground" />
                     {item.title}
                   </h4>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {item.description}
-                  </p>
+                {item.description}
+              </p>
                 </div>
                 {!item.ready && (
                   <Badge variant="outline" className="text-xs">
@@ -1099,9 +1099,9 @@ function ContentCard({
               {(item.type === 'blog' || item.type === 'social') && item.preview && (
                 <div className="mt-2 p-3 bg-muted/30 rounded-lg text-sm text-muted-foreground">
                   <p className="line-clamp-2">{item.preview}</p>
-                </div>
+          </div>
               )}
-            </div>
+        </div>
           </div>
         )}
       </div>

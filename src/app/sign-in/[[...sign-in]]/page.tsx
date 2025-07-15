@@ -1,24 +1,65 @@
-"use client"
+"use client";
 
 import { SignIn } from "@clerk/nextjs";
-import { Layers } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
 
-export default function SignInPage() {
-  return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background">
-       <div 
-        className="absolute inset-0 -z-10 h-full w-full bg-background 
-        [background:radial-gradient(125%_125%_at_50%_10%,#fff_40%,#63e_100%)]
-        dark:[background:radial-gradient(125%_125%_at_50%_10%,#000_40%,#63e_100%)]" 
-      />
-      <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg shadow-lg border">
-        <div className="flex flex-col items-center space-y-2">
-            <Layers className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold">Welcome Back to Inflio</h1>
-            <p className="text-muted-foreground">Sign in to continue to your dashboard.</p>
+export default function Page() {
+  const { isLoaded, isSignedIn, userId } = useAuth();
+  const [debugInfo, setDebugInfo] = useState<any>({});
+
+  useEffect(() => {
+    setDebugInfo({
+      isLoaded,
+      isSignedIn,
+      userId,
+      publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? "Set" : "Not Set",
+      timestamp: new Date().toISOString(),
+    });
+  }, [isLoaded, isSignedIn, userId]);
+
+  // If already signed in, show a message
+  if (isLoaded && isSignedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">You are already signed in</h1>
+          <p className="mb-4">User ID: {userId}</p>
+          <a href="/dashboard" className="text-blue-500 hover:underline">
+            Go to Dashboard →
+          </a>
+          <br />
+          <a href="/sign-out-test" className="text-red-500 hover:underline mt-2 inline-block">
+            Sign Out →
+          </a>
         </div>
-        <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center">
+      {/* Debug info at top */}
+      <div className="absolute top-0 left-0 p-4 text-xs bg-gray-100 dark:bg-gray-800">
+        <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+      </div>
+      
+      {/* Sign in component */}
+      <div className="w-full max-w-md">
+        {!isLoaded ? (
+          <div className="text-center">
+            <p>Loading Clerk...</p>
+          </div>
+        ) : (
+          <SignIn 
+            appearance={{
+              elements: {
+                rootBox: "mx-auto",
+                card: "shadow-none",
+              },
+            }}
+          />
+        )}
       </div>
     </div>
   );
-} 

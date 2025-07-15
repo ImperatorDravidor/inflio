@@ -59,9 +59,9 @@ import {
   IconMail,
   IconMessageCircle,
   IconBrandReddit,
-  IconLayoutGridAdd,
-  IconChevronDown,
-} from "@tabler/icons-react"
+      IconLayoutGridAdd,
+    IconChevronDown,
+  } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
@@ -77,6 +77,9 @@ import { TranscriptionService } from "@/lib/transcription-service"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PublishingWorkflow } from "@/components/publishing-workflow"
+
+
+
 import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -333,7 +336,7 @@ export default function ProjectDetailPage() {
         return
       }
       
-      setProject(proj)
+        setProject(proj)
     } catch (error) {
       console.error("Failed to load project:", error)
       toast.error("Failed to load project")
@@ -751,6 +754,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     }
     generateImage(customPrompt)
   }
+
+
 
   if (loading) {
     return (
@@ -1981,7 +1986,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                 
                                 return (
                               <motion.div
-                                key={clip.id}
+                                key={`${clip.id}_${index}`}
                                   initial={{ opacity: 0, x: -20 }}
                                   animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.05 }}

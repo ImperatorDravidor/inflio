@@ -4,7 +4,7 @@ import "./globals.css";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { ClerkProvider } from "@clerk/nextjs";
 import { UserProfileProvider } from "@/hooks/use-user-profile";
-import { Toaster } from "@/components/ui/sonner"
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

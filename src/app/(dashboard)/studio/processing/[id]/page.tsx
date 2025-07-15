@@ -58,7 +58,8 @@ export default function ProcessingPage() {
   const [startTime, setStartTime] = useState<Date | null>(null)
   const [estimatedEndTime, setEstimatedEndTime] = useState<Date | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [transcriptionStatus, setTranscriptionStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending')
+  const [transcriptionStatus, setTranscriptionStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle')
+  const redirectingRef = useRef(false) // Add flag to prevent multiple redirects
 
   const loadProject = useCallback(async () => {
     try {
@@ -95,6 +96,24 @@ export default function ProcessingPage() {
       return
     }
 
+    console.log('[Processing] Starting processing for project:', projectId)
+    console.log('[Processing] Project tasks:', project.tasks)
+    console.log('[Processing] Video URL:', project.video_url)
+
+    // Check if transcription task exists, if not add it
+    const hasTranscriptionTask = project.tasks.some(t => t.type === 'transcription')
+    if (!hasTranscriptionTask) {
+      console.log('[Processing] No transcription task found, adding it...')
+      const transcriptionTask = {
+        id: crypto.randomUUID(),
+        type: 'transcription' as const,
+        status: 'pending' as const,
+        progress: 0
+      }
+      project.tasks.push(transcriptionTask)
+      await ProjectService.updateProject(projectId, { tasks: project.tasks })
+    }
+
     setProcessingStarted(true)
     setStartTime(new Date())
     toast.info("Starting AI processing...")
@@ -104,19 +123,20 @@ export default function ProcessingPage() {
     await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
 
     try {
+      console.log('[Processing] Starting Klap processing...')
       // Start Klap processing
       const klapPromise = fetch('/api/process-klap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url
         })
       }).then(async (response) => {
         if (response.ok) {
-          // Don't poll or update progress here - the Klap task takes 10-20 minutes
-          // The main polling interval in the useEffect will check the actual status
           const result = await response.json()
+          await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
           return { success: true, result }
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -134,6 +154,7 @@ export default function ProcessingPage() {
         }
       })
 
+      console.log('[Processing] Starting transcription processing...')
       // Start transcription processing
       const transcriptionPromise = fetch('/api/process-transcription', {
         method: 'POST',
@@ -145,20 +166,32 @@ export default function ProcessingPage() {
           language: 'en'
         })
       }).then(async (response) => {
+        console.log('[Processing] Transcription response status:', response.status)
         if (response.ok) {
           // Transcription is usually faster, update progress more quickly
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 50, 'processing')
           const result = await response.json()
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+          console.log('[Processing] Transcription result:', result)
           return { success: true, result }
         } else {
+          const errorText = await response.text()
+          console.error('[Processing] Transcription failed:', errorText)
           await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
-          throw new Error('Transcription failed')
+          throw new Error('Transcription failed: ' + errorText)
         }
+      }).catch(async (error) => {
+        console.error('[Processing] Transcription error:', error)
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+        throw error
       })
 
+      console.log('[Processing] Waiting for both promises...')
       // Wait for both to complete
       const [klapResult, transcriptionResult] = await Promise.allSettled([klapPromise, transcriptionPromise])
+
+      console.log('[Processing] Results:', { 
+        klap: klapResult.status, 
+        transcription: transcriptionResult.status 
+      })
 
       // Handle results
       let anySuccess = false
@@ -274,7 +307,8 @@ export default function ProcessingPage() {
       }
       
       // If project is complete, redirect immediately
-      if (proj.status === 'ready' || progress === 100) {
+      if ((proj.status === 'ready' || progress === 100) && !redirectingRef.current) {
+        redirectingRef.current = true // Set flag to prevent duplicate redirects
         if (proj.status !== 'draft') {
           // Set status to draft when processing completes
           await ProjectService.updateProject(projectId, { status: 'draft' })
@@ -319,7 +353,8 @@ export default function ProcessingPage() {
             }
             
             // Redirect as soon as transcription is done, even if clips are still processing
-            if (isTranscriptionComplete) {
+            if (isTranscriptionComplete && !redirectingRef.current) {
+              redirectingRef.current = true // Set flag to prevent duplicate redirects
               clearInterval(interval)
               pollingIntervalRef.current = null
               
@@ -345,7 +380,8 @@ export default function ProcessingPage() {
             const updatedProgress = ProjectService.calculateProjectProgress(updatedProject)
             
             // Also redirect if everything is complete
-            if (updatedProject.status === 'ready' || updatedProgress === 100) {
+            if ((updatedProject.status === 'ready' || updatedProgress === 100) && !redirectingRef.current) {
+              redirectingRef.current = true // Set flag to prevent duplicate redirects
               clearInterval(interval)
               pollingIntervalRef.current = null
               
@@ -362,7 +398,7 @@ export default function ProcessingPage() {
             }
           }
           await checkTranscriptionStatus()
-        }, 5000) // Poll every 5 seconds (changed from 2000)
+        }, 15000) // Poll every 15 seconds (reduced frequency to avoid duplicate calls)
         
         pollingIntervalRef.current = interval
       }

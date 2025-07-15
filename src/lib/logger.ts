@@ -1,4 +1,5 @@
 // Centralized logging service for production-ready error handling
+
 import * as Sentry from '@sentry/nextjs'
 
 export enum LogLevel {

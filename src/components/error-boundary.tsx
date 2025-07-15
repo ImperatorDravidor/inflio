@@ -14,6 +14,8 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { logger } from "@/lib/logger"
+
+
 import * as Sentry from "@sentry/nextjs"
 
 interface ErrorBoundaryState {
@@ -162,7 +164,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
         componentStack: errorInfo.componentStack,
         errorBoundary: this.constructor.name,
         url: typeof window !== 'undefined' ? window.location.href : 'unknown'
-      }
+    }
     }, error)
 
     // Call custom error handler if provided
