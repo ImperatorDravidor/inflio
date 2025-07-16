@@ -47,8 +47,37 @@ export async function POST(request: NextRequest) {
     // Create new job
     const job = await KlapJobQueue.createJob(projectId, project.video_url)
     
-    // Update task progress
-    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
+    // Update task progress to show it's queued
+    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+    
+    // Small delay to ensure Redis operations complete
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Immediately trigger the worker
+    console.log('[Process Klap] Triggering worker immediately...')
+    try {
+      const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/worker/klap`
+      console.log('[Process Klap] Worker URL:', workerUrl)
+      console.log('[Process Klap] Worker secret exists:', !!process.env.WORKER_SECRET)
+      
+      const response = await fetch(workerUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.WORKER_SECRET}`,
+        },
+      })
+      
+      console.log('[Process Klap] Worker trigger response:', response.status)
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('[Process Klap] Worker trigger failed:', text)
+      } else {
+        console.log('[Process Klap] Worker triggered successfully')
+      }
+    } catch (error) {
+      console.error('[Process Klap] Failed to trigger worker:', error)
+      // Don't throw - the cron will pick it up anyway
+    }
     
     return NextResponse.json({
       success: true,
@@ -83,6 +112,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ 
         error: 'No job found for this project' 
       }, { status: 404 })
+    }
+
+    // Update task progress to match Redis job progress
+    if (job.status === 'processing' || job.status === 'queued') {
+      const currentProgress = job.progress || 10
+      await ProjectService.updateTaskProgress(projectId, 'clips', currentProgress, 'processing')
     }
 
     // If job is completed, update project with clips

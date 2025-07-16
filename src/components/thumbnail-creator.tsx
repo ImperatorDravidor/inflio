@@ -940,8 +940,8 @@ export function ThumbnailCreator({
                     <div className="flex items-center gap-2">
                       {selectedSnippetCount > 0 && (
                         <Badge variant="secondary" className="text-xs">
-                          {selectedSnippetCount} selected
-                        </Badge>
+                        {selectedSnippetCount} selected
+                      </Badge>
                       )}
                       <Button
                         variant="ghost"
@@ -1165,8 +1165,8 @@ export function ThumbnailCreator({
                 <div className="flex items-center justify-between">
                   <Label className="text-sm flex items-center gap-2">
                     <IconSparkles className="h-3 w-3 text-primary" />
-                    AI Suggestions
-                  </Label>
+                      AI Suggestions
+                    </Label>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1191,44 +1191,44 @@ export function ThumbnailCreator({
                 {aiSuggestions.length > 0 && (
                   <div className="space-y-2 max-h-[200px] overflow-y-auto rounded-md border p-2">
                     {aiSuggestions.slice(0, 3).map((suggestion) => (
-                      <Card
-                        key={suggestion.id}
-                        className={cn(
+                        <Card
+                          key={suggestion.id}
+                          className={cn(
                           "cursor-pointer transition-all p-3",
-                          selectedSuggestion === suggestion.id && "border-primary shadow-md"
-                        )}
-                        onClick={() => useSuggestion(suggestion)}
-                      >
+                            selectedSuggestion === suggestion.id && "border-primary shadow-md"
+                          )}
+                          onClick={() => useSuggestion(suggestion)}
+                        >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                {suggestion.emotion}
-                              </Badge>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <IconSparkles className="h-3 w-3" />
-                                {suggestion.clickabilityScore}/10
-                              </div>
-                            </div>
-                            
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {suggestion.emotion}
+                                  </Badge>
+                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <IconSparkles className="h-3 w-3" />
+                                    {suggestion.clickabilityScore}/10
+                                  </div>
+                                </div>
+                                
                             <p className="text-sm font-medium line-clamp-1">
-                              {suggestion.prompt}
-                            </p>
-                            
-                            {suggestion.textOverlay && (
-                              <Badge variant="outline" className="text-xs font-bold">
-                                {suggestion.textOverlay}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          {selectedSuggestion === suggestion.id && (
+                                  {suggestion.prompt}
+                                </p>
+                                
+                                {suggestion.textOverlay && (
+                                    <Badge variant="outline" className="text-xs font-bold">
+                                      {suggestion.textOverlay}
+                                    </Badge>
+                                )}
+                              </div>
+                              
+                                {selectedSuggestion === suggestion.id && (
                             <IconCheck className="h-4 w-4 text-primary flex-shrink-0" />
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                                )}
+                              </div>
+                        </Card>
+                      ))}
+                    </div>
                 )}
 
                 {!loadingAiSuggestions && aiSuggestions.length === 0 && (

@@ -154,18 +154,31 @@ export class SupabaseProjectService {
 
   // Get project by ID
   static async getProject(projectId: string): Promise<Project | null> {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', projectId)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single()
 
-    if (error) {
-      console.error('Error fetching project:', error)
+      if (error) {
+        console.error('[SupabaseProjectService] Error fetching project:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          projectId
+        })
+        if (error.code === 'PGRST116') {
+          console.error('[SupabaseProjectService] Project not found with ID:', projectId)
+        }
+        return null
+      }
+
+      return data
+    } catch (err) {
+      console.error('[SupabaseProjectService] Unexpected error in getProject:', err)
       return null
     }
-
-    return data
   }
 
   // Update project

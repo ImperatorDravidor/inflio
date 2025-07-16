@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { auth } from "@clerk/nextjs/server";
 import { processTranscription } from "@/lib/transcription-processor";
+import { KlapJobQueue } from "@/lib/redis";
 
 export async function POST(
   request: Request,
@@ -51,14 +52,44 @@ export async function POST(
     );
     
     if (hasClipsTask) {
-      // Start Klap processing
-      fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-klap`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId })
-      }).catch(error => {
-        console.error('[Process Route] Failed to start Klap processing:', error);
-      });
+      // Queue Klap processing via Redis
+      try {
+        console.log('[Process Route] Checking for existing Klap job...')
+        
+        // Check if job already exists
+        const existingJob = await KlapJobQueue.getJobByProjectId(projectId);
+        if (!existingJob || (existingJob.status !== 'queued' && existingJob.status !== 'processing')) {
+          // Create new job
+          console.log('[Process Route] Creating new Klap job for project:', projectId)
+          console.log('[Process Route] Video URL:', project.video_url)
+          
+          const job = await KlapJobQueue.createJob(projectId, project.video_url);
+          console.log('[Process Route] Klap job queued successfully:', {
+            jobId: job.id,
+            projectId: job.projectId,
+            status: job.status,
+            createdAt: job.createdAt
+          });
+          
+          // Update task progress to 10% to show it's queued and waiting
+          await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
+          console.log('[Process Route] Updated clips task to processing status with 10% progress')
+        } else {
+          console.log('[Process Route] Klap job already exists:', {
+            jobId: existingJob.id,
+            status: existingJob.status,
+            progress: existingJob.progress,
+            attempts: existingJob.attempts
+          });
+        }
+      } catch (error) {
+        console.error('[Process Route] Failed to queue Klap processing:', error);
+        console.error('[Process Route] Error details:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        // Don't throw - allow transcription to continue even if clips fail
+      }
     }
 
     return NextResponse.json({

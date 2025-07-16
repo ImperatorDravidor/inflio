@@ -33,8 +33,8 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <body className="antialiased" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
           <UserProfileProvider>
             <NextThemesProvider
               attribute="class"
@@ -48,8 +48,8 @@ export default function RootLayout({
               <Toaster />
             </NextThemesProvider>
           </UserProfileProvider>
-        </body>
-      </html>
+      </body>
+    </html>
     </ClerkProvider>
   );
 }

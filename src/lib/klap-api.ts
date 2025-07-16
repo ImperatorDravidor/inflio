@@ -121,10 +121,23 @@ export class KlapAPIService {
       },
     }
     
-    return this.request('/tasks/video-to-shorts', {
-      method: 'POST',
-      body: JSON.stringify(payload),
+    console.log('[KlapAPI] Creating video task with payload:', {
+      videoUrl,
+      endpoint: '/tasks/video-to-shorts'
     })
+    
+    try {
+      const result = await this.request<{ id: string }>('/tasks/video-to-shorts', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      
+      console.log('[KlapAPI] Video task created successfully:', result)
+      return result
+    } catch (error) {
+      console.error('[KlapAPI] Failed to create video task:', error)
+      throw error
+    }
   }
 
   /**
@@ -149,7 +162,7 @@ export class KlapAPIService {
         if (!task.output_id) {
             throw new Error('[Klap] Task is ready but has no output_id.')
         }
-          return { id: task.id, status: task.status, output_id: task.output_id };
+        return { id: task.id, status: task.status, output_id: task.output_id };
       }
       
       if (task.status === 'error') {

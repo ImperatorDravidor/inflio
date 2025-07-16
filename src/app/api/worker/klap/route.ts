@@ -14,10 +14,15 @@ export const dynamic = 'force-dynamic'
  * This should be called by a cron job or QStash
  */
 export async function POST(request: NextRequest) {
+  console.log('[Worker] Klap worker endpoint called')
+  
   try {
     // Verify authorization (add your own auth mechanism)
     const authHeader = request.headers.get('authorization')
+    console.log('[Worker] Auth header present:', !!authHeader)
+    
     if (authHeader !== `Bearer ${process.env.WORKER_SECRET}`) {
+      console.log('[Worker] Authorization failed')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -71,22 +76,55 @@ export async function POST(request: NextRequest) {
 async function processKlapJob(job: KlapJob) {
   const { projectId, videoUrl, id: jobId } = job
 
+  // First check if the project still exists
+  console.log(`[Worker] Checking if project ${projectId} exists...`)
+  const project = await ProjectService.getProject(projectId)
+  
+  if (!project) {
+    console.log(`[Worker] Project ${projectId} no longer exists, marking job as failed`)
+    await KlapJobQueue.failJob(jobId, 'Project no longer exists')
+    return
+  }
+
   // Update progress: Starting
-  await KlapJobQueue.updateJob(jobId, { progress: 10 })
+  await KlapJobQueue.updateJob(jobId, { progress: 15 })
+  console.log(`[Worker] Starting Klap task creation for video: ${videoUrl}`)
 
   // Start Klap processing
-  const task = await KlapAPIService.createVideoTask(videoUrl)
+  let task
+  try {
+    task = await KlapAPIService.createVideoTask(videoUrl)
+    console.log(`[Worker] Klap task created successfully:`, {
+      taskId: task.id,
+      projectId,
+      jobId
+    })
+  } catch (error) {
+    console.error(`[Worker] Failed to create Klap task:`, error)
+    throw error
+  }
   
   // Update job with task ID
   await KlapJobQueue.updateJob(jobId, { 
     taskId: task.id,
-    progress: 20 
+    progress: 25 
   })
+  console.log(`[Worker] Updated job with Klap task ID: ${task.id}`)
 
   // Update project with task ID
-  await ProjectService.updateProject(projectId, {
-    klap_project_id: task.id
-  })
+  try {
+    const updateResult = await ProjectService.updateProject(projectId, {
+      klap_project_id: task.id
+    })
+    
+    if (!updateResult) {
+      console.error(`[Worker] Failed to update project ${projectId} - project may have been deleted`)
+      // Continue processing anyway as the Klap task is already created
+    }
+  } catch (error: any) {
+    console.error(`[Worker] Error updating project ${projectId}:`, error.message)
+    // Continue processing even if project update fails
+  }
 
   // Poll for completion
   let attempts = 0
@@ -127,7 +165,7 @@ async function processKlapJob(job: KlapJob) {
     }
 
     // Update progress based on time elapsed
-    const progress = Math.min(20 + Math.floor((attempts / maxAttempts) * 30), 50)
+    const progress = Math.min(25 + Math.floor((attempts / maxAttempts) * 25), 50)
     await KlapJobQueue.updateJob(jobId, { progress })
 
     // Wait before next check
@@ -146,11 +184,23 @@ async function processAndStoreClips(
   folderId: string,
   jobId: string
 ) {
+  // First check if project still exists
+  const projectExists = await ProjectService.getProject(projectId)
+  if (!projectExists) {
+    console.log(`[Worker] Project ${projectId} no longer exists, skipping clip storage`)
+    throw new Error('Project no longer exists')
+  }
+
   // Update project with folder ID
-  await ProjectService.updateProject(projectId, {
+  const updateResult = await ProjectService.updateProject(projectId, {
     klap_folder_id: folderId,
     klap_project_id: folderId
   })
+  
+  if (!updateResult) {
+    console.error(`[Worker] Failed to update project ${projectId} with folder ID`)
+    throw new Error('Failed to update project')
+  }
 
   // Get clips from Klap
   const klapClips = await KlapAPIService.getClipsFromFolder(folderId)
@@ -215,16 +265,27 @@ async function processAndStoreClips(
     }
   }
 
-  // Store all clips
+  // Check again if project exists before final update
   const project = await ProjectService.getProject(projectId)
-  await ProjectService.updateProject(projectId, {
+  if (!project) {
+    console.log(`[Worker] Project ${projectId} disappeared during processing`)
+    throw new Error('Project no longer exists')
+  }
+
+  // Store all clips
+  const finalUpdate = await ProjectService.updateProject(projectId, {
     folders: {
       clips: processedClips,
-      images: project?.folders?.images || [],
-      social: project?.folders?.social || [],
-      blog: project?.folders?.blog || []
+      images: project.folders?.images || [],
+      social: project.folders?.social || [],
+      blog: project.folders?.blog || []
     }
   })
+  
+  if (!finalUpdate) {
+    console.error(`[Worker] Failed to store clips for project ${projectId}`)
+    throw new Error('Failed to store clips')
+  }
 
   // Mark as complete in project
   await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')

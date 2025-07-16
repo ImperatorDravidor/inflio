@@ -118,136 +118,52 @@ export default function ProcessingPage() {
     setStartTime(new Date())
     toast.info("Starting AI processing...")
     
-    await ProjectService.updateProject(projectId, { status: 'processing' })
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 10, 'processing')
-    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
-
     try {
-      console.log('[Processing] Starting Klap processing...')
-      // Start Klap processing
-      const klapPromise = fetch('/api/process-klap', {
+      console.log('[Processing] Calling main process endpoint...')
+      // Call the main process endpoint which handles both transcription and clips
+      const response = await fetch(`/api/projects/${projectId}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          projectId: project.id,
-          videoUrl: project.video_url
-        })
-      }).then(async (response) => {
-        if (response.ok) {
-          const result = await response.json()
-          await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-          return { success: true, result }
-        } else {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
-          
-          // Handle specific error codes
-          if (response.status === 503) {
-            console.error('Klap service unavailable:', errorData)
-            throw new Error('Video clip generation service is temporarily unavailable. The transcription will still be processed.')
-          } else if (response.status === 401) {
-            throw new Error('Authentication failed. Please sign in again.')
-          } else {
-            throw new Error(errorData.error || 'Failed to generate video clips')
-          }
-        }
       })
 
-      console.log('[Processing] Starting transcription processing...')
-      // Start transcription processing
-      const transcriptionPromise = fetch('/api/process-transcription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          projectId: project.id,
-          videoUrl: project.video_url,
-          language: 'en'
-        })
-      }).then(async (response) => {
-        console.log('[Processing] Transcription response status:', response.status)
-        if (response.ok) {
-          // Transcription is usually faster, update progress more quickly
-          const result = await response.json()
-          console.log('[Processing] Transcription result:', result)
-          return { success: true, result }
-        } else {
-          const errorText = await response.text()
-          console.error('[Processing] Transcription failed:', errorText)
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
-          throw new Error('Transcription failed: ' + errorText)
-        }
-      }).catch(async (error) => {
-        console.error('[Processing] Transcription error:', error)
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
-        throw error
-      })
-
-      console.log('[Processing] Waiting for both promises...')
-      // Wait for both to complete
-      const [klapResult, transcriptionResult] = await Promise.allSettled([klapPromise, transcriptionPromise])
-
-      console.log('[Processing] Results:', { 
-        klap: klapResult.status, 
-        transcription: transcriptionResult.status 
-      })
-
-      // Handle results
-      let anySuccess = false
-      let allFailed = true
-      
-      if (klapResult.status === 'fulfilled') {
-        anySuccess = true
-        allFailed = false
-      } else {
-        console.error("Klap processing failed:", klapResult.reason)
-        // Check if it's a service unavailable error
-        if (klapResult.reason?.message?.includes('temporarily unavailable')) {
-          toast.warning("Video clips service is unavailable. Continuing with transcription only.", {
-            duration: 5000
-          })
-        } else {
-          toast.error("Failed to generate video clips")
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || 'Failed to start processing')
       }
 
-      if (transcriptionResult.status === 'fulfilled') {
-        anySuccess = true
-        allFailed = false
-        toast.success("AI analysis completed successfully!")
-      } else {
-        console.error("Transcription failed:", transcriptionResult.reason)
-        toast.error("Failed to complete AI analysis")
-      }
-
-      // If at least one service succeeded, continue
-      if (anySuccess) {
-        // Update the main project status
-        await ProjectService.updateProject(projectId, { status: 'draft' })
+      const result = await response.json()
+      console.log('[Processing] Process started:', result)
       
-      // Then refresh the project data to show the new content
-      await loadProject()
-
-        // Show appropriate message based on what succeeded
-        if (klapResult.status === 'rejected' && transcriptionResult.status === 'fulfilled') {
-          toast.info("AI analysis complete! Video clips could not be generated at this time.", {
-            duration: 4000
+      // Optimistically update the UI immediately
+      const updatedTasks = project.tasks.map(task => {
+        if (task.type === 'clips') {
+          return { ...task, status: 'processing' as const, progress: 10 }
+        }
+        if (task.type === 'transcription') {
+          return { ...task, status: 'processing' as const, progress: 10 }
+        }
+        return task
+      })
+      
+      setProject({ ...project, status: 'processing', tasks: updatedTasks })
+      
+      // Then fetch fresh data after a delay
+      setTimeout(async () => {
+        const freshProject = await ProjectService.getProject(projectId)
+        if (freshProject) {
+          setProject(freshProject)
+          console.log('[Processing] Fresh project data loaded:', {
+            clipsTask: freshProject.tasks.find(t => t.type === 'clips'),
+            transcriptionTask: freshProject.tasks.find(t => t.type === 'transcription')
           })
         }
-
-      // Redirect to the project page after a short delay
-      setTimeout(() => {
-        router.push(`/projects/${projectId}`)
       }, 1500)
-      } else {
-        // Both services failed
-        toast.error("Processing failed. Please try again later.", {
-          duration: 5000
-        })
-        await ProjectService.updateProject(projectId, { status: 'draft' })
-        setProcessingStarted(false)
-      }
+
+      // Processing has been started successfully
+      toast.success("Processing started! This will take a few minutes.", {
+        duration: 4000
+      })
 
     } catch (error) {
       console.error("Processing failed:", error)
@@ -289,10 +205,21 @@ export default function ProcessingPage() {
         return
       }
       
-      setProject(proj)
+      // Ensure clips task shows at least 10% if processing
+      const projWithMinProgress = {
+        ...proj,
+        tasks: proj.tasks.map(task => {
+          if (task.type === 'clips' && task.status === 'processing' && task.progress < 10) {
+            return { ...task, progress: 10 }
+          }
+          return task
+        })
+      }
+      
+      setProject(projWithMinProgress)
       setLoading(false)
       
-      const progress = ProjectService.calculateProjectProgress(proj)
+      const progress = ProjectService.calculateProjectProgress(projWithMinProgress)
       
       // Check transcription status on initial load
       const transcriptionTask = proj.tasks.find(t => t.type === 'transcription')
@@ -320,20 +247,38 @@ export default function ProcessingPage() {
       // Only start polling if actually processing
       if (proj.status === 'processing' && progress < 100) {
         const interval = setInterval(async () => {
-          const updatedProject = await ProjectService.getProject(projectId)
-          if (updatedProject) {
-            setProject(updatedProject)
+          try {
+            const updatedProject = await ProjectService.getProject(projectId)
+            if (!updatedProject) {
+              console.error('Project no longer exists or cannot be fetched')
+              clearInterval(interval)
+              pollingIntervalRef.current = null
+              toast.error("Project not found")
+              router.push("/projects")
+              return
+            }
+            // Ensure clips show at least 10% if processing
+            const projWithMinProgress = {
+              ...updatedProject,
+              tasks: updatedProject.tasks.map(task => {
+                if (task.type === 'clips' && task.status === 'processing' && task.progress < 10) {
+                  return { ...task, progress: 10 }
+                }
+                return task
+              })
+            }
+            setProject(projWithMinProgress)
             
             // Check if transcription is complete (AI analysis done)
-            const transcriptionTask = updatedProject.tasks.find(t => t.type === 'transcription')
-            const isTranscriptionComplete = transcriptionTask?.status === 'completed' && updatedProject.transcription?.text
+            const transcriptionTask = projWithMinProgress.tasks.find(t => t.type === 'transcription')
+            const isTranscriptionComplete = transcriptionTask?.status === 'completed' && projWithMinProgress.transcription?.text
             
             // Check if clips are still processing
-            const clipsTask = updatedProject.tasks.find(t => t.type === 'clips')
+            const clipsTask = projWithMinProgress.tasks.find(t => t.type === 'clips')
             const areClipsProcessing = clipsTask && clipsTask.status === 'processing'
             
             // If clips are processing, check actual Klap status
-            if (areClipsProcessing && updatedProject.klap_project_id) {
+            if (areClipsProcessing && projWithMinProgress.klap_project_id) {
               try {
                 const klapStatusResponse = await fetch(`/api/process-klap?projectId=${projectId}`)
                 if (klapStatusResponse.ok) {
@@ -359,7 +304,7 @@ export default function ProcessingPage() {
               pollingIntervalRef.current = null
               
               // Update project status to indicate it's ready to view (but clips might still be processing)
-              if (updatedProject.status !== 'draft') {
+              if (projWithMinProgress.status !== 'draft') {
                 await ProjectService.updateProject(projectId, { status: 'draft' })
               }
               
@@ -377,16 +322,16 @@ export default function ProcessingPage() {
               return
             }
             
-            const updatedProgress = ProjectService.calculateProjectProgress(updatedProject)
+            const updatedProgress = ProjectService.calculateProjectProgress(projWithMinProgress)
             
             // Also redirect if everything is complete
-            if ((updatedProject.status === 'ready' || updatedProgress === 100) && !redirectingRef.current) {
+            if ((projWithMinProgress.status === 'ready' || updatedProgress === 100) && !redirectingRef.current) {
               redirectingRef.current = true // Set flag to prevent duplicate redirects
               clearInterval(interval)
               pollingIntervalRef.current = null
               
               // Ensure status is updated to draft
-              if (updatedProject.status !== 'draft') {
+              if (projWithMinProgress.status !== 'draft') {
                 await ProjectService.updateProject(projectId, { status: 'draft' })
               }
               
@@ -396,8 +341,12 @@ export default function ProcessingPage() {
               }, 1500)
               return
             }
+            
+            await checkTranscriptionStatus()
+          } catch (error) {
+            console.error('Error in polling interval:', error)
+            // Continue polling even if there's an error
           }
-          await checkTranscriptionStatus()
         }, 15000) // Poll every 15 seconds (reduced frequency to avoid duplicate calls)
         
         pollingIntervalRef.current = interval
@@ -440,14 +389,20 @@ export default function ProcessingPage() {
   useEffect(() => {
     if (project && !processingStarted) {
       const progress = ProjectService.calculateProjectProgress(project)
+      console.log('[Processing] Checking if should start processing:', {
+        status: project.status,
+        progress,
+        processingStarted
+      })
       
       // Only start processing if not already complete
       if (project.status !== 'ready' && progress < 100) {
-        // If status is 'processing' but progress is 0, it's a fresh start
-        if (project.status === 'processing' && progress === 0) {
-          startKlapProcessing()
-        } else if (project.status !== 'processing') {
-          // Status is draft or something else, start processing
+        // Check if clips task needs processing
+        const clipsTask = project.tasks.find(t => t.type === 'clips')
+        const needsClipsProcessing = clipsTask && clipsTask.status === 'pending'
+        
+        if (needsClipsProcessing || project.status !== 'processing') {
+          console.log('[Processing] Starting processing...')
           startKlapProcessing()
         }
       } else if (progress === 100 && project.status === 'processing') {
@@ -669,9 +624,9 @@ export default function ProcessingPage() {
                           <Progress value={task.progress} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <span>
-                              Processing...
+                              {task.type === 'clips' && task.progress < 10 ? 'Queued for processing...' : 'Processing...'}
                             </span>
-                            <span>{task.progress}%</span>
+                            <span>{Math.max(task.progress, task.type === 'clips' && task.status === 'processing' ? 10 : 0)}%</span>
                           </div>
                         </div>
                       )}

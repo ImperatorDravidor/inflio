@@ -1,7 +1,7 @@
 import { Redis } from '@upstash/redis'
 
 // Initialize Redis client
-export const redis = new Redis({
+const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 })
@@ -22,9 +22,11 @@ export interface KlapJob {
   createdAt: number
   updatedAt: number
   attempts: number
+  startedAt?: number
 }
 
 // Job queue keys
+const REDIS_PREFIX = 'klap'
 export const REDIS_KEYS = {
   jobQueue: 'klap:jobs:queue',
   jobData: (jobId: string) => `klap:job:${jobId}`,
@@ -39,6 +41,7 @@ export class KlapJobQueue {
    */
   static async createJob(projectId: string, videoUrl: string): Promise<KlapJob> {
     const jobId = `job_${projectId}_${Date.now()}`
+    
     const job: KlapJob = {
       id: jobId,
       projectId,
@@ -57,15 +60,17 @@ export class KlapJobQueue {
       JSON.stringify(job)
     )
 
-    // Add to queue
-    await redis.lpush(REDIS_KEYS.jobQueue, jobId)
-
     // Map project to job
     await redis.setex(
       REDIS_KEYS.projectJob(projectId),
       86400,
       jobId
     )
+
+    // Add to queue
+    await redis.lpush(REDIS_KEYS.jobQueue, jobId)
+    
+    console.log(`[Redis] Job ${jobId} queued for project ${projectId}`)
 
     return job
   }
@@ -74,34 +79,42 @@ export class KlapJobQueue {
    * Get next job from queue
    */
   static async getNextJob(): Promise<KlapJob | null> {
-    // Pop from queue
-    const jobId = await redis.rpop<string>(REDIS_KEYS.jobQueue)
+    // Move job from queue to processing (atomically)
+    const jobId = await redis.lmove(
+      REDIS_KEYS.jobQueue,
+      REDIS_KEYS.processingJobs,
+      'right',
+      'left'
+    ) as string | null
+    
     if (!jobId) return null
+    
+    console.log(`[Redis] Moving job ${jobId} from queue to processing`)
 
-    // Add to processing list
-    await redis.lpush(REDIS_KEYS.processingJobs, jobId)
-
-    const jobData = await redis.get<string>(REDIS_KEYS.jobData(jobId))
+    // Get job data
+    const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
     if (!jobData) {
       // Remove from processing if data not found
       await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
       return null
     }
 
-    const job = JSON.parse(jobData) as KlapJob
-    
     // Update status
-    job.status = 'processing'
-    job.updatedAt = Date.now()
-    job.attempts++
-    
+    const updatedJob: KlapJob = {
+      ...jobData,
+      status: 'processing',
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      attempts: jobData.attempts + 1
+    }
+
     await redis.setex(
       REDIS_KEYS.jobData(jobId),
       86400,
-      JSON.stringify(job)
+      JSON.stringify(updatedJob)
     )
 
-    return job
+    return updatedJob
   }
 
   /**
@@ -111,24 +124,23 @@ export class KlapJobQueue {
     const jobId = await redis.get<string>(REDIS_KEYS.projectJob(projectId))
     if (!jobId) return null
 
-    const jobData = await redis.get<string>(REDIS_KEYS.jobData(jobId))
+    const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
     if (!jobData) return null
 
-    return JSON.parse(jobData) as KlapJob
+    return jobData
   }
 
   /**
    * Update job progress
    */
   static async updateJob(jobId: string, updates: Partial<KlapJob>): Promise<void> {
-    const jobData = await redis.get<string>(REDIS_KEYS.jobData(jobId))
+    const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
     if (!jobData) throw new Error('Job not found')
 
-    const job = JSON.parse(jobData) as KlapJob
     const updatedJob = {
-      ...job,
+      ...jobData,
       ...updates,
-      updatedAt: Date.now(),
+      updatedAt: Date.now()
     }
 
     await redis.setex(
@@ -139,60 +151,62 @@ export class KlapJobQueue {
   }
 
   /**
-   * Complete job
+   * Complete job with clips
    */
   static async completeJob(jobId: string, clips: any[]): Promise<void> {
     await this.updateJob(jobId, {
       status: 'completed',
-      progress: 100,
       clips,
+      progress: 100,
     })
 
-    // Remove from processing list
+    // Remove from processing
     await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
   }
 
   /**
-   * Fail job
+   * Mark job as failed
    */
   static async failJob(jobId: string, error: string): Promise<void> {
-    const jobData = await redis.get<string>(REDIS_KEYS.jobData(jobId))
+    const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
     if (!jobData) return
 
-    const job = JSON.parse(jobData) as KlapJob
-    
-    await this.updateJob(jobId, {
-      status: 'failed',
-      error,
-    })
-
-    // Remove from processing list
-    await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
-
-    // If attempts < 3, requeue
-    if (job.attempts < 3) {
+    // Check retry limit
+    if (jobData.attempts < 3) {
+      // Requeue for retry
+      await this.updateJob(jobId, {
+        status: 'queued',
+        error,
+      })
       await redis.lpush(REDIS_KEYS.jobQueue, jobId)
+    } else {
+      // Mark as failed
+      await this.updateJob(jobId, {
+        status: 'failed',
+        error,
+      })
     }
+
+    // Remove from processing
+    await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
   }
 
   /**
    * Clean up stale jobs
    */
   static async cleanupStaleJobs(): Promise<void> {
-    const processingJobs = await redis.lrange(REDIS_KEYS.processingJobs, 0, -1)
-    
+    const processingJobs = await redis.lrange<string>(REDIS_KEYS.processingJobs, 0, -1)
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000
+
     for (const jobId of processingJobs) {
-      const jobData = await redis.get<string>(REDIS_KEYS.jobData(jobId))
+      const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
       if (!jobData) {
         await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
         continue
       }
 
-      const job = JSON.parse(jobData) as KlapJob
-      const staleTime = Date.now() - job.updatedAt
-
-      // If job hasn't been updated in 10 minutes, consider it stale
-      if (staleTime > 600000) {
+      if (jobData.updatedAt < tenMinutesAgo) {
+        // Job is stale, requeue or fail
         await this.failJob(jobId, 'Job timed out')
       }
     }

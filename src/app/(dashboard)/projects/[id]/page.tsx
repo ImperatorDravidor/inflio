@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useClerkUser } from "@/hooks/use-clerk-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -59,9 +60,9 @@ import {
   IconMail,
   IconMessageCircle,
   IconBrandReddit,
-      IconLayoutGridAdd,
-    IconChevronDown,
-  } from "@tabler/icons-react"
+  IconLayoutGridAdd,
+  IconChevronDown,
+} from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
@@ -90,8 +91,10 @@ import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/b
 import { ImageCarousel } from "@/components/image-carousel"
 import { ThumbnailCreator } from "@/components/thumbnail-creator"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ContentStager } from "@/components/staging/content-stager"
+import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
+import { StagingService } from "@/lib/staging/staging-service"
+import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 import type { StagedContent } from "@/lib/staging/staging-service"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -118,6 +121,7 @@ const platformColors = {
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { user } = useClerkUser()
   const projectId = params.id as string
   const videoRef = useRef<HTMLVideoElement>(null)
   const transcriptionScrollRef = useRef<HTMLDivElement>(null)
@@ -180,8 +184,15 @@ export default function ProjectDetailPage() {
               const result = await response.json()
               
               // If status changed or clips are ready, reload the project
-              if (result.status !== 'processing' || result.clipsCount > 0) {
+              if (result.status === 'completed' || result.clips) {
                 await loadProject()
+              } else if (result.status === 'processing' && result.progress) {
+                // Update progress locally for smoother UX
+                const clipsTask = project.tasks.find(t => t.type === 'clips')
+                if (clipsTask) {
+                  clipsTask.progress = result.progress
+                  setProject({ ...project })
+                }
               }
             }
           } catch (error) {
@@ -3366,7 +3377,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             )}
 
             {publishingStep === 'stage' && (
-              <ContentStager
+              <EnhancedContentStager
                 content={selectedPublishContent.map(item => {
                   // Transform ContentItem to StagedContent format
                   const platforms: Platform[] = ['instagram', 'x', 'linkedin', 'facebook']
@@ -3413,7 +3424,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     }
                   }
                 })}
-                onUpdate={(updatedContent) => setStagedContent(updatedContent)}
+                onUpdate={(updatedContent: StagedContent[]) => setStagedContent(updatedContent)}
                 onNext={() => setPublishingStep('review')}
               />
             )}
@@ -3433,11 +3444,30 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   }
                 }))}
                 onPublish={async () => {
+                  if (!user?.id) {
+                    toast.error('Please sign in to publish content')
+                    return
+                  }
+                  
                   setIsPublishing(true)
                   try {
-                    // Here you would implement the actual publishing logic
-                    // For now, we'll simulate it
-                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    // Publish content using the staging service
+                    await StagingService.publishScheduledContent(
+                      user.id,
+                      projectId,
+                      stagedContent.map(content => ({
+                        stagedContent: content,
+                        scheduledDate: new Date(),
+                        platforms: content.platforms || [],
+                        optimizationReason: 'Optimal time for engagement',
+                        suggestedHashtags: content.platformContent[content.platforms[0]]?.hashtags || [],
+                        engagementPrediction: {
+                          score: 0.8,
+                          bestTime: true,
+                          reasoning: 'High engagement expected based on content type and timing'
+                        }
+                      }))
+                    )
                     
                     toast.success('Content published successfully!')
                     setShowPublishDialog(false)
@@ -3447,6 +3477,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     
                     // Refresh the project to show updated status
                     await loadProject()
+                    
+                    // Redirect to social calendar to see published content
+                    setTimeout(() => {
+                      router.push('/social/calendar')
+                    }, 1500)
                   } catch (error) {
                     toast.error('Failed to publish content')
                     console.error('Publishing error:', error)
@@ -3461,7 +3496,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </div>
 
           {publishingStep !== 'review' && (
-            <DialogFooter>
+            <DialogFooter className="flex items-center justify-between">
+              <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -3474,6 +3510,24 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               >
                 {publishingStep === 'stage' ? 'Back' : 'Cancel'}
               </Button>
+                {publishingStep === 'stage' && (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      // Save current selection and redirect to full staging page
+                      if (selectedPublishContent.length > 0) {
+                        const contentIds = selectedPublishContent.map(item => item.id).join(',')
+                        router.push(`/projects/${projectId}/stage?content=${contentIds}`)
+                      } else {
+                        router.push(`/projects/${projectId}/stage`)
+                      }
+                    }}
+                  >
+                    <IconExternalLink className="h-4 w-4 mr-2" />
+                    Open Full Editor
+                  </Button>
+                )}
+              </div>
             </DialogFooter>
           )}
         </DialogContent>
