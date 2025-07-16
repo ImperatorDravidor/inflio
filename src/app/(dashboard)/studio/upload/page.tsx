@@ -173,7 +173,8 @@ export default function UploadPage() {
     if (!UsageService.canProcessVideo()) {
       const usage = UsageService.getUsage();
       toast.error(`You've reached your monthly limit of ${usage.limit} videos. Please upgrade your plan to continue.`);
-      router.push('/settings#upgrade');
+      // For now, redirect to reset page
+      router.push('/settings/reset-usage');
       return;
     }
 

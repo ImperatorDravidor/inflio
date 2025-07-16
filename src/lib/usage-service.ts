@@ -91,6 +91,14 @@ export class UsageService {
    * Check if user can process more videos
    */
   static canProcessVideo(): boolean {
+    // Check for bypass first
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('bypass_usage') === 'true') {
+        return true
+      }
+    }
+    
     const usage = this.getUsage()
     return usage.used < usage.limit
   }

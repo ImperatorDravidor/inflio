@@ -2,21 +2,9 @@
 
 import { SignIn } from "@clerk/nextjs";
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
 
 export default function Page() {
   const { isLoaded, isSignedIn, userId } = useAuth();
-  const [debugInfo, setDebugInfo] = useState<any>({});
-
-  useEffect(() => {
-    setDebugInfo({
-      isLoaded,
-      isSignedIn,
-      userId,
-      publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? "Set" : "Not Set",
-      timestamp: new Date().toISOString(),
-    });
-  }, [isLoaded, isSignedIn, userId]);
 
   // If already signed in, show a message
   if (isLoaded && isSignedIn) {
@@ -39,11 +27,6 @@ export default function Page() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
-      {/* Debug info at top */}
-      <div className="absolute top-0 left-0 p-4 text-xs bg-gray-100 dark:bg-gray-800">
-        <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-      </div>
-      
       {/* Sign in component */}
       <div className="w-full max-w-md">
         {!isLoaded ? (

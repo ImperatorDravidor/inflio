@@ -22,13 +22,15 @@ import {
   IconDatabase,
   IconDownload,
   IconTrash,
-  IconSparkles
+  IconSparkles,
+  IconRefresh
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { UsageService } from "@/lib/services"
 import type { UsageData } from "@/lib/usage-service"
 import { useUser } from "@clerk/nextjs"
+import Link from "next/link"
 
 export default function SettingsPage() {
   const { user } = useUser()
@@ -251,6 +253,18 @@ export default function SettingsPage() {
                     Export
                   </Button>
                 </div>
+                
+                <Link href="/settings/reset-usage" className="block">
+                  <div className="flex items-center justify-between p-4 rounded-lg border border-orange-500/50 hover:border-orange-500 transition-colors cursor-pointer">
+                    <div>
+                      <h4 className="font-medium text-orange-600">Reset Usage Limit</h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Reset your monthly video processing limit (temporary fix)
+                      </p>
+                    </div>
+                    <IconRefresh className="h-5 w-5 text-orange-600" />
+                  </div>
+                </Link>
                 
                 <div className="flex items-center justify-between p-4 rounded-lg border border-destructive/50">
                   <div>
