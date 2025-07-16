@@ -157,26 +157,16 @@ export async function processTranscription({
 
     if (transcription.text && !isMock) {
       try {
-        // Add timeout protection for AI analysis (15 seconds max)
-        const analysisPromise = AIContentService.analyzeTranscript(transcription)
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('AI analysis timeout')), 15000)
-        )
-        
-        const aiAnalysis = await Promise.race([analysisPromise, timeoutPromise])
+        const aiAnalysis = await AIContentService.analyzeTranscript(transcription)
         contentAnalysis = {
           ...aiAnalysis,
           analyzedAt: new Date().toISOString()
         } as any
-        
         console.log('[TranscriptionProcessor] AI content analysis completed successfully')
       } catch (err) {
         console.error('AI content analysis failed:', err)
         analysisError = err instanceof Error ? err.message : 'Unknown error'
         contentAnalysis = mockContentAnalysis // Fallback
-        
-        // Don't let AI analysis failure block the transcription
-        console.log('[TranscriptionProcessor] Using fallback content analysis due to error')
       }
     }
 

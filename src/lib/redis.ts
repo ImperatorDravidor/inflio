@@ -40,23 +40,42 @@ export class KlapJobQueue {
    * Create a new job
    */
   static async createJob(projectId: string, videoUrl: string): Promise<KlapJob> {
+    // First, clean up any existing job for this project
+    const existingJobId = await redis.get<string>(REDIS_KEYS.projectJob(projectId))
+    if (existingJobId) {
+      const existingJob = await redis.get<KlapJob>(REDIS_KEYS.jobData(existingJobId))
+      if (existingJob) {
+        // If job is completed or failed, clean it up
+        if (existingJob.status === 'completed' || existingJob.status === 'failed') {
+          await redis.del(REDIS_KEYS.jobData(existingJobId))
+          await redis.del(REDIS_KEYS.projectJob(projectId))
+          await redis.lrem(REDIS_KEYS.jobQueue, 0, existingJobId)
+          await redis.lrem(REDIS_KEYS.processingJobs, 0, existingJobId)
+          console.log(`[Redis] Cleaned up old ${existingJob.status} job ${existingJobId}`)
+        } else if (existingJob.status === 'queued' || existingJob.status === 'processing') {
+          // If job is still active, return it instead of creating new one
+          console.log(`[Redis] Returning existing active job ${existingJobId} for project ${projectId}`)
+          return existingJob
+        }
+      }
+    }
+
     const jobId = `job_${projectId}_${Date.now()}`
-    
     const job: KlapJob = {
       id: jobId,
       projectId,
       videoUrl,
       status: 'queued',
       progress: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
       attempts: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     }
 
-    // Store job data
+    // Save job data
     await redis.setex(
       REDIS_KEYS.jobData(jobId),
-      86400, // 24 hours TTL
+      86400,
       JSON.stringify(job)
     )
 
@@ -192,23 +211,45 @@ export class KlapJobQueue {
   }
 
   /**
-   * Clean up stale jobs
+   * Clean up jobs for projects that no longer exist
    */
-  static async cleanupStaleJobs(): Promise<void> {
-    const processingJobs = await redis.lrange<string>(REDIS_KEYS.processingJobs, 0, -1)
-    const tenMinutesAgo = Date.now() - 10 * 60 * 1000
-
-    for (const jobId of processingJobs) {
+  static async cleanupStaleJobs(): Promise<number> {
+    let cleanedCount = 0
+    
+    // Get all jobs from queue and processing lists
+    const queueJobs = await redis.lrange(REDIS_KEYS.jobQueue, 0, -1) as string[]
+    const processingJobs = await redis.lrange(REDIS_KEYS.processingJobs, 0, -1) as string[]
+    const allJobIds = [...new Set([...queueJobs, ...processingJobs])]
+    
+    for (const jobId of allJobIds) {
       const jobData = await redis.get<KlapJob>(REDIS_KEYS.jobData(jobId))
       if (!jobData) {
+        // Remove orphaned job ID from lists
+        await redis.lrem(REDIS_KEYS.jobQueue, 0, jobId)
         await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
+        cleanedCount++
         continue
       }
-
-      if (jobData.updatedAt < tenMinutesAgo) {
-        // Job is stale, requeue or fail
-        await this.failJob(jobId, 'Job timed out')
+      
+      // Check if job is too old (older than 24 hours)
+      const ageInHours = (Date.now() - jobData.createdAt) / (1000 * 60 * 60)
+      if (ageInHours > 24) {
+        await this.removeJob(jobId, jobData.projectId)
+        cleanedCount++
+        console.log(`[Redis] Cleaned up stale job ${jobId} (${ageInHours.toFixed(1)} hours old)`)
       }
     }
+    
+    return cleanedCount
+  }
+
+  /**
+   * Remove a job completely
+   */
+  static async removeJob(jobId: string, projectId: string): Promise<void> {
+    await redis.del(REDIS_KEYS.jobData(jobId))
+    await redis.del(REDIS_KEYS.projectJob(projectId))
+    await redis.lrem(REDIS_KEYS.jobQueue, 0, jobId)
+    await redis.lrem(REDIS_KEYS.processingJobs, 0, jobId)
   }
 } 

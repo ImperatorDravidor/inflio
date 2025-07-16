@@ -4,6 +4,10 @@ import { auth } from "@clerk/nextjs/server";
 import { processTranscription } from "@/lib/transcription-processor";
 import { KlapJobQueue } from "@/lib/redis";
 
+// Extend timeout for processing
+export const maxDuration = 300; // 5 minutes
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
@@ -56,31 +60,37 @@ export async function POST(
       try {
         console.log('[Process Route] Checking for existing Klap job...')
         
-        // Check if job already exists
-        const existingJob = await KlapJobQueue.getJobByProjectId(projectId);
-        if (!existingJob || (existingJob.status !== 'queued' && existingJob.status !== 'processing')) {
-          // Create new job
-          console.log('[Process Route] Creating new Klap job for project:', projectId)
-          console.log('[Process Route] Video URL:', project.video_url)
-          
-          const job = await KlapJobQueue.createJob(projectId, project.video_url);
-          console.log('[Process Route] Klap job queued successfully:', {
-            jobId: job.id,
-            projectId: job.projectId,
-            status: job.status,
-            createdAt: job.createdAt
-          });
-          
-          // Update task progress to 10% to show it's queued and waiting
-          await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
-          console.log('[Process Route] Updated clips task to processing status with 10% progress')
-        } else {
-          console.log('[Process Route] Klap job already exists:', {
-            jobId: existingJob.id,
-            status: existingJob.status,
-            progress: existingJob.progress,
-            attempts: existingJob.attempts
-          });
+        // Create or get existing job (createJob now handles existing jobs properly)
+        console.log('[Process Route] Creating/getting Klap job for project:', projectId)
+        console.log('[Process Route] Video URL:', project.video_url)
+        
+        const job = await KlapJobQueue.createJob(projectId, project.video_url);
+        console.log('[Process Route] Klap job ready:', {
+          jobId: job.id,
+          projectId: job.projectId,
+          status: job.status,
+          createdAt: job.createdAt,
+          isNew: job.status === 'queued' && job.attempts === 0
+        });
+        
+        // Update task progress to 10% to show it's queued and waiting
+        await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
+        console.log('[Process Route] Updated clips task to processing status with 10% progress')
+        
+        // Always trigger the worker to ensure processing
+        console.log('[Process Route] Triggering worker...')
+        try {
+          const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/worker/klap`
+          await fetch(workerUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.WORKER_SECRET}`,
+            },
+          })
+          console.log('[Process Route] Worker triggered successfully')
+        } catch (error) {
+          console.error('[Process Route] Failed to trigger worker:', error)
+          // Don't throw - the cron will pick it up anyway
         }
       } catch (error) {
         console.error('[Process Route] Failed to queue Klap processing:', error);

@@ -14,20 +14,22 @@ export const dynamic = 'force-dynamic'
  * This should be called by a cron job or QStash
  */
 export async function POST(request: NextRequest) {
-  console.log('[Worker] Klap worker endpoint called')
-  
   try {
-    // Verify authorization (add your own auth mechanism)
+    console.log('[Worker] Klap worker endpoint called')
+    
+    // Check auth
     const authHeader = request.headers.get('authorization')
     console.log('[Worker] Auth header present:', !!authHeader)
     
     if (authHeader !== `Bearer ${process.env.WORKER_SECRET}`) {
-      console.log('[Worker] Authorization failed')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Clean up stale jobs first
-    await KlapJobQueue.cleanupStaleJobs()
+    // Clean up stale jobs before processing new ones
+    const cleanedCount = await KlapJobQueue.cleanupStaleJobs()
+    if (cleanedCount > 0) {
+      console.log(`[Worker] Cleaned up ${cleanedCount} stale jobs`)
+    }
 
     // Get next job from queue
     const job = await KlapJobQueue.getNextJob()
@@ -81,9 +83,9 @@ async function processKlapJob(job: KlapJob) {
   const project = await ProjectService.getProject(projectId)
   
   if (!project) {
-    console.log(`[Worker] Project ${projectId} no longer exists, marking job as failed`)
-    await KlapJobQueue.failJob(jobId, 'Project no longer exists')
-    return
+    console.log(`[Worker] Project ${projectId} no longer exists, removing job completely`)
+    await KlapJobQueue.removeJob(jobId, projectId)
+    throw new Error('Project no longer exists - job removed')
   }
 
   // Update progress: Starting
