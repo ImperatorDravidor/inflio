@@ -100,7 +100,16 @@ Return the analysis in this exact JSON format:
         }
       }
     } catch (error) {
-      console.error('Error analyzing transcript:', error)
+      // Log detailed error information
+      console.error('[AIContentService] Error analyzing transcript:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        isOpenAIError: error instanceof Error && error.message.includes('OpenAI'),
+        isModelError: error instanceof Error && error.message.includes('model'),
+        environment: process.env.NODE_ENV,
+        isVercel: !!process.env.VERCEL,
+        model: process.env.NODE_ENV === 'production' ? 'gpt-4.1-mini' : 'gpt-4.1'
+      })
       
       // Return a fallback analysis if OpenAI fails
       return AIContentService.generateFallbackAnalysis(transcription)

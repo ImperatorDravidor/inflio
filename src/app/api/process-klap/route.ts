@@ -56,7 +56,19 @@ export async function POST(request: NextRequest) {
     // Immediately trigger the worker
     console.log('[Process Klap] Triggering worker immediately...')
     try {
-      const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/worker/klap`
+      // Use the correct URL for Vercel
+      let workerUrl: string
+      if (process.env.VERCEL_URL) {
+        // Production/Preview on Vercel
+        workerUrl = `https://${process.env.VERCEL_URL}/api/worker/klap`
+      } else if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+        // Alternative Vercel URL
+        workerUrl = `https://${process.env.NEXT_PUBLIC_VERCEL_URL}/api/worker/klap`
+      } else {
+        // Local development
+        workerUrl = 'http://localhost:3000/api/worker/klap'
+      }
+      
       console.log('[Process Klap] Worker URL:', workerUrl)
       console.log('[Process Klap] Worker secret exists:', !!process.env.WORKER_SECRET)
       

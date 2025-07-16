@@ -65,23 +65,21 @@ function getAssemblyAI() {
   })
 }
 
-export async function processTranscription({
-  projectId,
-  videoUrl,
-  language = 'en',
-  userId
-}: {
+export async function processTranscription(params: {
   projectId: string
   videoUrl: string
   language?: string
   userId: string
 }) {
-  console.log(`[TranscriptionProcessor] Starting transcription for project ${projectId}`)
+  const { projectId, videoUrl, language = 'en', userId } = params
   
-  // Check if AssemblyAI is configured
-  if (!process.env.ASSEMBLYAI_API_KEY) {
-    console.warn('[TranscriptionProcessor] AssemblyAI API key not configured, using mock data')
-  }
+  console.log('[TranscriptionProcessor] Starting transcription for project', projectId)
+  console.log('[TranscriptionProcessor] Environment:', {
+    NODE_ENV: process.env.NODE_ENV,
+    isVercel: !!process.env.VERCEL,
+    hasOpenAI: !!process.env.OPENAI_API_KEY,
+    hasAssemblyAI: !!process.env.ASSEMBLYAI_API_KEY
+  })
 
   try {
     // Update task status to processing right at the start
