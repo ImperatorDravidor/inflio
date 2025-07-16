@@ -62,6 +62,11 @@ Return the analysis in this exact JSON format:
   }
 }`
 
+      // Limit transcript length to avoid timeouts (first 5000 chars)
+      const truncatedPrompt = userPrompt.length > 5000 
+        ? userPrompt.substring(0, 5000) + '\n\n[Transcript truncated for analysis]'
+        : userPrompt
+
       const completion = await openai.chat.completions.create({
         // Using the latest GPT-4.1 model
         model: 'gpt-4.1-2025-04-14',

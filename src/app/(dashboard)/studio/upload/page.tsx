@@ -46,6 +46,8 @@ export default function UploadPage() {
     blog: false,
     social: false
   })
+  const [submittingWorkflow, setSubmittingWorkflow] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState("")
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -176,6 +178,8 @@ export default function UploadPage() {
     }
 
     setUploading(true);
+    setSubmittingWorkflow(true);
+    setSubmissionStatus("Uploading video to cloud storage...");
     setUploadProgress(0);
     const toastId = toast.loading("Uploading video to cloud storage...");
 
@@ -230,6 +234,7 @@ export default function UploadPage() {
       setUploadProgress(100);
 
       // Step 2: Create the project with selected workflow options
+      setSubmissionStatus("Creating your project...");
       toast.info("Creating project...");
       const project = await ProjectService.createProject(
         projectTitle || file.name.replace(/\.[^/.]+$/, ""),
@@ -260,9 +265,11 @@ export default function UploadPage() {
       if (workflowOptions.transcription) processingWorkflows.push('transcript');
       if (workflowOptions.clips) processingWorkflows.push('clips');
       
+      setSubmissionStatus(`Starting AI processing: ${processingWorkflows.join(' & ')}...`);
       toast.info(`Starting AI processing: ${processingWorkflows.join(' & ')}...`);
       await ProjectService.startProcessing(project.id);
       
+      setSubmissionStatus("Processing started! Redirecting you to track progress...");
       toast.success("Processing started! You'll be redirected to see the progress.");
       
       // Redirect to processing page
@@ -277,6 +284,8 @@ export default function UploadPage() {
       setError(errorMessage);
       setUploading(false);
       setUploadProgress(0);
+      setSubmittingWorkflow(false);
+      setSubmissionStatus("");
     }
   };
 
@@ -495,7 +504,7 @@ export default function UploadPage() {
                         onClick={handleUpload} 
                         size="lg" 
                         className="gradient-premium hover:opacity-90 transition-opacity px-8"
-                        disabled={!projectTitle.trim()}
+                        disabled={!projectTitle.trim() || submittingWorkflow}
                       >
                         <IconSparkles className="h-5 w-5 mr-2" />
                         Start Processing
@@ -504,6 +513,7 @@ export default function UploadPage() {
                         variant="outline"
                         onClick={() => setShowWorkflowSelection(false)}
                         size="lg"
+                        disabled={submittingWorkflow}
                       >
                         Back
                       </Button>
@@ -536,6 +546,29 @@ export default function UploadPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Processing Overlay */}
+        {submittingWorkflow && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <Card className="max-w-md w-full mx-4">
+              <CardContent className="p-8">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="relative">
+                    <div className="h-16 w-16 rounded-full border-4 border-primary/20 animate-pulse" />
+                    <div className="absolute inset-0 h-16 w-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold">Submitting Your Project</h3>
+                    <p className="text-muted-foreground">{submissionStatus || "Please wait while we process your request..."}</p>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    <p>This may take a few moments. Please don't close this page.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Quick Info */}
         <div className="grid md:grid-cols-3 gap-4">

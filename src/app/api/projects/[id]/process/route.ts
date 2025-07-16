@@ -37,8 +37,8 @@ export async function POST(
     if (hasTranscriptionTask) {
       // Process transcription directly
       processTranscription({
-        projectId: project.id,
-        videoUrl: project.video_url,
+          projectId: project.id,
+          videoUrl: project.video_url,
         language: 'en',
         userId
       }).catch(error => {
@@ -92,7 +92,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({
+    return NextResponse.json({ 
       message: "Processing started",
       tasks: {
         transcription: hasTranscriptionTask,

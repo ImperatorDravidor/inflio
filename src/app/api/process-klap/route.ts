@@ -114,9 +114,9 @@ export async function GET(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // Update task progress to match Redis job progress
+    // Update task progress to match Redis job progress (minimum 10%)
     if (job.status === 'processing' || job.status === 'queued') {
-      const currentProgress = job.progress || 10
+      const currentProgress = Math.max(10, job.progress || 10) // Ensure minimum 10%
       await ProjectService.updateTaskProgress(projectId, 'clips', currentProgress, 'processing')
     }
 

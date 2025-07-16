@@ -148,13 +148,29 @@ export default function ProcessingPage() {
       
       setProject({ ...project, status: 'processing', tasks: updatedTasks })
       
-      // Then fetch fresh data after a delay
+      // Store the optimistic update timestamp
+      const optimisticUpdateTime = Date.now()
+      
+      // Then fetch fresh data after a delay, but preserve optimistic updates
       setTimeout(async () => {
         const freshProject = await ProjectService.getProject(projectId)
         if (freshProject) {
+          // Only update if server data is newer or shows actual progress
+          const freshClipsTask = freshProject.tasks.find(t => t.type === 'clips')
+          const currentClipsTask = project.tasks.find(t => t.type === 'clips')
+          
+          // If clips task is still pending/0% on server but we just started it, keep our optimistic update
+          if (freshClipsTask && currentClipsTask && 
+              freshClipsTask.status === 'processing' && 
+              freshClipsTask.progress < 10 &&
+              Date.now() - optimisticUpdateTime < 30000) { // Within 30 seconds
+            // Keep the optimistic 10% progress
+            freshClipsTask.progress = 10
+          }
+          
           setProject(freshProject)
           console.log('[Processing] Fresh project data loaded:', {
-            clipsTask: freshProject.tasks.find(t => t.type === 'clips'),
+            clipsTask: freshClipsTask,
             transcriptionTask: freshProject.tasks.find(t => t.type === 'transcription')
           })
         }

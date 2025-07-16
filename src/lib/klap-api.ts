@@ -128,9 +128,9 @@ export class KlapAPIService {
     
     try {
       const result = await this.request<{ id: string }>('/tasks/video-to-shorts', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
       
       console.log('[KlapAPI] Video task created successfully:', result)
       return result

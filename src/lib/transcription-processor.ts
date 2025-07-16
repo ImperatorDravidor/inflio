@@ -157,29 +157,52 @@ export async function processTranscription({
 
     if (transcription.text && !isMock) {
       try {
-        const aiAnalysis = await AIContentService.analyzeTranscript(transcription)
+        // Add timeout protection for AI analysis (15 seconds max)
+        const analysisPromise = AIContentService.analyzeTranscript(transcription)
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('AI analysis timeout')), 15000)
+        )
+        
+        const aiAnalysis = await Promise.race([analysisPromise, timeoutPromise])
         contentAnalysis = {
           ...aiAnalysis,
           analyzedAt: new Date().toISOString()
         } as any
+        
+        console.log('[TranscriptionProcessor] AI content analysis completed successfully')
       } catch (err) {
         console.error('AI content analysis failed:', err)
         analysisError = err instanceof Error ? err.message : 'Unknown error'
         contentAnalysis = mockContentAnalysis // Fallback
+        
+        // Don't let AI analysis failure block the transcription
+        console.log('[TranscriptionProcessor] Using fallback content analysis due to error')
       }
     }
 
     // --- Step 3: Update Project ---
     
-    await ProjectService.updateProject(projectId, {
-      transcription,
-      content_analysis: contentAnalysis,
-      updated_at: new Date().toISOString()
-    })
+    // Update progress to 90% before final save
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 90, 'processing')
+    
+    try {
+      await ProjectService.updateProject(projectId, {
+        transcription,
+        content_analysis: contentAnalysis,
+        updated_at: new Date().toISOString()
+      })
+    } catch (updateError) {
+      console.error('[TranscriptionProcessor] Failed to update project:', updateError)
+      // Try one more time with just transcription if content analysis was the issue
+      await ProjectService.updateProject(projectId, {
+        transcription,
+        updated_at: new Date().toISOString()
+      })
+    }
 
     await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
 
-    console.log(`[TranscriptionProcessor] Transcription completed for project ${projectId}`)
+    console.log(`[TranscriptionProcessor] Transcription completed for project ${projectId}${analysisError ? ' (with AI analysis fallback)' : ''}`)
 
     return {
       success: true,

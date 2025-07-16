@@ -164,6 +164,8 @@ export default function ProjectDetailPage() {
   const [selectedPublishContent, setSelectedPublishContent] = useState<any[]>([])
   const [stagedContent, setStagedContent] = useState<StagedContent[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
+  const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     loadProject()
@@ -175,7 +177,15 @@ export default function ProjectDetailPage() {
       const clipsTask = project.tasks.find(t => t.type === 'clips')
       const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
       
+      // Update actively processing state
+      setIsActivelyProcessing(isClipsProcessing || false)
+      
       if (isClipsProcessing) {
+        // Clear any existing interval
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+        }
+        
         // Function to check Klap status
         const checkKlapStatus = async () => {
           try {
@@ -188,11 +198,13 @@ export default function ProjectDetailPage() {
                 await loadProject()
               } else if (result.status === 'processing' && result.progress) {
                 // Update progress locally for smoother UX
-                const clipsTask = project.tasks.find(t => t.type === 'clips')
-                if (clipsTask) {
-                  clipsTask.progress = result.progress
-                  setProject({ ...project })
-                }
+                const updatedTasks = project.tasks.map(task => {
+                  if (task.type === 'clips') {
+                    return { ...task, progress: Math.max(10, result.progress) } // Ensure minimum 10%
+                  }
+                  return task
+                })
+                setProject({ ...project, tasks: updatedTasks })
               }
             }
           } catch (error) {
@@ -200,18 +212,23 @@ export default function ProjectDetailPage() {
           }
         }
         
+        // Start polling every 10 seconds
+        const interval = setInterval(checkKlapStatus, 10000)
+        pollingIntervalRef.current = interval
+        
         // Check immediately
         checkKlapStatus()
         
-        // Then poll every 30 seconds
-        const interval = setInterval(() => {
-          checkKlapStatus()
-        }, 30000) // Changed from 10000 to 30000 (30 seconds)
-        
-        return () => clearInterval(interval)
+        // Cleanup on unmount or when processing stops
+        return () => {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+        }
       }
     }
-  }, [project?.tasks, projectId])
+  }, [project, projectId])
   
 
   
@@ -901,6 +918,12 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     {project.title}
                   </h1>
                     <div className="flex items-center gap-2">
+                      {isActivelyProcessing && (
+                        <Badge variant="secondary" className="animate-pulse">
+                          <IconLoader2 className="h-3 w-3 mr-1 animate-spin" />
+                          Processing
+                        </Badge>
+                      )}
                       <Badge 
                         variant={project.status === 'published' ? 'default' : 'secondary'}
                         className="font-medium"
