@@ -62,9 +62,14 @@ Return the analysis in this exact JSON format:
   }
 }`
 
+      // Use simpler model in production for faster response
+      const model = process.env.NODE_ENV === 'production' ? 'gpt-4.1-mini' : 'gpt-4.1'
+      
+      console.log('[AIContentService] Analyzing transcript with model:', model)
+      console.log('[AIContentService] Transcript length:', transcriptWithTimestamps.length)
+      
       const completion = await openai.chat.completions.create({
-        // Using the latest GPT-4.1 model
-        model: 'gpt-4.1-2025-04-14',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }

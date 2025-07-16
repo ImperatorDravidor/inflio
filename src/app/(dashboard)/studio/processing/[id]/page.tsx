@@ -408,17 +408,21 @@ export default function ProcessingPage() {
       console.log('[Processing] Checking if should start processing:', {
         status: project.status,
         progress,
-        processingStarted
+        processingStarted,
+        tasks: project.tasks
       })
       
       // Only start processing if not already complete
       if (project.status !== 'ready' && progress < 100) {
         // Check if clips task needs processing
         const clipsTask = project.tasks.find(t => t.type === 'clips')
+        const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
         const needsClipsProcessing = clipsTask && clipsTask.status === 'pending'
+        const needsTranscriptionProcessing = transcriptionTask && transcriptionTask.status === 'pending'
         
-        if (needsClipsProcessing || project.status !== 'processing') {
+        if (needsClipsProcessing || needsTranscriptionProcessing || project.status !== 'processing') {
           console.log('[Processing] Starting processing...')
+          setProcessingStarted(true) // Set this immediately to prevent multiple calls
           startKlapProcessing()
         }
       } else if (progress === 100 && project.status === 'processing') {

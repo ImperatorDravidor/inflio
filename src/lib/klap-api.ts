@@ -24,10 +24,11 @@ export class KlapAPIService {
   }
 
   /**
-   * Private method to handle all authenticated requests to the Klap API.
+   * Method to handle all authenticated requests to the Klap API.
    * Includes robust error handling and logging.
+   * Made public for use by worker processes.
    */
-  private static async request<T>(
+  static async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
@@ -111,6 +112,11 @@ export class KlapAPIService {
    * Step 1: Create a video processing task on Klap.
    */
   static async createVideoTask(videoUrl: string): Promise<{ id: string }> {
+    // Validate inputs
+    if (!videoUrl || typeof videoUrl !== 'string') {
+      throw new Error('Invalid video URL provided to Klap API')
+    }
+    
     const payload = {
       source_video_url: videoUrl, 
       language: 'en',
@@ -123,7 +129,9 @@ export class KlapAPIService {
     
     console.log('[KlapAPI] Creating video task with payload:', {
       videoUrl,
-      endpoint: '/tasks/video-to-shorts'
+      endpoint: '/tasks/video-to-shorts',
+      apiUrl: process.env.KLAP_API_URL || 'https://api.klap.app/v2',
+      hasApiKey: !!process.env.KLAP_API_KEY
     })
     
     try {
@@ -132,10 +140,29 @@ export class KlapAPIService {
       body: JSON.stringify(payload),
     })
       
+      if (!result || !result.id) {
+        throw new Error('Invalid response from Klap API: missing task ID')
+      }
+      
       console.log('[KlapAPI] Video task created successfully:', result)
+      logger.info('[KlapAPI] Video task created', {
+        action: 'klap_task_created',
+        metadata: {
+          taskId: result.id,
+          videoUrl
+        }
+      })
+      
       return result
     } catch (error) {
       console.error('[KlapAPI] Failed to create video task:', error)
+      logger.error('[KlapAPI] Failed to create video task', {
+        action: 'klap_task_creation_failed',
+        metadata: {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          videoUrl
+        }
+      })
       throw error
     }
   }

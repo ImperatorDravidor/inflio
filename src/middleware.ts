@@ -12,6 +12,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/upload',
   '/api/cron(.*)',  // Allow cron jobs
   '/api/worker(.*)', // Allow worker endpoints
+  '/api/debug-production', // Debug endpoint (protected by auth internally)
   '/examples/transcription-demo'
 ])
 

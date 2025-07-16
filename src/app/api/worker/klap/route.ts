@@ -128,54 +128,94 @@ async function processKlapJob(job: KlapJob) {
     // Continue processing even if project update fails
   }
 
-  // Poll for completion
+  // Poll for completion with better error handling
   let attempts = 0
-  const maxAttempts = 60 // 5 minutes with 5-second intervals
+  const maxAttempts = 180 // 15 minutes with 5-second intervals for Klap processing
+  let lastError: Error | null = null
+  
+  console.log(`[Worker] Starting to poll Klap task ${task.id} for completion`)
   
   while (attempts < maxAttempts) {
-    // Check task status
-    const taskResponse = await fetch(`https://api.klap.app/v2/tasks/${task.id}`, {
-      headers: {
-        'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-      }
-    })
-    
-    if (!taskResponse.ok) {
-      throw new Error(`Failed to check Klap status: ${taskResponse.status}`)
-    }
-    
-    const taskStatus = await taskResponse.json()
-    
-    if (taskStatus.status === 'failed' || taskStatus.status === 'error') {
-      throw new Error('Klap processing failed')
-    }
-
-    if (taskStatus.status === 'ready' && taskStatus.output_id) {
-      // Update progress: Processing clips
-      await KlapJobQueue.updateJob(jobId, { 
-        folderId: taskStatus.output_id,
-        progress: 50 
+    try {
+      // Check task status using the proper API endpoint
+      const taskResponse = await fetch(`https://api.klap.app/v2/tasks/${task.id}`, {
+        headers: {
+          'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
+          'Content-Type': 'application/json',
+        }
       })
+      
+      if (!taskResponse.ok) {
+        const errorText = await taskResponse.text()
+        console.error(`[Worker] Klap API error response:`, {
+          status: taskResponse.status,
+          statusText: taskResponse.statusText,
+          body: errorText
+        })
+        
+        // Handle rate limiting
+        if (taskResponse.status === 429) {
+          console.log(`[Worker] Rate limited, waiting 60 seconds...`)
+          await new Promise(resolve => setTimeout(resolve, 60000))
+          attempts += 12 // Count as 12 attempts (60s / 5s)
+          continue
+        }
+        
+        throw new Error(`Failed to check Klap status: ${taskResponse.status} - ${errorText}`)
+      }
+      
+      const taskStatus = await taskResponse.json()
+      console.log(`[Worker] Klap task status:`, {
+        taskId: task.id,
+        status: taskStatus.status,
+        hasOutputId: !!taskStatus.output_id,
+        attempt: attempts + 1,
+        maxAttempts
+      })
+      
+      if (taskStatus.status === 'failed' || taskStatus.status === 'error') {
+        throw new Error(`Klap processing failed: ${taskStatus.error || 'Unknown error'}`)
+      }
 
-      // Process and store clips
-      const clips = await processAndStoreClips(projectId, taskStatus.output_id, jobId)
+      if (taskStatus.status === 'ready' && taskStatus.output_id) {
+        console.log(`[Worker] Klap task completed! Output ID: ${taskStatus.output_id}`)
+        
+        // Update progress: Processing clips
+        await KlapJobQueue.updateJob(jobId, { 
+          folderId: taskStatus.output_id,
+          progress: 50 
+        })
+
+        // Process and store clips
+        const clips = await processAndStoreClips(projectId, taskStatus.output_id, jobId)
+        
+        // Complete the job
+        await KlapJobQueue.completeJob(jobId, clips)
+        
+        return
+      }
+
+      // Update progress based on time elapsed
+      const progress = Math.min(25 + Math.floor((attempts / maxAttempts) * 25), 50)
+      await KlapJobQueue.updateJob(jobId, { progress })
       
-      // Complete the job
-      await KlapJobQueue.completeJob(jobId, clips)
-      
-      return
+      lastError = null // Reset error on successful check
+    } catch (error) {
+      console.error(`[Worker] Error checking Klap task status (attempt ${attempts + 1}):`, error)
+      lastError = error instanceof Error ? error : new Error(String(error))
     }
-
-    // Update progress based on time elapsed
-    const progress = Math.min(25 + Math.floor((attempts / maxAttempts) * 25), 50)
-    await KlapJobQueue.updateJob(jobId, { progress })
 
     // Wait before next check
     await new Promise(resolve => setTimeout(resolve, 5000))
     attempts++
   }
 
-  throw new Error('Klap processing timed out')
+  // Timeout reached
+  const timeoutMessage = `Klap processing timed out after ${Math.floor(attempts * 5 / 60)} minutes`
+  if (lastError) {
+    throw new Error(`${timeoutMessage}. Last error: ${lastError.message}`)
+  }
+  throw new Error(timeoutMessage)
 }
 
 /**
