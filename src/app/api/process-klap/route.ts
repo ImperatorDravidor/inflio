@@ -3,15 +3,14 @@ import { KlapAPIService } from '@/lib/klap-api'
 import { ProjectService } from '@/lib/services'
 import { auth } from '@clerk/nextjs/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { KlapJobQueue } from '@/lib/redis'
+import { inngest } from '@/inngest/client'
 
-// Vercel function configuration
-export const maxDuration = 10 // Quick response
-export const dynamic = 'force-dynamic'
+// Quick response - just queue the job
+export const maxDuration = 10
 
 /**
  * POST /api/process-klap
- * Queue Klap processing job
+ * Queue Klap processing job with Inngest
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,67 +33,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project has no video' }, { status: 400 })
     }
 
-    // Check if job already exists
-    const existingJob = await KlapJobQueue.getJobByProjectId(projectId)
-    if (existingJob && (existingJob.status === 'queued' || existingJob.status === 'processing')) {
+    // Check if already processing
+    const clipsTask = project.tasks.find(t => t.type === 'clips')
+    if (clipsTask?.status === 'processing') {
       return NextResponse.json({ 
         message: 'Clips are already being processed',
-        jobId: existingJob.id,
-        status: existingJob.status
+        status: 'processing'
       })
     }
 
-    // Create new job
-    const job = await KlapJobQueue.createJob(projectId, project.video_url)
+    // Send event to Inngest
+    await inngest.send({
+      name: 'klap/video.process',
+      data: {
+        projectId,
+        videoUrl: project.video_url,
+        userId
+      }
+    })
     
     // Update task progress to show it's queued
-    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
     
-    // Small delay to ensure Redis operations complete
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // Immediately trigger the worker
-    console.log('[Process Klap] Triggering worker immediately...')
-    try {
-      // Use the correct URL for Vercel
-      let workerUrl: string
-      if (process.env.VERCEL_URL) {
-        // Production/Preview on Vercel
-        workerUrl = `https://${process.env.VERCEL_URL}/api/worker/klap`
-      } else if (process.env.NEXT_PUBLIC_VERCEL_URL) {
-        // Alternative Vercel URL
-        workerUrl = `https://${process.env.NEXT_PUBLIC_VERCEL_URL}/api/worker/klap`
-      } else {
-        // Local development
-        workerUrl = 'http://localhost:3000/api/worker/klap'
-      }
-      
-      console.log('[Process Klap] Worker URL:', workerUrl)
-      console.log('[Process Klap] Worker secret exists:', !!process.env.WORKER_SECRET)
-      
-      const response = await fetch(workerUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.WORKER_SECRET}`,
-        },
-      })
-      
-      console.log('[Process Klap] Worker trigger response:', response.status)
-      if (!response.ok) {
-        const text = await response.text()
-        console.error('[Process Klap] Worker trigger failed:', text)
-      } else {
-        console.log('[Process Klap] Worker triggered successfully')
-      }
-    } catch (error) {
-      console.error('[Process Klap] Failed to trigger worker:', error)
-      // Don't throw - the cron will pick it up anyway
-    }
-    
-    return NextResponse.json({
+    return NextResponse.json({ 
       success: true,
-      message: 'Clip generation queued',
-      jobId: job.id
+      message: 'Clip generation queued successfully'
     })
   } catch (error) {
     console.error('[Process Klap] Error:', error)
@@ -107,7 +70,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/process-klap?projectId=xxx
- * Check job status from Redis
+ * Check processing status
  */
 export async function GET(request: NextRequest) {
   try {
@@ -118,51 +81,65 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
     }
 
-    // Get job from Redis
-    const job = await KlapJobQueue.getJobByProjectId(projectId)
-    if (!job) {
-      return NextResponse.json({ 
-        error: 'No job found for this project' 
-      }, { status: 404 })
+    const project = await ProjectService.getProject(projectId)
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // Update task progress to match Redis job progress (minimum 10%)
-    if (job.status === 'processing' || job.status === 'queued') {
-      const currentProgress = Math.max(10, job.progress || 10) // Ensure minimum 10%
-      await ProjectService.updateTaskProgress(projectId, 'clips', currentProgress, 'processing')
-    }
-
-    // If job is completed, update project with clips
-    if (job.status === 'completed' && job.clips) {
-      const project = await ProjectService.getProject(projectId)
-      if (project && (!project.folders?.clips || project.folders.clips.length === 0)) {
-        // Store clips in project
-        await ProjectService.updateProject(projectId, {
-          folders: {
-            clips: job.clips,
-            images: project.folders?.images || [],
-            social: project.folders?.social || [],
-            blog: project.folders?.blog || []
-          }
-        })
-        
-        // Mark task as complete
-        await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-      }
-      
+    // Check task status
+    const clipsTask = project.tasks.find(t => t.type === 'clips')
+    
+    // If clips are already completed, return them
+    if (clipsTask?.status === 'completed' && project.folders?.clips?.length > 0) {
       return NextResponse.json({
         success: true,
         status: 'completed',
-        clips: job.clips
+        clips: project.folders.clips,
+        progress: 100
       })
+    }
+
+    // If processing, check Klap status directly
+    if (project.klap_project_id && clipsTask?.status === 'processing') {
+      try {
+        const response = await fetch(`https://api.klap.app/v2/tasks/${project.klap_project_id}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
+          }
+        })
+        
+        if (response.ok) {
+          const status = await response.json()
+          
+          // Calculate progress based on Klap status
+          let progress = clipsTask.progress || 10
+          if (status.status === 'processing') {
+            progress = Math.max(20, Math.min(80, progress + 5)) // Increment slowly
+          } else if (status.status === 'ready') {
+            progress = 90 // Almost done, just need to process clips
+          }
+          
+          return NextResponse.json({
+            success: true,
+            status: status.status === 'ready' ? 'processing_clips' : 'processing',
+            klapStatus: status.status,
+            progress,
+            message: status.status === 'ready' 
+              ? 'Clips generated, processing and storing...' 
+              : 'Generating clips with AI...'
+          })
+        }
+      } catch (error) {
+        console.error('[Process Klap GET] Error checking Klap status:', error)
+      }
     }
 
     // Return current status
     return NextResponse.json({
       success: true,
-      status: job.status,
-      progress: job.progress,
-      error: job.error
+      status: clipsTask?.status || 'idle',
+      progress: clipsTask?.progress || 0,
+      clips: project.folders?.clips || []
     })
   } catch (error) {
     console.error('[Process Klap GET] Error:', error)
