@@ -1,18 +1,19 @@
 /**
  * Diagnostic script for Klap processing issues
- * Usage: node scripts/diagnose-klap-processing.js <projectId>
+ * Usage: npx tsx scripts/diagnose-klap.ts <projectId>
  */
 
 import { KlapJobQueue } from '../src/lib/redis'
 import { ProjectService } from '../src/lib/services/index'
-import { config } from 'dotenv'
+import * as dotenv from 'dotenv'
+import { supabaseAdmin } from '../src/lib/supabase/admin'
 
-config({ path: '.env.local' })
+dotenv.config({ path: '.env.local' })
 
 const projectId = process.argv[2]
 
 if (!projectId) {
-  console.error('Usage: node scripts/diagnose-klap-processing.js <projectId>')
+  console.error('Usage: npx tsx scripts/diagnose-klap.ts <projectId>')
   process.exit(1)
 }
 
@@ -60,7 +61,7 @@ async function diagnose() {
     } else {
       console.log('   ❌ No clips task found')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('   ❌ Error loading project:', error.message)
   }
   console.log()
@@ -87,7 +88,7 @@ async function diagnose() {
         console.log('   Klap Task ID:', job.taskId)
       }
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('   ❌ Error checking Redis:', error.message)
   }
   console.log()
@@ -104,7 +105,7 @@ async function diagnose() {
     const result = await response.json()
     console.log('   Response Status:', response.status)
     console.log('   Response:', result)
-  } catch (error) {
+  } catch (error: any) {
     console.error('   ❌ Worker endpoint error:', error.message)
   }
   console.log()
@@ -118,7 +119,7 @@ async function diagnose() {
     const result = await response.json()
     console.log('   Response Status:', response.status)
     console.log('   Response:', result)
-  } catch (error) {
+  } catch (error: any) {
     console.error('   ❌ Cron endpoint error:', error.message)
   }
 }

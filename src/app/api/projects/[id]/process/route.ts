@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { auth } from "@clerk/nextjs/server";
 import { processTranscription } from "@/lib/transcription-processor";
-import { KlapJobQueue } from "@/lib/redis";
+import { inngest } from "@/inngest/client";
 
-// Extend timeout for processing
-export const maxDuration = 300; // 5 minutes
+// Quick response - just queue jobs
+export const maxDuration = 30; // 5 minutes
 export const dynamic = 'force-dynamic';
 
 export async function POST(
@@ -56,42 +56,27 @@ export async function POST(
     );
     
     if (hasClipsTask) {
-      // Queue Klap processing via Redis
+      // Queue Klap processing via Inngest
       try {
-        console.log('[Process Route] Checking for existing Klap job...')
-        
-        // Create or get existing job (createJob now handles existing jobs properly)
-        console.log('[Process Route] Creating/getting Klap job for project:', projectId)
+        console.log('[Process Route] Queueing Klap job with Inngest...')
+        console.log('[Process Route] Project ID:', projectId)
         console.log('[Process Route] Video URL:', project.video_url)
         
-        const job = await KlapJobQueue.createJob(projectId, project.video_url);
-        console.log('[Process Route] Klap job ready:', {
-          jobId: job.id,
-          projectId: job.projectId,
-          status: job.status,
-          createdAt: job.createdAt,
-          isNew: job.status === 'queued' && job.attempts === 0
+        // Send event to Inngest
+        await inngest.send({
+          name: 'klap/video.process',
+          data: {
+            projectId,
+            videoUrl: project.video_url,
+            userId
+          }
         });
         
-        // Update task progress to 10% to show it's queued and waiting
-        await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing');
-        console.log('[Process Route] Updated clips task to processing status with 10% progress')
+        console.log('[Process Route] Klap job queued successfully with Inngest')
         
-        // Always trigger the worker to ensure processing
-        console.log('[Process Route] Triggering worker...')
-        try {
-          const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/worker/klap`
-          await fetch(workerUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.WORKER_SECRET}`,
-            },
-          })
-          console.log('[Process Route] Worker triggered successfully')
-        } catch (error) {
-          console.error('[Process Route] Failed to trigger worker:', error)
-          // Don't throw - the cron will pick it up anyway
-        }
+        // Update task progress to show it's queued
+        await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+        console.log('[Process Route] Updated clips task to processing status')
       } catch (error) {
         console.error('[Process Route] Failed to queue Klap processing:', error);
         console.error('[Process Route] Error details:', {
