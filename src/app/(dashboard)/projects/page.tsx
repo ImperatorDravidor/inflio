@@ -107,15 +107,48 @@ function ProjectCard({
   const router = useRouter()
   const stats = ProjectService.getProjectStats(project)
   const progress = ProjectService.calculateProjectProgress(project)
-  const isProcessing = project.status === 'processing' && progress < 100
+  
+  // Check task statuses
+  const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+  const clipsTask = project.tasks.find(t => t.type === 'clips')
+  
+  const isTranscriptionProcessing = transcriptionTask?.status === 'processing'
+  const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+    (transcriptionTask?.progress === 100)
+  const areClipsProcessing = clipsTask?.status === 'processing'
+  const areClipsComplete = clipsTask?.status === 'completed' || 
+    (clipsTask?.progress === 100)
+  
+  // Determine overall status
+  const isProcessing = isTranscriptionProcessing || areClipsProcessing
+  const getStatusText = () => {
+    if (isTranscriptionProcessing) return 'AI Analysis'
+    if (areClipsProcessing) return 'Generating Clips'
+    if (project.status === 'published') return 'Published'
+    if (isTranscriptionComplete || areClipsComplete) return 'Ready'
+    return project.status
+  }
+  
+  const statusText = getStatusText()
 
   // Helper function to handle project navigation
   const handleProjectClick = () => {
-    // Check both status and progress to determine if still processing
-    if (project.status === 'processing' && progress < 100) {
-      router.push(`/studio/processing/${project.id}`)
-    } else {
+    // Check if transcription is complete
+    const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+    const isTranscriptionComplete = transcriptionTask && 
+      (transcriptionTask.status === 'completed' || transcriptionTask.progress === 100)
+    
+    // Check if clips are still processing
+    const clipsTask = project.tasks.find(t => t.type === 'clips')
+    const areClipsProcessing = clipsTask && 
+      clipsTask.status === 'processing' && clipsTask.progress < 100
+    
+    // If transcription is done (or no transcription task), go to project view
+    // Only go to processing view if transcription is still processing
+    if (!transcriptionTask || isTranscriptionComplete) {
       router.push(`/projects/${project.id}`)
+    } else {
+      router.push(`/studio/processing/${project.id}`)
     }
   }
 
@@ -201,15 +234,14 @@ function ProjectCard({
               </h3>
               <Badge 
                 variant={
-                  project.status === 'ready' ? 'default' :
-                  project.status === 'processing' ? 'secondary' :
-                  project.status === 'published' ? 'default' :
+                  statusText === 'Ready' || statusText === 'Published' ? 'default' :
+                  isProcessing ? 'secondary' :
                   'outline'
                 }
                 className={cn("text-xs", isProcessing && "animate-pulse")}
               >
                 {isProcessing && <IconLoader2 className="h-3 w-3 mr-1 animate-spin" />}
-                {project.status}
+                {statusText}
               </Badge>
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 mb-2">
@@ -360,14 +392,13 @@ function ProjectCard({
             isProcessing && "animate-pulse"
           )}
           variant={
-            project.status === 'ready' ? 'default' :
-            project.status === 'processing' ? 'secondary' :
-            project.status === 'published' ? 'default' :
+            statusText === 'Ready' || statusText === 'Published' ? 'default' :
+            isProcessing ? 'secondary' :
             'outline'
           }
         >
           {isProcessing && <IconLoader2 className="h-3 w-3 mr-1 animate-spin" />}
-          {project.status}
+          {statusText}
         </Badge>
       </div>
 

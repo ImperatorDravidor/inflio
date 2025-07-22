@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/process-klap?projectId=xxx
- * Check processing status
+ * Check processing status from our database.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -86,55 +86,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // Check task status
+    // Check task status from our database
     const clipsTask = project.tasks.find(t => t.type === 'clips')
     
-    // If clips are already completed, return them
-    if (clipsTask?.status === 'completed' && project.folders?.clips?.length > 0) {
-      return NextResponse.json({
-        success: true,
-        status: 'completed',
-        clips: project.folders.clips,
-        progress: 100
-      })
-    }
-
-    // If processing, check Klap status directly
-    if (project.klap_project_id && clipsTask?.status === 'processing') {
-      try {
-        const response = await fetch(`https://api.klap.app/v2/tasks/${project.klap_project_id}`, {
-          headers: {
-            'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-          }
-        })
-        
-        if (response.ok) {
-          const status = await response.json()
-          
-          // Calculate progress based on Klap status
-          let progress = clipsTask.progress || 10
-          if (status.status === 'processing') {
-            progress = Math.max(20, Math.min(80, progress + 5)) // Increment slowly
-          } else if (status.status === 'ready') {
-            progress = 90 // Almost done, just need to process clips
-          }
-          
-          return NextResponse.json({
-            success: true,
-            status: status.status === 'ready' ? 'processing_clips' : 'processing',
-            klapStatus: status.status,
-            progress,
-            message: status.status === 'ready' 
-              ? 'Clips generated, processing and storing...' 
-              : 'Generating clips with AI...'
-          })
-        }
-      } catch (error) {
-        console.error('[Process Klap GET] Error checking Klap status:', error)
-      }
-    }
-
-    // Return current status
+    // Return current status from our DB. Inngest is the source of truth.
     return NextResponse.json({
       success: true,
       status: clipsTask?.status || 'idle',
