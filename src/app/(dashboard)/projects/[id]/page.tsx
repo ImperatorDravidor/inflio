@@ -62,6 +62,7 @@ import {
   IconBrandReddit,
   IconLayoutGridAdd,
   IconChevronDown,
+  IconHash,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -2106,18 +2107,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           </div>
                                         )}
                                         
-                                        {/* Clip Transcript */}
-                                        {clip.transcript && (
-                                          <div className="bg-muted/50 rounded-lg p-4">
-                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                                              <IconFileText className="h-4 w-4 text-primary" />
-                                              Transcript
-                                            </h4>
-                                            <p className="text-sm text-muted-foreground line-clamp-3">
-                                              {clip.transcript}
-                                            </p>
-                                          </div>
-                                        )}
+                                        {/* Clip Transcript - Moved below score */}
                                         
                                         {/* Tags */}
                                         {clip.tags && clip.tags.length > 0 && (
@@ -2167,6 +2157,19 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                         />
                                       </div>
                                     </div>
+                                    
+                                        {/* Clip Transcript */}
+                                        {clip.transcript && (
+                                          <div className="bg-muted/50 rounded-lg p-4">
+                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                              <IconFileText className="h-4 w-4 text-primary" />
+                                              Transcript
+                                            </h4>
+                                            <p className="text-sm text-muted-foreground line-clamp-3">
+                                              {clip.transcript}
+                                            </p>
+                                          </div>
+                                        )}
                                     
                                         {/* Quick Actions */}
                                         <div className="flex items-center gap-2 pt-2">
@@ -3314,37 +3317,139 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </div>
                   </div>
                   
-                  {/* Transcript */}
-                  {selectedClip.transcript && (
+                  {/* Clip Metadata */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-muted/30 border">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <IconClock className="h-4 w-4" />
+                        Duration
+                      </div>
+                      <p className="font-semibold">{formatDuration(selectedClip.duration || (selectedClip.endTime - selectedClip.startTime))}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/30 border">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <IconVideo className="h-4 w-4" />
+                        Time Range
+                      </div>
+                      <p className="font-semibold">{formatDuration(selectedClip.startTime)} - {formatDuration(selectedClip.endTime)}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Tags */}
+                  {selectedClip.tags && selectedClip.tags.length > 0 && (
                     <div>
-                      <h3 className="font-semibold mb-2 flex items-center gap-2">
-                        <IconFileText className="h-5 w-5 text-primary" />
-                        Transcript
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <IconHash className="h-5 w-5 text-primary" />
+                        Tags
                       </h3>
-                      <div className="p-4 rounded-lg bg-muted/30 border max-h-48 overflow-y-auto">
-                        <p className="text-sm whitespace-pre-wrap">{selectedClip.transcript}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedClip.tags.map((tag: string, idx: number) => (
+                          <Badge key={idx} variant="secondary" className="text-sm">
+                            #{tag}
+                          </Badge>
+                        ))}
                       </div>
                     </div>
                   )}
                   
-
+                  {/* Transcript */}
+                  {selectedClip.transcript && (
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <IconFileText className="h-5 w-5 text-primary" />
+                        Transcript
+                      </h3>
+                      <div className="p-4 rounded-lg bg-muted/30 border max-h-48 overflow-y-auto">
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedClip.transcript}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Platform Captions (if available) */}
+                  {selectedClip.publicationCaptions && Object.keys(selectedClip.publicationCaptions).length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <IconShare2 className="h-5 w-5 text-primary" />
+                        Platform Captions
+                      </h3>
+                      <div className="space-y-2">
+                        {Object.entries(selectedClip.publicationCaptions).map(([platform, caption]) => (
+                          <div key={platform} className="p-3 rounded-lg bg-muted/30 border">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge variant="outline" className="capitalize">
+                                {platform}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  copyToClipboard(caption as string, `${platform}-caption`)
+                                  toast.success(`${platform} caption copied!`)
+                                }}
+                              >
+                                <IconCopy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{caption as string}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Actions */}
-                  {selectedClip.transcript && (
-                    <div className="pt-4">
+                  <div className="space-y-3 pt-4 border-t">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (selectedClip.exportUrl) {
+                            const a = document.createElement('a')
+                            a.href = selectedClip.exportUrl
+                            a.download = `${selectedClip.title || 'clip'}.mp4`
+                            a.click()
+                          }
+                        }}
+                      >
+                        <IconDownload className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const shareData = {
+                            title: selectedClip.title || 'Check out this clip',
+                            text: selectedClip.description || selectedClip.transcript || '',
+                            url: window.location.href
+                          }
+                          if (navigator.share) {
+                            navigator.share(shareData).catch(() => {
+                              copyToClipboard(window.location.href, 'share-link')
+                              toast.success('Link copied to clipboard')
+                            })
+                          } else {
+                            copyToClipboard(window.location.href, 'share-link')
+                            toast.success('Link copied to clipboard')
+                          }
+                        }}
+                      >
+                        <IconShare className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    </div>
+                    {selectedClip.transcript && (
                       <Button
                         className="w-full"
-                        size="lg"
                         onClick={() => {
                           copyToClipboard(selectedClip.transcript!, 'clip-transcript')
                           toast.success('Transcript copied to clipboard')
                         }}
                       >
-                        <IconCopy className="h-5 w-5 mr-2" />
+                        <IconCopy className="h-4 w-4 mr-2" />
                         Copy Transcript
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
