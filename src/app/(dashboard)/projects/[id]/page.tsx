@@ -78,7 +78,7 @@ import { TranscriptionService } from "@/lib/transcription-service"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PublishingWorkflow } from "@/components/publishing-workflow"
-
+import { useProject } from "@/hooks/use-project"
 
 
 import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-editor"
@@ -126,8 +126,7 @@ export default function ProjectDetailPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const transcriptionScrollRef = useRef<HTMLDivElement>(null)
   
-  const [project, setProject] = useState<Project | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { project, loading, error, reload: loadProject, setProject } = useProject(projectId)
   const [activeTab, setActiveTab] = useState<string>("overview")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
@@ -165,70 +164,17 @@ export default function ProjectDetailPage() {
   const [stagedContent, setStagedContent] = useState<StagedContent[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  useEffect(() => {
-    loadProject()
-  }, [projectId])
+  // Project loading is handled by useProject hook
   
-  // Poll for updates when clips are being generated
+  // Update actively processing state based on clips task
   useEffect(() => {
     if (project) {
       const clipsTask = project.tasks.find(t => t.type === 'clips')
       const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
-      
-      // Update actively processing state
       setIsActivelyProcessing(isClipsProcessing || false)
-      
-      if (isClipsProcessing) {
-        // Clear any existing interval
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-        }
-        
-        // Function to check Klap status
-        const checkKlapStatus = async () => {
-          try {
-            const response = await fetch(`/api/process-klap?projectId=${projectId}`)
-            if (response.ok) {
-              const result = await response.json()
-              
-              // If status changed or clips are ready, reload the project
-              if (result.status === 'completed' || result.clips) {
-                await loadProject()
-              } else if (result.status === 'processing' && result.progress) {
-                // Update progress locally for smoother UX
-                const updatedTasks = project.tasks.map(task => {
-                  if (task.type === 'clips') {
-                    return { ...task, progress: Math.max(10, result.progress) } // Ensure minimum 10%
-                  }
-                  return task
-                })
-                setProject({ ...project, tasks: updatedTasks })
-              }
-            }
-          } catch (error) {
-            console.error('Error checking Klap status:', error)
-          }
-        }
-        
-        // Start polling every 10 seconds
-        const interval = setInterval(checkKlapStatus, 10000)
-        pollingIntervalRef.current = interval
-        
-        // Check immediately
-        checkKlapStatus()
-        
-        // Cleanup on unmount or when processing stops
-        return () => {
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current)
-            pollingIntervalRef.current = null
-          }
-        }
-      }
     }
-  }, [project, projectId])
+  }, [project])
   
 
   
@@ -355,23 +301,14 @@ export default function ProjectDetailPage() {
     }
   }, [project?.transcription, activeSegmentId])
 
-  const loadProject = async () => {
-    try {
-      const proj = await ProjectService.getProject(projectId)
-      if (!proj) {
-        toast.error("Project not found")
-        router.push("/projects")
-        return
-      }
-      
-        setProject(proj)
-    } catch (error) {
-      console.error("Failed to load project:", error)
-      toast.error("Failed to load project")
-    } finally {
-      setLoading(false)
+  // loadProject is provided by useProject hook
+  
+  // Handle project not found error
+  useEffect(() => {
+    if (error === "Project not found" && !loading) {
+      router.push("/projects")
     }
-  }
+  }, [error, loading, router])
 
   const handleGenerateBlog = async (options: BlogGenerationOptions) => {
     if (!project?.transcription) {
@@ -1008,16 +945,38 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   )}
                 </Button>
                 
-                {/* Processing View Link */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push(`/studio/processing/${projectId}`)}
-                  className="w-full justify-center text-muted-foreground hover:text-primary"
-                >
-                  <IconWand className="h-4 w-4 mr-2" />
-                  View in Studio
-                </Button>
+                {/* Processing View Link - Show if clips are still processing */}
+                {(() => {
+                  const clipsTask = project.tasks.find(t => t.type === 'clips')
+                  const areClipsProcessing = clipsTask && 
+                    clipsTask.status === 'processing' && clipsTask.progress < 100
+                  
+                  if (areClipsProcessing) {
+                    return (
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        onClick={() => router.push(`/studio/processing/${projectId}`)}
+                        className="w-full justify-center bg-gradient-to-r from-primary/20 to-primary/10 hover:from-primary/30 hover:to-primary/20 border-primary/20"
+                      >
+                        <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Clips Processing ({clipsTask.progress}%)
+                      </Button>
+                    )
+                  }
+                  
+                  return (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/studio/processing/${projectId}`)}
+                      className="w-full justify-center text-muted-foreground hover:text-primary"
+                    >
+                      <IconWand className="h-4 w-4 mr-2" />
+                      View Processing Details
+                    </Button>
+                  )
+                })()}
               </div>
             </div>
           </div>
@@ -1677,7 +1636,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         </div>
 
                         {/* Top Clips Preview */}
-                        {project.folders.clips.length > 0 && (
+                        {project.folders.clips && project.folders.clips.length > 0 && (
                           <div>
                             <div className="flex items-center justify-between mb-4">
                               <h3 className="text-lg font-semibold">Top Performing Clips</h3>
@@ -1722,6 +1681,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                             onMouseLeave={(e) => {
                                               e.currentTarget.pause()
                                           e.currentTarget.currentTime = 1
+                                            }}
+                                            onError={(e) => {
+                                              console.error('Video loading error:', e)
+                                              // Optionally hide the video element on error
+                                              e.currentTarget.style.display = 'none'
                                             }}
                                           />
                                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">

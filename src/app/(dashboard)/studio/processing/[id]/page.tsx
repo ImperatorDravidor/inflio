@@ -100,23 +100,41 @@ export default function ProcessingPage() {
     console.log('[Processing] Project tasks:', project.tasks)
     console.log('[Processing] Video URL:', project.video_url)
 
-    // Check if transcription task exists, if not add it
-    const hasTranscriptionTask = project.tasks.some(t => t.type === 'transcription')
-    if (!hasTranscriptionTask) {
+    // Check existing task statuses
+    const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+    const clipsTask = project.tasks.find(t => t.type === 'clips')
+    
+    // Don't restart completed tasks
+    const isTranscriptionComplete = transcriptionTask?.status === 'completed' || transcriptionTask?.progress === 100
+    const areClipsComplete = clipsTask?.status === 'completed' || clipsTask?.progress === 100
+    
+    // If both tasks are already complete, just redirect
+    if (isTranscriptionComplete && areClipsComplete) {
+      console.log('[Processing] Both tasks already complete, redirecting...')
+      router.push(`/projects/${projectId}`)
+      return
+    }
+
+    // Only add transcription task if it doesn't exist and isn't already complete
+    if (!transcriptionTask && !isTranscriptionComplete) {
       console.log('[Processing] No transcription task found, adding it...')
-      const transcriptionTask = {
+      const newTranscriptionTask = {
         id: crypto.randomUUID(),
         type: 'transcription' as const,
         status: 'pending' as const,
         progress: 0
       }
-      project.tasks.push(transcriptionTask)
+      project.tasks.push(newTranscriptionTask)
       await ProjectService.updateProject(projectId, { tasks: project.tasks })
     }
 
     setProcessingStarted(true)
     setStartTime(new Date())
-    toast.info("Starting AI processing...")
+    
+    // Only show toast if we're actually starting new processing
+    if (!isTranscriptionComplete || !areClipsComplete) {
+      toast.info("Continuing AI processing...")
+    }
     
     try {
       console.log('[Processing] Calling main process endpoint...')
@@ -135,13 +153,18 @@ export default function ProcessingPage() {
       const result = await response.json()
       console.log('[Processing] Process started:', result)
       
-      // Optimistically update the UI immediately
+      // Optimistically update the UI immediately, but preserve completed tasks
       const updatedTasks = project.tasks.map(task => {
+        // Don't touch completed tasks
+        if (task.status === 'completed') {
+          return task
+        }
+        
         if (task.type === 'clips') {
-          return { ...task, status: 'processing' as const, progress: 10 }
+          return { ...task, status: 'processing' as const, progress: Math.max(task.progress, 10) }
         }
         if (task.type === 'transcription') {
-          return { ...task, status: 'processing' as const, progress: 10 }
+          return { ...task, status: 'processing' as const, progress: Math.max(task.progress, 10) }
         }
         return task
       })
@@ -155,31 +178,36 @@ export default function ProcessingPage() {
       setTimeout(async () => {
         const freshProject = await ProjectService.getProject(projectId)
         if (freshProject) {
-          // Only update if server data is newer or shows actual progress
-          const freshClipsTask = freshProject.tasks.find(t => t.type === 'clips')
-          const currentClipsTask = project.tasks.find(t => t.type === 'clips')
-          
-          // If clips task is still pending/0% on server but we just started it, keep our optimistic update
-          if (freshClipsTask && currentClipsTask && 
-              freshClipsTask.status === 'processing' && 
-              freshClipsTask.progress < 10 &&
-              Date.now() - optimisticUpdateTime < 30000) { // Within 30 seconds
-            // Keep the optimistic 10% progress
-            freshClipsTask.progress = 10
-          }
-          
-          setProject(freshProject)
-          console.log('[Processing] Fresh project data loaded:', {
-            clipsTask: freshClipsTask,
-            transcriptionTask: freshProject.tasks.find(t => t.type === 'transcription')
+          // Preserve completed status for tasks that were already complete
+          const mergedTasks = freshProject.tasks.map(freshTask => {
+            const originalTask = project.tasks.find(t => t.type === freshTask.type)
+            if (originalTask?.status === 'completed' && freshTask.status !== 'completed') {
+              // Keep the completed status if it was already complete
+              return originalTask
+            }
+            
+            // For clips, ensure minimum progress if recently started
+            if (freshTask.type === 'clips' && 
+                freshTask.status === 'processing' && 
+                freshTask.progress < 10 &&
+                Date.now() - optimisticUpdateTime < 30000) {
+              return { ...freshTask, progress: 10 }
+            }
+            
+            return freshTask
           })
+          
+          setProject({ ...freshProject, tasks: mergedTasks })
+          console.log('[Processing] Fresh project data loaded with preserved statuses')
         }
       }, 1500)
 
       // Processing has been started successfully
-      toast.success("Processing started! This will take a few minutes.", {
-        duration: 4000
-      })
+      if (!isTranscriptionComplete || !areClipsComplete) {
+        toast.success("Processing continues! This will take a few minutes.", {
+          duration: 4000
+        })
+      }
 
     } catch (error) {
       console.error("Processing failed:", error)
@@ -412,13 +440,27 @@ export default function ProcessingPage() {
         tasks: project.tasks
       })
       
+      // Check individual task statuses
+      const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+      const clipsTask = project.tasks.find(t => t.type === 'clips')
+      
+      const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+        transcriptionTask?.progress === 100
+      const areClipsComplete = clipsTask?.status === 'completed' || 
+        clipsTask?.progress === 100
+      
+      // If transcription is complete, don't show this page, redirect to project view
+      if (isTranscriptionComplete && !areClipsComplete) {
+        console.log('[Processing] Transcription complete but clips still processing, redirecting to project view')
+        router.push(`/projects/${projectId}`)
+        return
+      }
+      
       // Only start processing if not already complete
       if (project.status !== 'ready' && progress < 100) {
-        // Check if clips task needs processing
-        const clipsTask = project.tasks.find(t => t.type === 'clips')
-        const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
-        const needsClipsProcessing = clipsTask && clipsTask.status === 'pending'
-        const needsTranscriptionProcessing = transcriptionTask && transcriptionTask.status === 'pending'
+        // Check if tasks need processing
+        const needsClipsProcessing = clipsTask && !areClipsComplete && clipsTask.status === 'pending'
+        const needsTranscriptionProcessing = transcriptionTask && !isTranscriptionComplete && transcriptionTask.status === 'pending'
         
         if (needsClipsProcessing || needsTranscriptionProcessing || project.status !== 'processing') {
           console.log('[Processing] Starting processing...')
