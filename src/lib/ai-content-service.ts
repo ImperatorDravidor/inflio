@@ -62,14 +62,9 @@ Return the analysis in this exact JSON format:
   }
 }`
 
-      // Use simpler model in production for faster response
-      const model = process.env.NODE_ENV === 'production' ? 'gpt-4.1-mini' : 'gpt-4.1'
-      
-      console.log('[AIContentService] Analyzing transcript with model:', model)
-      console.log('[AIContentService] Transcript length:', transcriptWithTimestamps.length)
-      
       const completion = await openai.chat.completions.create({
-        model,
+        // Using the latest GPT-4.1 model
+        model: 'gpt-4.1-2025-04-14',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -100,16 +95,7 @@ Return the analysis in this exact JSON format:
         }
       }
     } catch (error) {
-      // Log detailed error information
-      console.error('[AIContentService] Error analyzing transcript:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        isOpenAIError: error instanceof Error && error.message.includes('OpenAI'),
-        isModelError: error instanceof Error && error.message.includes('model'),
-        environment: process.env.NODE_ENV,
-        isVercel: !!process.env.VERCEL,
-        model: process.env.NODE_ENV === 'production' ? 'gpt-4.1-mini' : 'gpt-4.1'
-      })
+      console.error('Error analyzing transcript:', error)
       
       // Return a fallback analysis if OpenAI fails
       return AIContentService.generateFallbackAnalysis(transcription)
