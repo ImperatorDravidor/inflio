@@ -281,7 +281,7 @@ async function processAndStoreClips(
       // Download and store video
       const videoUrl = await downloadAndStoreClip(projectId, exported[0].url, i)
 
-      // Create clip object
+      // Create clip object with all metadata
       const clip = {
         id: `${projectId}_clip_${i}`,
         title: details.title || details.name || `Clip ${i + 1}`,
@@ -298,7 +298,12 @@ async function processAndStoreClips(
         exportUrl: videoUrl,
         exported: true,
         storedInSupabase: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        // Additional metadata from Klap
+        viralityExplanation: details.virality_score_explanation || details.description || '',
+        transcript: details.transcript || details.subtitle || details.text || '',
+        rawKlapData: details, // Store raw response for debugging
+        publicationCaptions: details.publication_captions || details.captions || undefined
       }
 
       processedClips.push(clip)

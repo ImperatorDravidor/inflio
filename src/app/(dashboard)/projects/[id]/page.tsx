@@ -2094,17 +2094,55 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     </div>
                                         
                                         {/* Virality Score Explanation */}
-                                        {clip.viralityExplanation && (
+                                        {(clip.viralityExplanation || clip.description) && (
                                           <div className="bg-background rounded-lg p-4 border">
                                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
                                               <IconSparkles className="h-4 w-4 text-primary" />
                                               AI Analysis
                                             </h4>
                                             <p className="text-sm text-muted-foreground">
-                                              {clip.viralityExplanation}
+                                              {clip.viralityExplanation || clip.description}
                                             </p>
                                           </div>
                                         )}
+                                        
+                                        {/* Clip Transcript */}
+                                        {clip.transcript && (
+                                          <div className="bg-muted/50 rounded-lg p-4">
+                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                              <IconFileText className="h-4 w-4 text-primary" />
+                                              Transcript
+                                            </h4>
+                                            <p className="text-sm text-muted-foreground line-clamp-3">
+                                              {clip.transcript}
+                                            </p>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Tags */}
+                                        {clip.tags && clip.tags.length > 0 && (
+                                          <div className="flex flex-wrap gap-2">
+                                            {clip.tags.map((tag: string, idx: number) => (
+                                              <Badge key={idx} variant="secondary" className="text-xs">
+                                                {tag}
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )}
+                                    
+                                    {/* Clip Metadata */}
+                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                          <div>
+                                            <span className="text-muted-foreground">Duration</span>
+                                            <p className="font-medium">{formatDuration(clip.duration || (clip.endTime - clip.startTime))}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-muted-foreground">Time Range</span>
+                                            <p className="font-medium">
+                                              {formatDuration(clip.startTime)} - {formatDuration(clip.endTime)}
+                                            </p>
+                                          </div>
+                                        </div>
                                     
                                     {/* Score Progress */}
                                         <div className="space-y-2">

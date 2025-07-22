@@ -140,7 +140,7 @@ export const processKlapVideo = inngest.createFunction(
             }
           }
           
-          // Create clip object
+          // Create clip object with all metadata
           const clip = {
             id: `${projectId}_clip_${i}`,
             title: details.title || details.name || `Clip ${i + 1}`,
@@ -157,7 +157,12 @@ export const processKlapVideo = inngest.createFunction(
             exportUrl: videoUrl,
             exported: true,
             storedInSupabase: !process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            // Additional metadata from Klap
+            viralityExplanation: details.virality_score_explanation || details.description || '',
+            transcript: details.transcript || details.subtitle || details.text || '',
+            rawKlapData: details, // Store raw response for debugging
+            publicationCaptions: details.publication_captions || details.captions || undefined
           }
           
           processedClips.push(clip)
