@@ -33,9 +33,9 @@ export async function POST(
     // Update project status
     await ProjectService.updateProject(projectId, { status: 'processing' });
 
-    // Process transcription if needed
+    // Process transcription if needed (pending or stuck processing tasks)
     const hasTranscriptionTask = project.tasks.some(
-      task => task.type === 'transcription' && task.status === 'pending'
+      task => task.type === 'transcription' && (task.status === 'pending' || task.status === 'processing')
     );
     
     if (hasTranscriptionTask) {
@@ -50,9 +50,9 @@ export async function POST(
       });
     }
 
-    // Process clips if needed
+    // Process clips if needed (pending or stuck processing tasks)
     const hasClipsTask = project.tasks.some(
-      task => task.type === 'clips' && task.status === 'pending'
+      task => task.type === 'clips' && (task.status === 'pending' || task.status === 'processing')
     );
     
     if (hasClipsTask) {

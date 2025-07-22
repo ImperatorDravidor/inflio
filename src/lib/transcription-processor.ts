@@ -106,19 +106,35 @@ export async function processTranscription(params: {
 
     // Update progress to 30% before starting transcription
     await ProjectService.updateTaskProgress(projectId, 'transcription', 30, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 30%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
       try {
+        console.log('[TranscriptionProcessor] Creating AssemblyAI client...')
         // Use AssemblyAI for transcription
         const assembly = getAssemblyAI()
         
+        console.log('[TranscriptionProcessor] Submitting transcription request to AssemblyAI...')
+        console.log('[TranscriptionProcessor] Video URL:', videoUrl)
         const params: TranscribeParams = { audio: videoUrl }
+        
+        console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         const transcript = await assembly.transcripts.transcribe(params)
+        console.log('[TranscriptionProcessor] AssemblyAI response received:', {
+          status: transcript.status,
+          id: transcript.id,
+          hasText: !!transcript.text,
+          textLength: transcript.text?.length || 0,
+          hasWords: !!transcript.words,
+          wordsCount: transcript.words?.length || 0
+        })
 
         // Update progress to 60% after transcription
         await ProjectService.updateTaskProgress(projectId, 'transcription', 60, 'processing')
+        console.log('[TranscriptionProcessor] Updated progress to 60%')
 
         if (transcript.status === 'error') {
+          console.error('[TranscriptionProcessor] AssemblyAI returned error status:', transcript.error)
           throw new Error(`AssemblyAI Error: ${transcript.error}`)
         }
 
@@ -136,11 +152,19 @@ export async function processTranscription(params: {
           duration: transcript.audio_duration || 0
         }
       } catch (assemblyError) {
-        console.error('AssemblyAI transcription failed:', assemblyError)
+        console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
+          error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
+          stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
+          type: typeof assemblyError,
+          projectId,
+          videoUrl
+        })
+        console.log('[TranscriptionProcessor] Falling back to mock transcription')
         transcription = mockTranscription // Fallback
         isMock = true
       }
     } else {
+      console.log('[TranscriptionProcessor] AssemblyAI API key not configured, using mock transcription')
       transcription = mockTranscription
       isMock = true
     }
@@ -149,46 +173,88 @@ export async function processTranscription(params: {
     
     // Update progress to 80% before content analysis
     await ProjectService.updateTaskProgress(projectId, 'transcription', 80, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 80%, starting AI content analysis...')
     
     let contentAnalysis = mockContentAnalysis
     let analysisError: string | null = null
 
     if (transcription.text && !isMock) {
       try {
+        console.log('[TranscriptionProcessor] Starting AI content analysis with OpenAI...')
+        console.log('[TranscriptionProcessor] Transcript length:', transcription.text.length)
+        console.log('[TranscriptionProcessor] Transcript preview:', transcription.text.substring(0, 200) + '...')
+        
         const aiAnalysis = await AIContentService.analyzeTranscript(transcription)
+        console.log('[TranscriptionProcessor] AI analysis response received:', {
+          keywords: aiAnalysis.keywords?.length || 0,
+          topics: aiAnalysis.topics?.length || 0,
+          summaryLength: aiAnalysis.summary?.length || 0,
+          sentiment: aiAnalysis.sentiment,
+          keyMoments: aiAnalysis.keyMoments?.length || 0
+        })
+        
         contentAnalysis = {
           ...aiAnalysis,
           analyzedAt: new Date().toISOString()
         } as any
         console.log('[TranscriptionProcessor] AI content analysis completed successfully')
       } catch (err) {
-        console.error('AI content analysis failed:', err)
+        console.error('[TranscriptionProcessor] AI content analysis failed:', {
+          error: err instanceof Error ? err.message : 'Unknown error',
+          stack: err instanceof Error ? err.stack : undefined,
+          type: typeof err,
+          projectId,
+          transcriptLength: transcription.text.length
+        })
         analysisError = err instanceof Error ? err.message : 'Unknown error'
         contentAnalysis = mockContentAnalysis // Fallback
+        console.log('[TranscriptionProcessor] Using fallback mock content analysis')
       }
+    } else {
+      console.log('[TranscriptionProcessor] Skipping AI analysis - using mock transcript or empty text')
     }
 
     // --- Step 3: Update Project ---
     
     // Update progress to 90% before final save
     await ProjectService.updateTaskProgress(projectId, 'transcription', 90, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 90%, saving to database...')
     
     try {
+      console.log('[TranscriptionProcessor] Updating project with transcription and content analysis...')
       await ProjectService.updateProject(projectId, {
         transcription,
         content_analysis: contentAnalysis,
         updated_at: new Date().toISOString()
       })
+      console.log('[TranscriptionProcessor] Project updated successfully')
     } catch (updateError) {
-      console.error('[TranscriptionProcessor] Failed to update project:', updateError)
-      // Try one more time with just transcription if content analysis was the issue
-      await ProjectService.updateProject(projectId, {
-        transcription,
-        updated_at: new Date().toISOString()
+      console.error('[TranscriptionProcessor] Failed to update project with full data:', {
+        error: updateError instanceof Error ? updateError.message : 'Unknown error',
+        stack: updateError instanceof Error ? updateError.stack : undefined,
+        projectId
       })
+      console.log('[TranscriptionProcessor] Attempting to save with transcription only...')
+      // Try one more time with just transcription if content analysis was the issue
+      try {
+        await ProjectService.updateProject(projectId, {
+          transcription,
+          updated_at: new Date().toISOString()
+        })
+        console.log('[TranscriptionProcessor] Project updated successfully with transcription only')
+      } catch (secondError) {
+        console.error('[TranscriptionProcessor] Failed to update project even with transcription only:', {
+          error: secondError instanceof Error ? secondError.message : 'Unknown error',
+          stack: secondError instanceof Error ? secondError.stack : undefined,
+          projectId
+        })
+        throw secondError
+      }
     }
 
+    console.log('[TranscriptionProcessor] Marking task as completed...')
     await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+    console.log('[TranscriptionProcessor] Task marked as completed')
 
     console.log(`[TranscriptionProcessor] Transcription completed for project ${projectId}${analysisError ? ' (with AI analysis fallback)' : ''}`)
 
