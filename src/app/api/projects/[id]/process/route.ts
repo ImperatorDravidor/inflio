@@ -4,8 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { processTranscription } from "@/lib/transcription-processor";
 import { inngest } from "@/inngest/client";
 
-// Quick response - just queue jobs
-export const maxDuration = 30; // 5 minutes
+// Extended timeout for transcription processing
+export const maxDuration = 300; // 5 minutes for transcription
 export const dynamic = 'force-dynamic';
 
 export async function POST(

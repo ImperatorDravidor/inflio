@@ -60,8 +60,19 @@ function generateMockTranscription(videoUrl: string, language: string = 'en'): T
 }
 
 function getAssemblyAI() {
+  const apiKey = process.env.ASSEMBLYAI_API_KEY
+  console.log('[AssemblyAI] API Key check:', {
+    exists: !!apiKey,
+    length: apiKey?.length || 0,
+    prefix: apiKey?.substring(0, 8) + '...' || 'MISSING'
+  })
+  
+  if (!apiKey) {
+    throw new Error('ASSEMBLYAI_API_KEY environment variable is not set')
+  }
+  
   return new AssemblyAI({
-    apiKey: process.env.ASSEMBLYAI_API_KEY || ''
+    apiKey
   })
 }
 
@@ -119,7 +130,14 @@ export async function processTranscription(params: {
         const params: TranscribeParams = { audio: videoUrl }
         
         console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
-        const transcript = await assembly.transcripts.transcribe(params)
+        
+        // Add timeout to prevent hanging forever (5 minutes max)
+        const transcribePromise = assembly.transcripts.transcribe(params)
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('AssemblyAI transcription timeout after 5 minutes')), 300000)
+        )
+        
+        const transcript = await Promise.race([transcribePromise, timeoutPromise])
         console.log('[TranscriptionProcessor] AssemblyAI response received:', {
           status: transcript.status,
           id: transcript.id,
