@@ -1,14 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { Calendar } from "@/components/ui/calendar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { 
   IconVideoPlus,
   IconFolder,
@@ -23,14 +20,11 @@ import {
   IconScissors,
   IconUsers,
   IconEye,
-  IconHeart,
   IconTrendingUp,
   IconBrandYoutube,
   IconBrandInstagram,
   IconBrandTiktok,
   IconTarget,
-  IconBolt,
-  IconTrophy,
   IconFlame,
   IconMedal,
   IconCalendar,
