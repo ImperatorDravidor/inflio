@@ -157,12 +157,6 @@ export default function ProjectDetailPage() {
   const [hasSubtitles, setHasSubtitles] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
   
-  // Publishing Dialog States
-  const [showPublishDialog, setShowPublishDialog] = useState(false)
-  const [publishingStep, setPublishingStep] = useState<'select' | 'stage' | 'review'>('select')
-  const [selectedPublishContent, setSelectedPublishContent] = useState<any[]>([])
-  const [stagedContent, setStagedContent] = useState<StagedContent[]>([])
-  const [isPublishing, setIsPublishing] = useState(false)
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
 
   // Project loading is handled by useProject hook
@@ -933,7 +927,63 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 <Button 
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
-                  onClick={() => setShowPublishDialog(true)}
+                  onClick={() => {
+                    // Prepare all available content for staging
+                    const contentToStage: any[] = []
+                    
+                    // Add clips
+                    if (project.folders.clips && project.folders.clips.length > 0) {
+                      project.folders.clips.forEach((clip: any) => {
+                        contentToStage.push({
+                          id: clip.id,
+                          type: 'clip',
+                          title: clip.title || 'Untitled Clip',
+                          description: clip.description || '',
+                          exportUrl: clip.exportUrl,
+                          thumbnail: clip.thumbnail,
+                          duration: clip.duration,
+                          score: clip.score,
+                          metadata: clip
+                        })
+                      })
+                    }
+                    
+                    // Add blog posts
+                    if (project.folders.blog && project.folders.blog.length > 0) {
+                      project.folders.blog.forEach((post: any) => {
+                        contentToStage.push({
+                          id: post.id,
+                          type: 'blog',
+                          title: post.title,
+                          description: post.excerpt || '',
+                          content: post.content,
+                          thumbnail: post.coverImage,
+                          metadata: post
+                        })
+                      })
+                    }
+                    
+                    // Add images
+                    if (project.folders.images && project.folders.images.length > 0) {
+                      project.folders.images.forEach((image: any) => {
+                        contentToStage.push({
+                          id: image.id,
+                          type: 'image',
+                          title: image.prompt || 'AI Generated Image',
+                          description: image.prompt || '',
+                          url: image.url,
+                          thumbnail: image.url,
+                          metadata: image
+                        })
+                      })
+                    }
+                    
+                    // Store in session storage for the staging page
+                    sessionStorage.setItem('selectedContent', JSON.stringify(contentToStage))
+                    
+                    // Navigate to staging page
+                    router.push(`/projects/${projectId}/stage`)
+                  }}
                   disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
@@ -3334,191 +3384,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </Alert>
         </div>
       )}
-
-      {/* Publishing Dialog */}
-      <Dialog open={showPublishDialog} onOpenChange={setShowPublishDialog}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {publishingStep === 'select' && 'Select Content to Publish'}
-              {publishingStep === 'stage' && 'Stage Your Content'}
-              {publishingStep === 'review' && 'Review & Publish'}
-            </DialogTitle>
-            <DialogDescription>
-              {publishingStep === 'select' && 'Choose which content you want to publish and stage for distribution'}
-              {publishingStep === 'stage' && 'Configure captions and settings for each platform'}
-              {publishingStep === 'review' && 'Review your staged content before publishing'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto">
-            {publishingStep === 'select' && (
-              <PublishingWorkflow
-                project={project}
-                onPublish={(selectedContent) => {
-                  setSelectedPublishContent(selectedContent)
-                  setPublishingStep('stage')
-                }}
-                className="border-0 shadow-none"
-              />
-            )}
-
-            {publishingStep === 'stage' && (
-              <EnhancedContentStager
-                content={selectedPublishContent.map(item => {
-                  // Transform ContentItem to StagedContent format
-                  const platforms: Platform[] = ['instagram', 'x', 'linkedin', 'facebook']
-                  const platformContent: Record<Platform, any> = {} as Record<Platform, any>
-                  
-                  // Initialize platform content for each platform
-                  platforms.forEach(platform => {
-                    platformContent[platform] = {
-                      caption: '',
-                      hashtags: [],
-                      characterCount: 0,
-                      isValid: true,
-                      validationErrors: []
-                    }
-                  })
-                  
-                  // Map content type correctly
-                  let contentType: 'clip' | 'blog' | 'image' | 'carousel' = 'clip'
-                  if (item.type === 'blog') contentType = 'blog'
-                  else if (item.type === 'image') contentType = 'image'
-                  else if (item.type === 'carousel') contentType = 'carousel'
-                  else contentType = 'clip'
-                  
-                  return {
-                    id: item.id,
-                    type: contentType,
-                    title: item.title,
-                    description: item.description || '',
-                    originalData: {
-                      ...item.metadata,
-                      projectId: project?.id,
-                      score: item.metadata?.score,
-                      transcript: item.metadata?.transcript,
-                      viralityExplanation: item.metadata?.viralityExplanation
-                    },
-                    platforms,
-                    platformContent,
-                    mediaUrls: item.metadata?.exportUrl ? [item.metadata.exportUrl] : [],
-                    thumbnailUrl: item.preview || item.metadata?.thumbnail || item.metadata?.url,
-                    duration: item.metadata?.duration,
-                    analytics: {
-                      estimatedReach: 0,
-                      bestPostingTime: new Date()
-                    }
-                  }
-                })}
-                onUpdate={(updatedContent: StagedContent[]) => setStagedContent(updatedContent)}
-                onNext={() => setPublishingStep('review')}
-              />
-            )}
-
-            {publishingStep === 'review' && (
-              <StagingReview
-                scheduledPosts={stagedContent.map(content => ({
-                  stagedContent: content,
-                  scheduledDate: new Date(),
-                  platforms: content.platforms || [],
-                  optimizationReason: 'Optimal time for engagement',
-                  suggestedHashtags: content.platformContent[content.platforms[0]]?.hashtags || [],
-                  engagementPrediction: {
-                    score: 0.8,
-                    bestTime: true,
-                    reasoning: 'High engagement expected based on content type and timing'
-                  }
-                }))}
-                onPublish={async () => {
-                  if (!user?.id) {
-                    toast.error('Please sign in to publish content')
-                    return
-                  }
-                  
-                  setIsPublishing(true)
-                  try {
-                    // Publish content using the staging service
-                    await StagingService.publishScheduledContent(
-                      user.id,
-                      projectId,
-                      stagedContent.map(content => ({
-                        stagedContent: content,
-                        scheduledDate: new Date(),
-                        platforms: content.platforms || [],
-                        optimizationReason: 'Optimal time for engagement',
-                        suggestedHashtags: content.platformContent[content.platforms[0]]?.hashtags || [],
-                        engagementPrediction: {
-                          score: 0.8,
-                          bestTime: true,
-                          reasoning: 'High engagement expected based on content type and timing'
-                        }
-                      }))
-                    )
-                    
-                    toast.success('Content published successfully!')
-                    setShowPublishDialog(false)
-                    setPublishingStep('select')
-                    setSelectedPublishContent([])
-                    setStagedContent([])
-                    
-                    // Refresh the project to show updated status
-                    await loadProject()
-                    
-                    // Redirect to social calendar to see published content
-                    setTimeout(() => {
-                      router.push('/social/calendar')
-                    }, 1500)
-                  } catch (error) {
-                    toast.error('Failed to publish content')
-                    console.error('Publishing error:', error)
-                  } finally {
-                    setIsPublishing(false)
-                  }
-                }}
-                onBack={() => setPublishingStep('stage')}
-                publishing={isPublishing}
-              />
-            )}
-          </div>
-
-          {publishingStep !== 'review' && (
-            <DialogFooter className="flex items-center justify-between">
-              <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (publishingStep === 'stage') {
-                    setPublishingStep('select')
-                  } else {
-                    setShowPublishDialog(false)
-                  }
-                }}
-              >
-                {publishingStep === 'stage' ? 'Back' : 'Cancel'}
-              </Button>
-                {publishingStep === 'stage' && (
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      // Save current selection and redirect to full staging page
-                      if (selectedPublishContent.length > 0) {
-                        const contentIds = selectedPublishContent.map(item => item.id).join(',')
-                        router.push(`/projects/${projectId}/stage?content=${contentIds}`)
-                      } else {
-                        router.push(`/projects/${projectId}/stage`)
-                      }
-                    }}
-                  >
-                    <IconExternalLink className="h-4 w-4 mr-2" />
-                    Open Full Editor
-                  </Button>
-                )}
-              </div>
-            </DialogFooter>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Project Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
