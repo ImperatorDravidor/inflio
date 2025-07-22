@@ -2160,10 +2160,34 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                     
                                         {/* Clip Transcript */}
                                         {clip.transcript && (
-                                          <div className="bg-muted/50 rounded-lg p-4">
+                                          <div className="bg-muted/50 rounded-lg p-4 cursor-pointer hover:bg-muted/70 transition-colors"
+                                               onClick={(e) => {
+                                                 e.stopPropagation()
+                                                 // Show full transcript in a toast or modal
+                                                 const transcriptDialog = document.createElement('div')
+                                                 transcriptDialog.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50'
+                                                 transcriptDialog.onclick = () => transcriptDialog.remove()
+                                                 transcriptDialog.innerHTML = `
+                                                   <div class="bg-background rounded-lg p-6 max-w-2xl max-h-[80vh] overflow-y-auto" onclick="event.stopPropagation()">
+                                                     <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                                                       <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                       </svg>
+                                                       Full Transcript
+                                                     </h3>
+                                                     <p class="text-sm whitespace-pre-wrap">${(clip.transcript || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
+                                                     <button class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" onclick="this.parentElement.parentElement.remove()">
+                                                       Close
+                                                     </button>
+                                                   </div>
+                                                 `
+                                                 document.body.appendChild(transcriptDialog)
+                                               }}
+                                          >
                                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
                                               <IconFileText className="h-4 w-4 text-primary" />
                                               Transcript
+                                              <span className="text-xs text-muted-foreground ml-auto">Click to expand</span>
                                             </h4>
                                             <p className="text-sm text-muted-foreground line-clamp-3">
                                               {clip.transcript}
@@ -3223,22 +3247,23 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 
                 {/* Right: Clip Details */}
                 <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh] bg-background">
-                  {/* Title and Stats */}
+                  {/* Title */}
                   <div>
-                    <h2 className="text-2xl font-bold mb-3">{selectedClip.title || 'Untitled Clip'}</h2>
-                                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <IconClock className="h-4 w-4" />
-                            <span data-modal-clip-duration={selectedClip.id}>Loading...</span>
-                          </span>
-                          {selectedClip.type && (
-                            <>
-                              <span>•</span>
-                              <Badge variant="outline" className="capitalize">{selectedClip.type}</Badge>
-                            </>
-                          )}
-                        </div>
+                    <h2 className="text-2xl font-bold">{selectedClip.title || 'Untitled Clip'}</h2>
                   </div>
+                  
+                  {/* Transcript - Primary Focus */}
+                  {selectedClip.transcript && (
+                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl p-6 border-2 border-primary/20">
+                      <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+                        <IconFileText className="h-5 w-5 text-primary" />
+                        Transcript
+                      </h3>
+                      <div className="max-h-64 overflow-y-auto pr-2">
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedClip.transcript}</p>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Enhanced Virality Score Details */}
                   <div className={cn(
@@ -3317,22 +3342,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </div>
                   </div>
                   
-                  {/* Clip Metadata */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-lg bg-muted/30 border">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <IconClock className="h-4 w-4" />
-                        Duration
-                      </div>
-                      <p className="font-semibold">{formatDuration(selectedClip.duration || (selectedClip.endTime - selectedClip.startTime))}</p>
+                  {/* Clip Duration */}
+                  <div className="p-4 rounded-lg bg-muted/30 border">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                      <IconClock className="h-4 w-4" />
+                      Duration
                     </div>
-                    <div className="p-4 rounded-lg bg-muted/30 border">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <IconVideo className="h-4 w-4" />
-                        Time Range
-                      </div>
-                      <p className="font-semibold">{formatDuration(selectedClip.startTime)} - {formatDuration(selectedClip.endTime)}</p>
-                    </div>
+                    <p className="font-semibold text-lg">{formatDuration(selectedClip.duration || (selectedClip.endTime - selectedClip.startTime))}</p>
                   </div>
                   
                   {/* Tags */}
@@ -3352,18 +3368,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </div>
                   )}
                   
-                  {/* Transcript */}
-                  {selectedClip.transcript && (
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <IconFileText className="h-5 w-5 text-primary" />
-                        Transcript
-                      </h3>
-                      <div className="p-4 rounded-lg bg-muted/30 border max-h-48 overflow-y-auto">
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedClip.transcript}</p>
-                      </div>
-                    </div>
-                  )}
+
                   
                   {/* Platform Captions (if available) */}
                   {selectedClip.publicationCaptions && Object.keys(selectedClip.publicationCaptions).length > 0 && (
@@ -3399,47 +3404,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   
                   {/* Actions */}
                   <div className="space-y-3 pt-4 border-t">
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          if (selectedClip.exportUrl) {
-                            const a = document.createElement('a')
-                            a.href = selectedClip.exportUrl
-                            a.download = `${selectedClip.title || 'clip'}.mp4`
-                            a.click()
-                          }
-                        }}
-                      >
-                        <IconDownload className="h-4 w-4 mr-2" />
-                        Download
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          const shareData = {
-                            title: selectedClip.title || 'Check out this clip',
-                            text: selectedClip.description || selectedClip.transcript || '',
-                            url: window.location.href
-                          }
-                          if (navigator.share) {
-                            navigator.share(shareData).catch(() => {
-                              copyToClipboard(window.location.href, 'share-link')
-                              toast.success('Link copied to clipboard')
-                            })
-                          } else {
-                            copyToClipboard(window.location.href, 'share-link')
-                            toast.success('Link copied to clipboard')
-                          }
-                        }}
-                      >
-                        <IconShare className="h-4 w-4 mr-2" />
-                        Share
-                      </Button>
-                    </div>
                     {selectedClip.transcript && (
                       <Button
                         className="w-full"
+                        variant="outline"
                         onClick={() => {
                           copyToClipboard(selectedClip.transcript!, 'clip-transcript')
                           toast.success('Transcript copied to clipboard')
@@ -3449,6 +3417,35 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         Copy Transcript
                       </Button>
                     )}
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        setShowVideoModal(false)
+                        // Navigate to staging with this clip selected
+                        const contentToStage = [{
+                          id: selectedClip.id,
+                          type: 'clip',
+                          title: selectedClip.title || 'Untitled Clip',
+                          description: selectedClip.description || '',
+                          exportUrl: selectedClip.exportUrl,
+                          thumbnail: selectedClip.thumbnail,
+                          duration: selectedClip.duration,
+                          score: selectedClip.score,
+                          viralityExplanation: selectedClip.viralityExplanation,
+                          transcript: selectedClip.transcript,
+                          tags: selectedClip.tags,
+                          publicationCaptions: selectedClip.publicationCaptions,
+                          startTime: selectedClip.startTime,
+                          endTime: selectedClip.endTime,
+                          metadata: selectedClip
+                        }]
+                        sessionStorage.setItem('selectedContent', JSON.stringify(contentToStage))
+                        router.push(`/projects/${projectId}/stage`)
+                      }}
+                    >
+                      <IconRocket className="h-4 w-4 mr-2" />
+                      Publish This Clip
+                    </Button>
                   </div>
                 </div>
               </div>
