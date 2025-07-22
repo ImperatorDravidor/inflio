@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { auth } from "@clerk/nextjs/server";
-import { processTranscription } from "@/lib/transcription-processor";
 import { inngest } from "@/inngest/client";
 
 // Extended timeout for transcription processing
@@ -39,14 +38,29 @@ export async function POST(
     );
     
     if (hasTranscriptionTask) {
-      // Process transcription directly
-      processTranscription({
+      // Start transcription via HTTP call (fire and forget)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${request.headers.get('host')}`;
+      
+      fetch(`${baseUrl}/api/process-transcription`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          // Pass along authorization if present
+          ...(request.headers.get('authorization') ? { 'authorization': request.headers.get('authorization')! } : {})
+        },
+        body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
-        language: 'en',
-        userId
+          language: 'en'
+        })
+      }).then(response => {
+        if (!response.ok) {
+          console.error(`[Process Route] Transcription request failed with status: ${response.status}`);
+          ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        }
       }).catch(error => {
-        console.error('[Process Route] Transcription failed:', error);
+        console.error('[Process Route] Failed to start transcription:', error);
+        ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
       });
     }
 

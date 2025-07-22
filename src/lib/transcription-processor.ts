@@ -131,46 +131,17 @@ export async function processTranscription(params: {
         
         console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         
-        // Submit transcription request
-        const submittedTranscript = await assembly.transcripts.submit(params)
-        console.log('[TranscriptionProcessor] AssemblyAI job submitted:', {
-          id: submittedTranscript.id,
-          status: submittedTranscript.status
+        // Use the simpler transcribe method that handles polling internally
+        const transcript = await assembly.transcripts.transcribe(params)
+        
+        console.log('[TranscriptionProcessor] AssemblyAI response received:', {
+          status: transcript.status,
+          id: transcript.id,
+          hasText: !!transcript.text,
+          textLength: transcript.text?.length || 0,
+          hasWords: !!transcript.words,
+          wordsCount: transcript.words?.length || 0
         })
-
-        // Poll for completion with proper progress updates
-        let pollingAttempts = 0
-        const maxPollingAttempts = 60 // 5 minutes with 5-second intervals
-        let completedTranscript = submittedTranscript
-        
-        while (completedTranscript.status === 'queued' || completedTranscript.status === 'processing') {
-          if (pollingAttempts >= maxPollingAttempts) {
-            throw new Error('AssemblyAI transcription timeout after 5 minutes')
-          }
-          
-          // Wait 5 seconds before polling
-          await new Promise(resolve => setTimeout(resolve, 5000))
-          pollingAttempts++
-          
-          // Get updated status
-          completedTranscript = await assembly.transcripts.get(submittedTranscript.id)
-          console.log(`[TranscriptionProcessor] Polling attempt ${pollingAttempts}/${maxPollingAttempts}, status: ${completedTranscript.status}`)
-          
-          // Update progress based on polling attempts (30% to 60%)
-          const progress = 30 + Math.floor((pollingAttempts / maxPollingAttempts) * 30)
-          await ProjectService.updateTaskProgress(projectId, 'transcription', Math.min(progress, 55), 'processing')
-        }
-        
-        console.log('[TranscriptionProcessor] AssemblyAI transcription completed:', {
-          status: completedTranscript.status,
-          id: completedTranscript.id,
-          hasText: !!completedTranscript.text,
-          textLength: completedTranscript.text?.length || 0,
-          hasWords: !!completedTranscript.words,
-          wordsCount: completedTranscript.words?.length || 0
-        })
-        
-        const transcript = completedTranscript
 
         // Update progress to 60% after transcription
         await ProjectService.updateTaskProgress(projectId, 'transcription', 60, 'processing')
