@@ -131,7 +131,7 @@ export async function processTranscription(params: {
         
         console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         
-        // Use the simpler transcribe method that handles polling internally
+        // Use the transcribe method which should handle polling internally
         const transcript = await assembly.transcripts.transcribe(params)
         
         console.log('[TranscriptionProcessor] AssemblyAI response received:', {
@@ -143,14 +143,19 @@ export async function processTranscription(params: {
           wordsCount: transcript.words?.length || 0
         })
 
-        // Update progress to 60% after transcription
+        // Check if transcription is actually completed
+        if (transcript.status !== 'completed') {
+          console.error('[TranscriptionProcessor] AssemblyAI returned non-completed status:', transcript.status)
+          if (transcript.status === 'error') {
+            throw new Error(`AssemblyAI Error: ${transcript.error}`)
+          } else {
+            throw new Error(`AssemblyAI transcription not completed. Status: ${transcript.status}`)
+          }
+        }
+
+        // Update progress to 60% after successful transcription
         await ProjectService.updateTaskProgress(projectId, 'transcription', 60, 'processing')
         console.log('[TranscriptionProcessor] Updated progress to 60%')
-
-        if (transcript.status === 'error') {
-          console.error('[TranscriptionProcessor] AssemblyAI returned error status:', transcript.error)
-          throw new Error(`AssemblyAI Error: ${transcript.error}`)
-        }
 
         // Convert AssemblyAI format to our internal format
         transcription = {

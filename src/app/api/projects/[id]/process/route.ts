@@ -39,29 +39,55 @@ export async function POST(
     
     if (hasTranscriptionTask) {
       // Start transcription via HTTP call (fire and forget)
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${request.headers.get('host')}`;
+      const host = request.headers.get('host');
+      const protocol = request.headers.get('x-forwarded-proto') || 'https';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
+      const transcriptionUrl = `${baseUrl}/api/process-transcription`;
       
-      fetch(`${baseUrl}/api/process-transcription`, {
+      console.log('[Process Route] Starting transcription with URL:', transcriptionUrl);
+      console.log('[Process Route] Project ID:', projectId);
+      console.log('[Process Route] Video URL:', project.video_url);
+      
+      // Get all relevant auth headers
+      const authHeaders: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Pass along all auth-related headers
+      const authHeaderNames = ['authorization', 'cookie', 'x-clerk-auth-token'];
+      authHeaderNames.forEach(headerName => {
+        const headerValue = request.headers.get(headerName);
+        if (headerValue) {
+          authHeaders[headerName] = headerValue;
+        }
+      });
+      
+      fetch(transcriptionUrl, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          // Pass along authorization if present
-          ...(request.headers.get('authorization') ? { 'authorization': request.headers.get('authorization')! } : {})
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           projectId: project.id,
           videoUrl: project.video_url,
           language: 'en'
         })
-      }).then(response => {
+      }).then(async response => {
         if (!response.ok) {
+          const errorText = await response.text();
           console.error(`[Process Route] Transcription request failed with status: ${response.status}`);
-          ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+          console.error(`[Process Route] Error response:`, errorText);
+          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        } else {
+          console.log('[Process Route] Transcription request initiated successfully');
         }
       }).catch(error => {
         console.error('[Process Route] Failed to start transcription:', error);
         ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
       });
+    }
+
+    // Wait a moment to ensure transcription request is sent
+    if (hasTranscriptionTask) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     // Process clips if needed (pending or stuck processing tasks)
