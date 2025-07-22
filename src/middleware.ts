@@ -39,28 +39,28 @@ export default clerkMiddleware(async (auth, req) => {
   }
   
   // If the user is logged in, check if their onboarding is complete
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('onboarding_completed')
-      .eq('clerk_user_id', userId)
-      .single();
+    .from('user_profiles')
+    .select('onboarding_completed')
+    .eq('clerk_user_id', userId)
+    .single();
 
-    // If they have not completed onboarding and are not on the onboarding page, redirect them
-    if (profile && !profile.onboarding_completed && !isOnboardingRoute(req)) {
+  // If they have not completed onboarding and are not on the onboarding page, redirect them
+  if (profile && !profile.onboarding_completed && !isOnboardingRoute(req)) {
     return NextResponse.redirect(onboardingUrl);
-    }
+  }
 
-    // If onboarding is complete and they somehow land on the onboarding page, redirect to dashboard
-    if (profile && profile.onboarding_completed && isOnboardingRoute(req)) {
+  // If onboarding is complete and they somehow land on the onboarding page, redirect to dashboard
+  if (profile && profile.onboarding_completed && isOnboardingRoute(req)) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
-    }
+  }
 
-    // Otherwise, allow the request to proceed
+  // Otherwise, allow the request to proceed
   return NextResponse.next()
 })
 
