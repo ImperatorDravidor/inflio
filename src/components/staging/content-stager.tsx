@@ -252,7 +252,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
       const projectId = item.originalData?.projectId || 
                        (window.location.pathname.match(/projects\/([^\/]+)/)?.[1])
       
-      // Prepare comprehensive content data
+      // Prepare comprehensive content data with all rich context
       const contentData = {
         id: item.id || '',
         title: item.title || '',
@@ -262,21 +262,21 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
         thumbnail: item.thumbnailUrl,
         // Include all virality and analysis data
         score: item.originalData?.score,
-        scoreReasoning: item.originalData?.scoreReasoning,
+        scoreReasoning: item.originalData?.viralityExplanation || item.originalData?.scoreReasoning,
         transcript: item.originalData?.transcript,
         sentiment: item.originalData?.sentiment,
         analytics: item.analytics,
         originalData: item.originalData
       }
       
-      // Call AI service to generate caption
+      // Call AI service to generate caption with full context
       const response = await fetch('/api/generate-caption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: contentData,
           platform,
-          projectId,
+          projectId: projectId || item.originalData?.projectId,
           projectContext: item.originalData?.projectContext
         })
       })
@@ -323,7 +323,7 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
               body: JSON.stringify({
                 content: contentData,
                 platform: otherPlatform,
-                projectId,
+                projectId: projectId || item.originalData?.projectId,
                 projectContext: item.originalData?.projectContext
               })
             })

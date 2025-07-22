@@ -445,9 +445,17 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
             type: currentItem.type,
             duration: currentItem.duration,
             thumbnail: currentItem.thumbnailUrl,
+            // Pass all the rich context data
+            score: currentItem.originalData?.score,
+            scoreReasoning: currentItem.originalData?.viralityExplanation,
+            transcript: currentItem.originalData?.transcript,
+            sentiment: currentItem.originalData?.sentiment,
+            analytics: currentItem.analytics,
             originalData: currentItem.originalData
           },
-          platform: currentPlatform
+          platform: currentPlatform,
+          projectId: currentItem.originalData?.projectId,
+          projectContext: currentItem.originalData?.projectContext
         })
       })
 

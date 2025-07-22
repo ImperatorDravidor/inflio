@@ -3787,7 +3787,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   // Prepare selected content for staging
                   const contentToStage: any[] = []
                   
-                  // Add selected clips
+                  // Add selected clips with all rich metadata
                   project.folders.clips?.forEach((clip: ClipData) => {
                     if (selectedContentIds.has(clip.id)) {
                       contentToStage.push({
@@ -3799,6 +3799,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         thumbnail: clip.thumbnail,
                         duration: clip.duration,
                         score: clip.score,
+                        // Include all the rich metadata for AI generation
+                        viralityExplanation: clip.viralityExplanation,
+                        transcript: clip.transcript,
+                        tags: clip.tags,
+                        publicationCaptions: clip.publicationCaptions,
+                        startTime: clip.startTime,
+                        endTime: clip.endTime,
                         metadata: clip
                       })
                     }

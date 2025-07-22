@@ -334,7 +334,16 @@ export default function ProjectStagePage() {
               type: item.type,
               title: item.title || item.name || 'Untitled',
               description: item.description || item.content || '',
-              originalData: item,
+              originalData: {
+                ...item,
+                projectId: projectId,
+                projectContext: projectData.content_analysis || projectData.description,
+                score: item.score,
+                viralityExplanation: item.viralityExplanation,
+                transcript: item.transcript,
+                tags: item.tags,
+                publicationCaptions: item.publicationCaptions
+              },
               platforms,
             platformContent,
             mediaUrls,
