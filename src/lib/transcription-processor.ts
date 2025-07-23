@@ -4,6 +4,7 @@ import { AIContentService } from '@/lib/ai-content-service'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { TranscriptionData } from '@/lib/project-types'
+import { withRetry } from '@/lib/retry-utils'
 
 // Mock content analysis
 const mockContentAnalysis = {
@@ -131,8 +132,25 @@ export async function processTranscription(params: {
         
         console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         
-        // Use the transcribe method which should handle polling internally
-        const transcript = await assembly.transcripts.transcribe(params)
+        // Use the transcribe method with retry logic
+        const transcript = await withRetry(
+          () => assembly.transcripts.transcribe(params),
+          {
+            maxAttempts: 3,
+            initialDelay: 5000,
+            shouldRetry: (error) => {
+              // Retry on network errors or specific AssemblyAI errors
+              if (error.message?.includes('network')) return true
+              if (error.message?.includes('timeout')) return true
+              if (error.status === 429) return true // Rate limit
+              if (error.status >= 500) return true // Server errors
+              return false
+            },
+            onRetry: (error, attempt) => {
+              console.log(`[TranscriptionProcessor] Retry attempt ${attempt} for AssemblyAI:`, error.message)
+            }
+          }
+        )
         
         console.log('[TranscriptionProcessor] AssemblyAI response received:', {
           status: transcript.status,

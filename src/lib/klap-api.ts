@@ -2,6 +2,7 @@
 // Aligned with documentation at /documentation/klap_api/
 
 import { logger } from './logger'
+import { fetchWithRetry } from './retry-utils'
 
 export class KlapAPIService {
   /**
@@ -17,7 +18,7 @@ export class KlapAPIService {
         action: 'api_config',
         metadata: { service: 'klap' }
       })
-      throw new Error('Clip generation service is not configured. Please set KLAP_API_KEY in environment variables.')
+      throw new Error('Clip generation service is not configured. Please contact support.')
     }
     
     return { apiKey, apiUrl }
@@ -45,16 +46,44 @@ export class KlapAPIService {
     })
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'User-Agent': `Inflio/1.0 (${process.env.NODE_ENV || 'development'})`,
-          'X-Environment': process.env.NODE_ENV || 'development',
-          ...options.headers,
+      const response = await fetchWithRetry(
+        url, 
+        {
+          ...options,
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': `Inflio/1.0 (${process.env.NODE_ENV || 'development'})`,
+            'X-Environment': process.env.NODE_ENV || 'development',
+            ...options.headers,
+          },
         },
-      })
+        {
+          maxAttempts: 3,
+          initialDelay: 2000,
+          shouldRetry: (error) => {
+            // Don't retry on auth errors
+            if (error.status === 401 || error.status === 403) return false
+            // Retry on rate limits with longer delay
+            if (error.status === 429) return true
+            // Retry on server errors
+            if (error.status >= 500) return true
+            // Retry on network errors
+            if (error.message?.includes('network')) return true
+            return false
+          },
+          onRetry: (error, attempt) => {
+            logger.warn(`[Klap] Retry attempt ${attempt}`, {
+              action: 'klap_api_retry',
+              metadata: { 
+                error: error.message,
+                status: error.status,
+                endpoint 
+              }
+            })
+          }
+        }
+      )
 
       if (!response.ok) {
         const errorText = await response.text()

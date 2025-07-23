@@ -4,6 +4,11 @@ import { auth } from '@clerk/nextjs/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Only allow in development
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  
   try {
     // Check auth
     const { userId } = await auth()
