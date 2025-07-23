@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
-import { ProjectService, UsageService } from "@/lib/services"
+import { ProjectService } from "@/lib/services"
 import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -167,16 +167,10 @@ export default function UploadPage() {
   }
 
   const handleUpload = async () => {
-    if (!file || !videoMetadata) return;
+    if (!file || !videoMetadata || !userId) return;
 
-    // Check usage limits before processing
-    if (!UsageService.canProcessVideo()) {
-      const usage = UsageService.getUsage();
-      toast.error(`You've reached your monthly limit of ${usage.limit} videos. Please upgrade your plan to continue.`);
-      // For now, redirect to reset page
-      router.push('/settings/reset-usage');
-      return;
-    }
+    // Server-side usage check will happen during project creation
+    // Remove client-side check to prevent bypass
 
     setUploading(true);
     setSubmittingWorkflow(true);
@@ -234,31 +228,37 @@ export default function UploadPage() {
       toast.success("Video uploaded successfully!", { id: toastId });
       setUploadProgress(100);
 
-      // Step 2: Create the project with selected workflow options
+      // Step 2: Create the project with selected workflow options via API
       setSubmissionStatus("Creating your project...");
       toast.info("Creating project...");
-      const project = await ProjectService.createProject(
-        projectTitle || file.name.replace(/\.[^/.]+$/, ""),
-        file,
-        supabaseVideoUrl,
-        thumbnail,
-        videoMetadata,
-        workflowOptions,
-        userId || undefined
-      );
+      
+      const createResponse = await fetch('/api/projects/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: projectTitle || file.name.replace(/\.[^/.]+$/, ""),
+          videoUrl: supabaseVideoUrl,
+          thumbnailUrl: thumbnail,
+          metadata: videoMetadata,
+          workflowOptions,
+          description: projectDescription
+        })
+      });
 
-      if (projectDescription) {
-        await ProjectService.updateProject(project.id, { 
-          description: projectDescription 
-        });
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(errorData.error || 'Failed to create project');
       }
 
+      const { project, usage } = await createResponse.json();
       toast.success('Project created successfully!');
       
-      // Increment usage after successful project creation
-      const incrementSuccess = UsageService.incrementUsage();
-      if (!incrementSuccess) {
-        toast.warning("Usage limit reached. This may be your last video for this month.");
+      // Show usage warning if approaching limit
+      if (usage && usage.limit !== -1 && usage.used >= usage.limit * 0.8) {
+        const remaining = usage.limit - usage.used;
+        toast.warning(`You have ${remaining} video${remaining !== 1 ? 's' : ''} remaining this month.`);
       }
       
       // Step 3: Start the processing workflows

@@ -80,6 +80,9 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PublishingWorkflow } from "@/components/publishing-workflow"
 import { useProject } from "@/hooks/use-project"
+import { VideoErrorState } from "@/components/video-error-state"
+import { TranscriptModal } from "@/components/transcript-modal"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 
 import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-editor"
@@ -119,7 +122,7 @@ const platformColors = {
   'youtube-short': 'text-red-600'
 }
 
-export default function ProjectDetailPage() {
+function ProjectDetailPageContent() {
   const params = useParams()
   const router = useRouter()
   const { user } = useClerkUser()
@@ -128,6 +131,10 @@ export default function ProjectDetailPage() {
   const transcriptionScrollRef = useRef<HTMLDivElement>(null)
   
   const { project, loading, error, reload: loadProject, setProject } = useProject(projectId)
+  
+  // Access control check
+  const isOwner = project?.user_id === user?.id
+  const hasAccess = !project?.user_id || isOwner // Allow access if no user_id (legacy) or is owner
   const [activeTab, setActiveTab] = useState<string>("overview")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
@@ -147,6 +154,9 @@ export default function ProjectDetailPage() {
   const [generatedImages, setGeneratedImages] = useState<any[]>([])
   const [imageSuggestions, setImageSuggestions] = useState<ImageSuggestion[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+  const [videoErrors, setVideoErrors] = useState<Record<string, boolean>>({})
+  const [showTranscriptModal, setShowTranscriptModal] = useState(false)
+  const [selectedTranscript, setSelectedTranscript] = useState<string>("")
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   
   // Image generation states
@@ -183,13 +193,22 @@ export default function ProjectDetailPage() {
     if (showVideoModal && selectedClip?.exportUrl) {
       const video = document.createElement('video')
       video.src = selectedClip.exportUrl
-      video.addEventListener('loadedmetadata', () => {
+      
+      const handleMetadata = () => {
         const durationElement = document.querySelector(`[data-modal-clip-duration="${selectedClip.id}"]`)
         if (durationElement && video.duration) {
           durationElement.textContent = formatDuration(video.duration)
         }
-      })
+      }
+      
+      video.addEventListener('loadedmetadata', handleMetadata)
       video.load()
+      
+      // Cleanup
+      return () => {
+        video.removeEventListener('loadedmetadata', handleMetadata)
+        video.src = '' // Release video resources
+      }
     }
   }, [showVideoModal, selectedClip])
 
@@ -204,12 +223,14 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (activeTab === 'clips' && project?.folders?.clips) {
       // Give DOM time to render
+      const videos: HTMLVideoElement[] = []
       const timer = setTimeout(() => {
         project.folders.clips.forEach((clip: ClipData) => {
           if (clip.exportUrl) {
             const durationEl = document.querySelector(`[data-duration-id="${clip.id}"]`)
             if (durationEl && durationEl.textContent === '--:--') {
               const video = document.createElement('video')
+              videos.push(video) // Track for cleanup
               video.src = clip.exportUrl
               video.crossOrigin = 'anonymous'
               
@@ -221,10 +242,12 @@ export default function ProjectDetailPage() {
                 }
               }
               
-              video.addEventListener('loadedmetadata', handleMetadata)
-              video.addEventListener('error', () => {
+              const handleError = () => {
                 durationEl.textContent = '0:00'
-              })
+              }
+              
+              video.addEventListener('loadedmetadata', handleMetadata)
+              video.addEventListener('error', handleError)
               
               // Force load
               video.load()
@@ -233,7 +256,14 @@ export default function ProjectDetailPage() {
         })
       }, 300)
       
-      return () => clearTimeout(timer)
+      return () => {
+        clearTimeout(timer)
+        // Clean up all video elements
+        videos.forEach(video => {
+          video.src = ''
+          video.load() // Reset the video element
+        })
+      }
     }
   }, [activeTab, project?.folders?.clips])
 
@@ -740,6 +770,33 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   }
 
   if (!project) return null
+
+  // Access denied check
+  if (!hasAccess) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="max-w-md w-full mx-4">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 rounded-full bg-destructive/10 w-fit">
+              <IconAlertCircle className="h-6 w-6 text-destructive" />
+            </div>
+            <CardTitle>Access Denied</CardTitle>
+            <CardDescription>
+              You don't have permission to view this project.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={() => router.push('/projects')}
+              className="w-full"
+            >
+              Back to Projects
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const stats = ProjectService.getProjectStats(project)
   const totalImages = project.folders.images?.length || 0
@@ -2000,7 +2057,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   setSelectedClip(clip)
                                   setShowVideoModal(true)
                                 }}>
-                                    {clip.exportUrl ? (
+                                    {clip.exportUrl && !videoErrors[clip.id] ? (
                                       <>
                                         <video
                                           src={clip.exportUrl}
@@ -2016,30 +2073,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                             e.currentTarget.pause()
                                             e.currentTarget.currentTime = 1
                                           }}
-                                          onError={(e) => {
+                                          onError={() => {
                                             console.error(`Failed to load video for clip ${clip.id}`)
-                                            e.currentTarget.style.display = 'none'
-                                            // Show error state
-                                            const parent = e.currentTarget.parentElement
-                                            if (parent) {
-                                              const errorDiv = document.createElement('div')
-                                              errorDiv.className = 'flex flex-col items-center justify-center h-full text-gray-400'
-                                              errorDiv.innerHTML = `
-                                                <svg class="h-12 w-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                                </svg>
-                                                <span class="text-sm">Video unavailable</span>
-                                              `
-                                              parent.appendChild(errorDiv)
-                                            }
+                                            setVideoErrors(prev => ({ ...prev, [clip.id]: true }))
                                           }}
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
                                       </>
                                     ) : (
-                                      <div className="flex items-center justify-center h-full">
-                                        <IconVideoOff className="h-12 w-12 text-gray-600" />
-                                      </div>
+                                      <VideoErrorState />
                                     )}
                                     
                                     {/* Rank Badge */}
@@ -2162,25 +2204,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           <div className="bg-muted/50 rounded-lg p-4 cursor-pointer hover:bg-muted/70 transition-colors"
                                                onClick={(e) => {
                                                  e.stopPropagation()
-                                                 // Show full transcript in a toast or modal
-                                                 const transcriptDialog = document.createElement('div')
-                                                 transcriptDialog.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50'
-                                                 transcriptDialog.onclick = () => transcriptDialog.remove()
-                                                 transcriptDialog.innerHTML = `
-                                                   <div class="bg-background rounded-lg p-6 max-w-2xl max-h-[80vh] overflow-y-auto" onclick="event.stopPropagation()">
-                                                     <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                                                       <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                                       </svg>
-                                                       Full Transcript
-                                                     </h3>
-                                                     <p class="text-sm whitespace-pre-wrap">${(clip.transcript || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
-                                                     <button class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" onclick="this.parentElement.parentElement.remove()">
-                                                       Close
-                                                     </button>
-                                                   </div>
-                                                 `
-                                                 document.body.appendChild(transcriptDialog)
+                                                 setSelectedTranscript(clip.transcript)
+                                                 setShowTranscriptModal(true)
                                                }}
                                           >
                                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -3130,11 +3155,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         track.default = true
                         
                         // Force track to be showing
-                        track.addEventListener('load', () => {
+                        const handleTrackLoad = () => {
                           if (videoRef.current && videoRef.current.textTracks[0]) {
                             videoRef.current.textTracks[0].mode = 'showing'
                           }
-                        })
+                        }
+                        
+                        track.addEventListener('load', handleTrackLoad, { once: true })
                         
                         videoRef.current.appendChild(track)
                       }
@@ -3858,6 +3885,24 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transcript Modal */}
+      <TranscriptModal
+        isOpen={showTranscriptModal}
+        onClose={() => {
+          setShowTranscriptModal(false)
+          setSelectedTranscript("")
+        }}
+        transcript={selectedTranscript}
+      />
     </div>
+  )
+}
+
+export default function ProjectDetailPage() {
+  return (
+    <ErrorBoundary>
+      <ProjectDetailPageContent />
+    </ErrorBoundary>
   )
 } 

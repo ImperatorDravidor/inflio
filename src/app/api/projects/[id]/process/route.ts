@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
-import { auth } from "@clerk/nextjs/server";
+import { validateProjectOwnership } from "@/lib/auth-utils";
 import { inngest } from "@/inngest/client";
 
 // Extended timeout for transcription processing
@@ -12,11 +12,6 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const params = await context.params;
     const projectId = params.id;
     
@@ -24,9 +19,10 @@ export async function POST(
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 });
     }
 
-    const project = await ProjectService.getProject(projectId);
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    // Validate project ownership
+    const { isValid, userId, project, errorResponse } = await validateProjectOwnership(projectId);
+    if (!isValid || !project) {
+      return errorResponse || NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Update project status

@@ -3,7 +3,7 @@ import OpenAI from 'openai'
 // Only throw error when actually trying to use the API
 const getOpenAIClient = () => {
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    throw new Error('Please set your OPENAI_API_KEY in .env.local file')
+    throw new Error('AI service is not configured. Please contact support.')
   }
   
   return new OpenAI({

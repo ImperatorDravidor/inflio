@@ -32,8 +32,23 @@ export interface SubtitleSettings {
   maxWordsPerLine: number
 }
 
-// Store active tasks in memory (in production, use Redis or database)
+// Store active tasks in memory with TTL (in production, use Redis or database)
 const activeTasks = new Map<string, VideoProcessingTask>()
+const TASK_TTL = 24 * 60 * 60 * 1000 // 24 hours
+
+// Cleanup stale tasks periodically
+if (typeof global !== 'undefined' && !(global as any).videoProcessingCleanupInterval) {
+  (global as any).videoProcessingCleanupInterval = setInterval(() => {
+    const now = Date.now()
+    for (const [taskId, task] of activeTasks.entries()) {
+      const taskAge = now - new Date(task.startedAt).getTime()
+      if (taskAge > TASK_TTL) {
+        console.log(`Cleaning up stale task: ${taskId}`)
+        activeTasks.delete(taskId)
+      }
+    }
+  }, 60 * 60 * 1000) // Run every hour
+}
 
 export class VideoProcessingService {
   private static readonly TEMP_DIR = process.env.VIDEO_TEMP_DIR || '/tmp/video-processing'
@@ -146,7 +161,18 @@ export class VideoProcessingService {
     } catch (error) {
       task.status = 'failed'
       task.error = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Always try to cleanup temp files on error
+      try {
+        await this.cleanup(tempDir)
+      } catch (cleanupError) {
+        console.error('Failed to cleanup temp files after error:', cleanupError)
+      }
+      
       throw error
+    } finally {
+      // Clean up task from memory to prevent memory leak
+      activeTasks.delete(task.id)
     }
   }
 

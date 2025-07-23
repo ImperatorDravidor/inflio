@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
 import { ProjectService } from '@/lib/services'
+import { validateProjectOwnership } from '@/lib/auth-utils'
 
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
     const params = await context.params;
     const projectId = params.id
+    
+    // Validate project ownership
+    const { isValid, project, errorResponse } = await validateProjectOwnership(projectId)
+    if (!isValid || !project) {
+      return errorResponse || NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    
     const body = await request.json()
     const { text, segments } = body
 
@@ -24,15 +23,6 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'Text is required' },
         { status: 400 }
-      )
-    }
-
-    // Get the existing project
-    const project = await ProjectService.getProject(projectId)
-    if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
       )
     }
 
