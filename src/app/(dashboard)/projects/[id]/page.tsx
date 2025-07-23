@@ -482,12 +482,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   const handleDuplicateBlog = async (post: BlogPost) => {
     try {
       // Create a duplicate with a new ID and updated title
-      const duplicatedPost = {
+      const duplicatedPost: BlogPost = {
         ...post,
-        id: crypto.randomUUID(),
+        id: `blog_${Date.now()}_copy`,
         title: `${post.title} (Copy)`,
-        createdAt: new Date().toISOString(),
-        status: 'draft'
+        createdAt: new Date().toISOString()
       }
       
       // Add to blog folder

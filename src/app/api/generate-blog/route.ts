@@ -7,6 +7,37 @@ import { UsageService } from '@/lib/usage-service'
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
+// Helper function to extract sections from HTML content
+function extractSections(htmlContent: string): Array<{ heading: string; content: string }> {
+  const sections: Array<{ heading: string; content: string }> = []
+  const regex = /<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi
+  const matches = htmlContent.matchAll(regex)
+  
+  let lastIndex = 0
+  let lastHeading = ''
+  
+  for (const match of matches) {
+    if (lastHeading) {
+      sections.push({
+        heading: lastHeading,
+        content: htmlContent.substring(lastIndex, match.index).trim()
+      })
+    }
+    lastHeading = match[1].replace(/<[^>]*>/g, '') // Strip any inner HTML tags
+    lastIndex = match.index! + match[0].length
+  }
+  
+  // Add the last section
+  if (lastHeading) {
+    sections.push({
+      heading: lastHeading,
+      content: htmlContent.substring(lastIndex).trim()
+    })
+  }
+  
+  return sections
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth()
@@ -153,52 +184,52 @@ Format as JSON.`
     // Track usage
     UsageService.incrementUsage()
 
-    // Save to database
-    const { data: savedBlog, error } = await supabaseAdmin
-      .from('blogs')
-      .insert({
-        project_id: projectId,
-        user_id: userId,
-        title: seoData.title || project.title,
-        content: blogContent,
-        slug: seoData.slug || project.title.toLowerCase().replace(/\s+/g, '-'),
-        meta_description: seoData.metaDescription || contentAnalysis.summary.substring(0, 160),
-        tags: seoData.tags || contentAnalysis.keywords.slice(0, 5),
-        status: 'draft',
-        metadata: {
-          generatedAt: new Date().toISOString(),
-          model: 'gpt-4o-2024-08-06',
-          videoContext: {
-            topics: contentAnalysis.topics,
-            keywords: contentAnalysis.keywords,
-            sentiment: contentAnalysis.sentiment,
-            keyMomentsUsed: contentAnalysis.keyMoments.length
-          },
-          enhancedContext: enhancedContext ? {
-            unifiedPrompt,
-            includeVideoMoments,
-            selectedMomentsCount: selectedMoments.length
-          } : null
-        }
-      })
-      .select()
-      .single()
+    // Create blog post object
+    const blogPost = {
+      id: `blog_${Date.now()}`,
+      title: seoData.title || project.title,
+      content: blogContent,
+      excerpt: contentAnalysis.summary.substring(0, 200) + '...',
+      tags: seoData.tags || contentAnalysis.keywords.slice(0, 5),
+      seoTitle: seoData.title || project.title,
+      seoDescription: seoData.metaDescription || contentAnalysis.summary.substring(0, 160),
+      readingTime: Math.ceil(blogContent.split(' ').length / 200), // Estimate reading time
+      sections: extractSections(blogContent),
+      createdAt: new Date().toISOString()
+    }
 
-    if (error) {
-      console.error('Error saving blog:', error)
+    // Add blog to project's folders
+    const updatedFolders = {
+      ...project.folders,
+      blog: [...(project.folders.blog || []), blogPost]
+    }
+
+    // Update project with new blog
+    const { error: updateError } = await supabaseAdmin
+      .from('projects')
+      .update({ 
+        folders: updatedFolders,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', projectId)
+      .eq('user_id', userId)
+
+    if (updateError) {
+      console.error('Error saving blog:', updateError)
       // Return the content anyway
       return NextResponse.json({
         success: true,
+        blog: blogPost,
         content: blogContent,
         seo: seoData,
         saved: false,
-        error: error.message
+        error: updateError.message
       })
     }
 
     return NextResponse.json({
       success: true,
-      blog: savedBlog,
+      blog: blogPost,
       content: blogContent,
       seo: seoData,
       saved: true
