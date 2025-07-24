@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const decodedPayload = JSON.parse(Buffer.from(payload, 'base64').toString())
     
     // Delete user's social data
-    const supabase = await createClient()
+    const supabase = createSupabaseServerClient()
     await supabase
       .from('social_integrations')
       .delete()

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ProjectService } from '@/lib/services'
 import { ServerUsageService } from '@/lib/server-usage-service'
 import { requireAuth } from '@/lib/auth-utils'
-import { VideoMetadata, WorkflowOptions } from '@/lib/project-types'
+import { VideoMetadata } from '@/lib/project-types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       videoUrl: string
       thumbnailUrl: string
       metadata: VideoMetadata
-      workflowOptions?: WorkflowOptions
+      workflowOptions?: any
       description?: string
     } = body
 
