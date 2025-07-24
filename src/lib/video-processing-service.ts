@@ -164,7 +164,9 @@ export class VideoProcessingService {
       
       // Always try to cleanup temp files on error
       try {
-        await this.cleanup(tempDir)
+        if (task.tempDir) {
+          await this.cleanup(task.tempDir)
+        }
       } catch (cleanupError) {
         console.error('Failed to cleanup temp files after error:', cleanupError)
       }

@@ -2204,7 +2204,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           <div className="bg-muted/50 rounded-lg p-4 cursor-pointer hover:bg-muted/70 transition-colors"
                                                onClick={(e) => {
                                                  e.stopPropagation()
-                                                 setSelectedTranscript(clip.transcript)
+                                                 setSelectedTranscript(clip.transcript || '')
                                                  setShowTranscriptModal(true)
                                                }}
                                           >
