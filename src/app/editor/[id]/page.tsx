@@ -15,7 +15,7 @@ import { retrieveVideo } from "@/lib/services"
 import { ProcessingResults } from "@/components/processing-results"
 import { ExportManager } from "@/components/export-manager"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { ThumbnailCreator } from "@/components/thumbnail-creator"
+import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
 import { 
   IconPlayerPlay,
   IconPlayerPause,
@@ -468,7 +468,7 @@ export default function VideoEditorPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ThumbnailCreator
+                                        <ThumbnailCreatorV2
                 projectId={videoId}
                 projectTitle={videoInfo.title}
                 contentAnalysis={contentAnalysis}

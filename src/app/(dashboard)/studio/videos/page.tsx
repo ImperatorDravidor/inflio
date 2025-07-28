@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { ThumbnailCreator } from "@/components/thumbnail-creator"
+import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -163,7 +163,7 @@ function VideoCard({
             
             {/* Thumbnail Generator Button for List View */}
             <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <ThumbnailCreator
+              <ThumbnailCreatorV2
                 projectId={project.id}
                 projectTitle={project.title}
                 currentThumbnail={project.thumbnail_url}
@@ -326,7 +326,7 @@ function VideoCard({
         
         {/* Thumbnail Generator Button for Grid View */}
         <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
-          <ThumbnailCreator
+          <ThumbnailCreatorV2
             projectId={project.id}
             projectTitle={project.title}
             currentThumbnail={project.thumbnail_url}
