@@ -214,11 +214,11 @@ export async function processTranscription(params: {
         console.log('[TranscriptionProcessor] Signed URL created for AssemblyAI')
         const params: TranscribeParams = { audio: signedUrlData.signedUrl }
         
-        console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
+        console.log('[TranscriptionProcessor] Submitting transcription job to AssemblyAI...')
         
-        // Use the transcribe method with retry logic
+        // Submit the transcription job (non-blocking)
         const transcript = await withRetry(
-          () => assembly.transcripts.transcribe(params),
+          () => assembly.transcripts.submit(params),
           {
             maxAttempts: 3,
             initialDelay: 5000,
@@ -231,27 +231,68 @@ export async function processTranscription(params: {
               return false
             },
             onRetry: (error, attempt) => {
-              console.log(`[TranscriptionProcessor] Retry attempt ${attempt} for AssemblyAI:`, error.message)
+              console.log(`[TranscriptionProcessor] Retry attempt ${attempt} for AssemblyAI submission:`, error.message)
             }
           }
         )
         
-        console.log('[TranscriptionProcessor] AssemblyAI response received:', {
-          status: transcript.status,
+        console.log('[TranscriptionProcessor] Transcription job submitted:', {
           id: transcript.id,
-          hasText: !!transcript.text,
-          textLength: transcript.text?.length || 0,
-          hasWords: !!transcript.words,
-          wordsCount: transcript.words?.length || 0
+          status: transcript.status
+        })
+        
+        // Poll for completion with Vercel-friendly timeouts
+        const maxPollingTime = 240000 // 4 minutes (leaving 1 minute buffer for 5 min timeout)
+        const pollInterval = 5000 // 5 seconds
+        const startTime = Date.now()
+        let completedTranscript = transcript
+        
+        while (completedTranscript.status !== 'completed' && completedTranscript.status !== 'error') {
+          // Check if we're approaching Vercel timeout
+          if (Date.now() - startTime > maxPollingTime) {
+            console.error('[TranscriptionProcessor] Polling timeout reached, falling back to mock')
+            throw new Error('Transcription polling timeout on Vercel')
+          }
+          
+          // Wait before polling
+          await new Promise(resolve => setTimeout(resolve, pollInterval))
+          
+          // Get updated transcript status
+          completedTranscript = await assembly.transcripts.get(transcript.id)
+          
+          // Update progress based on AssemblyAI status
+          if (completedTranscript.status === 'processing') {
+            const elapsed = Date.now() - startTime
+            const progress = Math.min(50, 30 + Math.floor((elapsed / maxPollingTime) * 20))
+            await ProjectService.updateTaskProgress(projectId, 'transcription', progress, 'processing')
+          }
+          
+          console.log('[TranscriptionProcessor] Polling transcription status:', {
+            id: transcript.id,
+            status: completedTranscript.status,
+            elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
+          })
+        }
+        
+        // Use the completed transcript
+        const finalTranscript = completedTranscript
+        
+        console.log('[TranscriptionProcessor] AssemblyAI response received:', {
+          status: finalTranscript.status,
+          id: finalTranscript.id,
+          hasText: !!finalTranscript.text,
+          textLength: finalTranscript.text?.length || 0,
+          hasWords: !!finalTranscript.words,
+          wordsCount: finalTranscript.words?.length || 0
         })
 
         // Check if transcription is actually completed
-        if (transcript.status !== 'completed') {
-          console.error('[TranscriptionProcessor] AssemblyAI returned non-completed status:', transcript.status)
-          if (transcript.status === 'error') {
-            throw new Error(`AssemblyAI Error: ${transcript.error}`)
+        if (finalTranscript.status !== 'completed') {
+          console.error('[TranscriptionProcessor] AssemblyAI returned non-completed status:', finalTranscript.status)
+          if (finalTranscript.status === 'error') {
+            throw new Error(`AssemblyAI Error: ${finalTranscript.error}`)
           } else {
-            throw new Error(`AssemblyAI transcription not completed. Status: ${transcript.status}`)
+            throw new Error(`AssemblyAI transcription not completed. Status: ${finalTranscript.status}`)
           }
         }
 
@@ -261,13 +302,13 @@ export async function processTranscription(params: {
 
         // Convert AssemblyAI format to our internal format
         // Group words into proper segments for subtitles
-        const segments = groupWordsIntoSegments(transcript.words || [])
+        const segments = groupWordsIntoSegments(finalTranscript.words || [])
         
         transcription = {
-          text: transcript.text || '',
+          text: finalTranscript.text || '',
           segments: segments,
-          language: transcript.language_code || 'en',
-          duration: transcript.audio_duration || 0
+          language: finalTranscript.language_code || 'en',
+          duration: finalTranscript.audio_duration || 0
         }
       } catch (assemblyError) {
         console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
