@@ -1329,9 +1329,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         </div>
 
         {/* Main Content Grid - Video Left, Transcription Right */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Video Player & Content Section */}
-          <div className="space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             {/* Video Player Card */}
             <Card className="overflow-hidden">
               {/* Video Header */}
@@ -3062,7 +3062,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </div>
 
           {/* Enhanced Transcription Panel - Right Side */}
-          <div>
+          <div className="lg:col-span-1">
             <Card className="sticky top-4 h-[calc(100vh-120px)] overflow-hidden border-2 border-primary/10 shadow-xl">
               {project.transcription ? (
                 <div className="h-full flex flex-col">
