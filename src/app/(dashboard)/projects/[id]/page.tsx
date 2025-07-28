@@ -63,6 +63,7 @@ import {
   IconLayoutGridAdd,
   IconChevronDown,
   IconHash,
+  IconUsers,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -98,6 +99,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
 import { StagingService } from "@/lib/staging/staging-service"
+import { PersonaManager } from "@/components/persona-manager"
 import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 import type { StagedContent } from "@/lib/staging/staging-service"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -1580,7 +1582,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-5 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1634,6 +1636,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Graphics</span>
                         <span className="text-[10px] text-muted-foreground">
                           {totalImages} images
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="personas" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconUsers className="h-5 w-5" />
+                        <span className="text-xs font-medium">Personas</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          AI Personas
                         </span>
                       </TabsTrigger>
                     </TabsList>
@@ -3046,6 +3059,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             } : undefined}
                           />
                         )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="personas" className="mt-0">
+                      <div className="space-y-6">
+                        <PersonaManager
+                          onPersonaSelect={(persona) => {
+                            toast.success(`Selected persona: ${persona.name}`)
+                            // Persona can be used in thumbnail creator and other AI features
+                          }}
+                        />
                       </div>
                     </TabsContent>
 
