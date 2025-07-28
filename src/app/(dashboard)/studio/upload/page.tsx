@@ -199,46 +199,36 @@ export default function UploadPage() {
       // Create a more conservative file name for production
       const fileName = `${timestamp}-${finalName}${extension.toLowerCase()}`;
       
-      // Log file details for debugging
-      console.log('Upload Debug:', {
-        originalName: file.name,
-        sanitizedName: finalName,
-        extension: extension,
-        finalFileName: fileName,
-        fileType: file.type,
-        fileSize: file.size
-      });
-      
-      // Upload via API route (which uses service role to bypass RLS)
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('fileName', fileName);
-      
-      const uploadResponse = await fetch('/api/upload-video', {
+      // First, get a signed upload URL from our API
+      const urlResponse = await fetch('/api/get-upload-url', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName })
       });
-      
-      const uploadResult = await uploadResponse.json();
-      
-      if (!uploadResponse.ok) {
-        console.error('Upload error:', uploadResult);
-        
-        // Handle specific error cases
-        const errorMessage = uploadResult.error || 'Upload failed';
-        
-        if (errorMessage.includes('row size exceeds maximum')) {
-          throw new Error('File is too large. Maximum size is 2GB.');
-        } else if (errorMessage.includes('Bucket not found')) {
-          throw new Error('Storage configuration error. Please contact support.');
-        } else if (errorMessage.includes('Unauthorized')) {
-          throw new Error('Authentication error. Please sign in again.');
-        } else {
-          throw new Error(`Upload failed: ${errorMessage}`);
-        }
+
+      if (!urlResponse.ok) {
+        const error = await urlResponse.json();
+        throw new Error(error.error || 'Failed to get upload URL');
       }
-      
-      const supabaseVideoUrl = uploadResult.url;
+
+      const { uploadUrl, path } = await urlResponse.json();
+
+      // Upload directly to Supabase using the signed URL
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type || 'video/mp4',
+        },
+      });
+
+      if (!uploadResponse.ok) {
+        console.error('Direct upload failed:', uploadResponse.status, uploadResponse.statusText);
+        throw new Error('Failed to upload video to storage');
+      }
+
+      // Construct the public URL
+      const supabaseVideoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${path}`;
       
       if (!supabaseVideoUrl) {
         throw new Error("Failed to get video URL from storage.");
