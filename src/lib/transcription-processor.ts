@@ -127,8 +127,22 @@ export async function processTranscription(params: {
         const assembly = getAssemblyAI()
         
         console.log('[TranscriptionProcessor] Submitting transcription request to AssemblyAI...')
+        
+        // Generate a signed URL for AssemblyAI to bypass CloudProxy
+        const videoPath = videoUrl.split('/storage/v1/object/public/videos/')[1];
+        const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin
+          .storage
+          .from('videos')
+          .createSignedUrl(videoPath, 3600); // 1 hour expiry
+        
+        if (signedUrlError || !signedUrlData?.signedUrl) {
+          console.error('[TranscriptionProcessor] Failed to create signed URL:', signedUrlError);
+          throw new Error('Failed to create signed URL for video');
+        }
+        
         console.log('[TranscriptionProcessor] Video URL:', videoUrl)
-        const params: TranscribeParams = { audio: videoUrl }
+        console.log('[TranscriptionProcessor] Signed URL created for AssemblyAI')
+        const params: TranscribeParams = { audio: signedUrlData.signedUrl }
         
         console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         
