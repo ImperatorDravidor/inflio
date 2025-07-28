@@ -1,5 +1,4 @@
 import { ProjectService } from '@/lib/services'
-import { TranscriptionService } from '@/lib/transcription-service'
 import { AIContentService } from '@/lib/ai-content-service'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
@@ -27,11 +26,18 @@ const mockContentAnalysis = {
 }
 
 // Group words into proper segments for subtitles
-function groupWordsIntoSegments(words: any[]): any[] {
+interface AssemblyAIWord {
+  text: string;
+  start: number;
+  end: number;
+  confidence: number;
+}
+
+function groupWordsIntoSegments(words: AssemblyAIWord[]): TranscriptionData['segments'] {
   if (!words || words.length === 0) return []
   
-  const segments: any[] = []
-  let currentSegment: any = {
+  const segments: TranscriptionData['segments'] = []
+  let currentSegment: TranscriptionData['segments'][0] & { wordCount: number } = {
     id: 'seg-0',
     text: '',
     start: 0,
@@ -44,7 +50,7 @@ function groupWordsIntoSegments(words: any[]): any[] {
   const maxDuration = 5 // Maximum 5 seconds per segment
   const punctuationMarks = ['.', '!', '?', ':', ';']
   
-  words.forEach((word, index) => {
+  words.forEach((word) => {
     const wordStartTime = word.start / 1000
     const wordEndTime = word.end / 1000
     const segmentDuration = wordEndTime - currentSegment.start
@@ -93,7 +99,10 @@ function groupWordsIntoSegments(words: any[]): any[] {
   }
   
   // Clean up segments - remove wordCount as it's not needed in final output
-  return segments.map(({ wordCount, ...segment }) => segment)
+  return segments.map((segment) => {
+    const { wordCount: _, ...cleanSegment } = segment as typeof segment & { wordCount?: number }
+    return cleanSegment
+  })
 }
 
 // Mock transcription generator
@@ -151,9 +160,9 @@ export async function processTranscription(params: {
   projectId: string
   videoUrl: string
   language?: string
-  userId: string
+  userId?: string
 }) {
-  const { projectId, videoUrl, language = 'en', userId } = params
+  const { projectId, videoUrl, language = 'en' } = params
   
   console.log('[TranscriptionProcessor] Starting transcription for project', projectId)
   console.log('[TranscriptionProcessor] Environment:', {
@@ -238,41 +247,74 @@ export async function processTranscription(params: {
         
         console.log('[TranscriptionProcessor] Transcription job submitted:', {
           id: transcript.id,
-          status: transcript.status
+          status: transcript.status,
+          type: typeof transcript,
+          keys: transcript ? Object.keys(transcript) : []
         })
+        
+        // Ensure we have a valid transcript object
+        if (!transcript || !transcript.id) {
+          console.error('[TranscriptionProcessor] Invalid transcript object received from submit:', transcript)
+          throw new Error('Invalid transcript object from AssemblyAI submit')
+        }
         
         // Poll for completion with Vercel-friendly timeouts
         const maxPollingTime = 240000 // 4 minutes (leaving 1 minute buffer for 5 min timeout)
         const pollInterval = 5000 // 5 seconds
         const startTime = Date.now()
         let completedTranscript = transcript
+        let pollCount = 0
+        
+        console.log('[TranscriptionProcessor] Starting polling loop for transcript:', transcript.id)
         
         while (completedTranscript.status !== 'completed' && completedTranscript.status !== 'error') {
+          pollCount++
+          
           // Check if we're approaching Vercel timeout
           if (Date.now() - startTime > maxPollingTime) {
-            console.error('[TranscriptionProcessor] Polling timeout reached, falling back to mock')
+            console.error('[TranscriptionProcessor] Polling timeout reached after', pollCount, 'attempts, falling back to mock')
             throw new Error('Transcription polling timeout on Vercel')
           }
+          
+          console.log(`[TranscriptionProcessor] Waiting ${pollInterval}ms before poll attempt ${pollCount}...`)
           
           // Wait before polling
           await new Promise(resolve => setTimeout(resolve, pollInterval))
           
-          // Get updated transcript status
-          completedTranscript = await assembly.transcripts.get(transcript.id)
+          console.log(`[TranscriptionProcessor] Poll attempt ${pollCount} - fetching transcript status...`)
           
-          // Update progress based on AssemblyAI status
-          if (completedTranscript.status === 'processing') {
-            const elapsed = Date.now() - startTime
-            const progress = Math.min(50, 30 + Math.floor((elapsed / maxPollingTime) * 20))
-            await ProjectService.updateTaskProgress(projectId, 'transcription', progress, 'processing')
+          try {
+            // Get updated transcript status
+            completedTranscript = await assembly.transcripts.get(transcript.id)
+            
+            console.log(`[TranscriptionProcessor] Poll attempt ${pollCount} response:`, {
+              id: completedTranscript.id,
+              status: completedTranscript.status,
+              hasText: !!completedTranscript.text,
+              hasWords: !!completedTranscript.words,
+              elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
+            })
+            
+            // Update progress based on AssemblyAI status
+            if (completedTranscript.status === 'processing' || completedTranscript.status === 'queued') {
+              const elapsed = Date.now() - startTime
+              const progress = Math.min(50, 30 + Math.floor((elapsed / maxPollingTime) * 20))
+              await ProjectService.updateTaskProgress(projectId, 'transcription', progress, 'processing')
+              console.log(`[TranscriptionProcessor] Updated progress to ${progress}%`)
+            }
+          } catch (pollError) {
+            console.error(`[TranscriptionProcessor] Poll attempt ${pollCount} failed:`, {
+              error: pollError instanceof Error ? pollError.message : 'Unknown error',
+              transcriptId: transcript.id
+            })
+            // Continue polling unless it's a critical error
+            if (pollError instanceof Error && pollError.message.includes('not found')) {
+              throw pollError
+            }
           }
-          
-          console.log('[TranscriptionProcessor] Polling transcription status:', {
-            id: transcript.id,
-            status: completedTranscript.status,
-            elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
-          })
         }
+        
+        console.log('[TranscriptionProcessor] Polling completed after', pollCount, 'attempts')
         
         // Use the completed transcript
         const finalTranscript = completedTranscript
@@ -355,7 +397,7 @@ export async function processTranscription(params: {
         contentAnalysis = {
           ...aiAnalysis,
           analyzedAt: new Date().toISOString()
-        } as any
+        }
         console.log('[TranscriptionProcessor] AI content analysis completed successfully')
       } catch (err) {
         console.error('[TranscriptionProcessor] AI content analysis failed:', {
