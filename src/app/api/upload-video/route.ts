@@ -37,12 +37,28 @@ export async function POST(request: NextRequest) {
 
     // Ensure the file path is valid for Supabase
     // Supabase expects paths without leading slashes and with proper formatting
-    const storagePath = fileName.replace(/^\/+/, ''); // Remove any leading slashes
+    let storagePath = fileName.replace(/^\/+/, ''); // Remove any leading slashes
+    
+    // Additional validation for production environment
+    if (process.env.NODE_ENV === 'production') {
+      // Ensure path only contains allowed characters
+      storagePath = storagePath.replace(/[^a-zA-Z0-9\-._]/g, '-');
+      
+      // Ensure no double dots (security)
+      storagePath = storagePath.replace(/\.{2,}/g, '.');
+      
+      // Ensure valid extension
+      if (!storagePath.match(/\.(mp4|mov|avi|mkv|webm|mpeg)$/i)) {
+        storagePath = storagePath + '.mp4';
+      }
+    }
     
     console.log('Supabase upload attempt:', {
       bucket: 'videos',
       path: storagePath,
-      contentType: file.type || 'video/mp4'
+      originalFileName: fileName,
+      contentType: file.type || 'video/mp4',
+      environment: process.env.NODE_ENV
     });
 
     // Upload to Supabase storage using service role
@@ -55,10 +71,33 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      console.error('Supabase upload error:', uploadError);
+      console.error('Supabase upload error:', {
+        message: uploadError.message,
+        error: uploadError,
+        statusCode: uploadError.statusCode,
+        hint: uploadError.hint,
+        details: JSON.stringify(uploadError, null, 2)
+      });
+      
+      // Check for specific error patterns
+      if (uploadError.message?.includes('pattern')) {
+        console.error('Pattern validation error details:', {
+          bucket: 'videos',
+          attemptedPath: storagePath,
+          pathLength: storagePath.length,
+          hasSpecialChars: /[^a-zA-Z0-9\-._]/.test(storagePath),
+          environment: process.env.NODE_ENV
+        });
+      }
+      
       return NextResponse.json({ 
         error: uploadError.message || 'Upload failed',
-        details: uploadError 
+        details: uploadError,
+        debug: {
+          path: storagePath,
+          bucket: 'videos',
+          contentType: file.type || 'video/mp4'
+        }
       }, { status: 500 });
     }
 
