@@ -258,15 +258,18 @@ export function ThumbnailCreator({
       }
     }
     
-  // Load user personas from local storage
+  // Load user personas from global storage
   const loadUserPersonas = async () => {
     try {
-      const storedPersonas = localStorage.getItem('inflio_user_personas')
+      const storedPersonas = localStorage.getItem('inflio_global_personas')
       if (storedPersonas) {
         const personas = JSON.parse(storedPersonas)
         setUserPersonas(personas.map((p: any) => ({
-          ...p,
-          createdAt: new Date(p.createdAt)
+          id: p.id,
+          name: p.name,
+          description: p.description || '',
+          photos: p.photos || [],
+          createdAt: new Date(p.createdAt || p.updatedAt)
         })))
       }
     } catch (error) {
@@ -274,10 +277,19 @@ export function ThumbnailCreator({
     }
   }
 
-  // Save user personas to local storage
+  // Save user personas to global storage
   const saveUserPersonas = (personas: UserPersona[]) => {
     try {
-      localStorage.setItem('inflio_user_personas', JSON.stringify(personas))
+      // Convert to global PersonaManager format
+      const personasToSave = personas.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        photos: p.photos,
+        createdAt: p.createdAt || new Date(),
+        updatedAt: new Date()
+      }))
+      localStorage.setItem('inflio_global_personas', JSON.stringify(personasToSave))
     } catch (error) {
       console.error('Error saving user personas:', error)
     }
@@ -1031,31 +1043,51 @@ export function ThumbnailCreator({
                         </SelectContent>
                       </Select>
                     )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowPersonalUpload(true)}
+                  {userPersonas.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowPersonalUpload(true)}
                       disabled={personalPhotos.length >= 3}
-                  >
-                    <IconPlus className="h-4 w-4 mr-1" />
-                    Add Photo
-                  </Button>
+                    >
+                      <IconPlus className="h-4 w-4 mr-1" />
+                      Add Photo
+                    </Button>
+                  )}
                   </div>
                 </div>
                 
                 {/* Tips for Personal Photos */}
-                {personalPhotos.length === 0 && (
+                {personalPhotos.length === 0 && userPersonas.length === 0 && (
+                  <Alert className="border-primary/50 bg-primary/10">
+                    <IconInfoCircle className="h-4 w-4 text-primary" />
+                    <AlertDescription>
+                      <strong>Create Your AI Persona:</strong>
+                      <p className="mt-2 text-sm">
+                        For the best thumbnail results with your face, create a persona first!
+                        Go to the <strong>"Personas"</strong> tab to upload your photos and create 
+                        reusable personas for consistent AI-generated content.
+                      </p>
+                      <div className="mt-3">
+                        <strong className="text-sm">Photo Tips:</strong>
+                        <ul className="mt-1 space-y-0.5 text-sm">
+                          <li>• Clear, well-lit face shots</li>
+                          <li>• Multiple angles & expressions</li>
+                          <li>• No sunglasses or obstructions</li>
+                        </ul>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {personalPhotos.length === 0 && userPersonas.length > 0 && (
                   <Alert className="border-blue-500/50 bg-blue-500/10">
                     <IconInfoCircle className="h-4 w-4 text-blue-600" />
                     <AlertDescription>
-                      <strong>Photo Tips for Best Results:</strong>
-                      <ul className="mt-2 space-y-1 text-sm">
-                        <li>• Use high-quality headshots with clear facial features</li>
-                        <li>• Ensure good lighting - natural light works best</li>
-                        <li>• Include variety: smiling, serious, and engaging expressions</li>
-                        <li>• Avoid sunglasses or heavy shadows on face</li>
-                        <li>• Professional or casual attire depending on your brand</li>
-                      </ul>
+                      <strong>Select a Persona:</strong>
+                      <p className="text-sm mt-1">
+                        Choose a persona from the dropdown above to use their photos in your thumbnail.
+                      </p>
                     </AlertDescription>
                   </Alert>
                 )}

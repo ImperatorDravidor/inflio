@@ -8,6 +8,7 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { OnboardingCheck } from "@/components/onboarding-check"
 import { AnimatedBackground } from "@/components/animated-background"
 import { WorkflowIndicator } from "@/components/workflow-indicator"
+import { PersonaProvider } from "@/contexts/persona-context"
 
 export default function DashboardLayout({
   children,
@@ -15,7 +16,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <>
+    <PersonaProvider>
       <OnboardingCheck />
       <SidebarProvider
         style={
@@ -42,6 +43,6 @@ export default function DashboardLayout({
       
       {/* Workflow Indicator - shows processing projects */}
       <WorkflowIndicator />
-    </>
+    </PersonaProvider>
   )
 } 
