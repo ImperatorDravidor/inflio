@@ -1,89 +1,69 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import OpenAI from 'openai'
+import { ThreadGenerator, type ThreadGenerationOptions } from '@/lib/thread-generator'
+import { z } from 'zod'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
+// Request validation schema
+const generateThreadSchema = z.object({
+  content: z.string().min(100, 'Content must be at least 100 characters'),
+  title: z.string().min(1, 'Title is required'),
+  platform: z.enum(['twitter', 'linkedin']),
+  tone: z.enum(['professional', 'casual', 'educational', 'inspiring']).optional(),
+  includeHashtags: z.boolean().optional(),
+  maxSegments: z.number().min(1).max(50).optional(),
+  includeCTA: z.boolean().optional(),
+  ctaText: z.string().optional(),
+  targetAudience: z.string().optional()
 })
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
+    // Authenticate user
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { content, title, platform = 'twitter' } = await request.json()
+    // Parse and validate request body
+    const body = await request.json()
+    const validatedData = generateThreadSchema.parse(body)
 
-    if (!content || !title) {
+    // Generate thread
+    const thread = await ThreadGenerator.generateThread(
+      validatedData.content,
+      validatedData.title,
+      {
+        platform: validatedData.platform,
+        tone: validatedData.tone,
+        includeHashtags: validatedData.includeHashtags,
+        maxSegments: validatedData.maxSegments,
+        includeCTA: validatedData.includeCTA,
+        ctaText: validatedData.ctaText,
+        targetAudience: validatedData.targetAudience
+      } as ThreadGenerationOptions
+    )
+
+    // Optimize the thread
+    const optimizedThread = ThreadGenerator.optimizeThread(thread)
+
+    return NextResponse.json({
+      success: true,
+      thread: optimizedThread,
+      preview: ThreadGenerator.generatePreview(optimizedThread)
+    })
+  } catch (error) {
+    console.error('Thread generation API error:', error)
+    
+    if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Missing content or title' },
+        { error: 'Invalid request data', details: error.errors },
         { status: 400 }
       )
     }
 
-    const maxLength = platform === 'twitter' ? 280 : 3000 // Twitter vs LinkedIn
-    const platformName = platform === 'twitter' ? 'Twitter' : 'LinkedIn'
-
-    const prompt = `Convert the following content into an engaging ${platformName} thread.
-    
-    Title: ${title}
-    Content: ${content}
-    
-    Rules:
-    1. Each part must be under ${maxLength} characters
-    2. Start with a strong hook
-    3. End each part with a reason to keep reading (except the last)
-    4. Include relevant hashtags at the end
-    5. Make it engaging and conversational
-    6. Number each part (1/n, 2/n, etc.)
-    
-    Return the thread as a JSON array of strings, each representing one part.`
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [
-        { 
-          role: 'system', 
-          content: 'You are an expert social media content creator who specializes in creating viral threads.' 
-        },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' }
-    })
-
-    const result = JSON.parse(response.choices[0].message.content || '{}')
-    const thread = result.thread || []
-
-    // Validate thread parts length
-    const validatedThread = thread.map((part: string) => {
-      if (part.length > maxLength) {
-        // Truncate if too long
-        return part.substring(0, maxLength - 3) + '...'
-      }
-      return part
-    })
-
-    return NextResponse.json({
-      success: true,
-      thread: validatedThread,
-      platform,
-      totalParts: validatedThread.length,
-      estimatedReadTime: Math.ceil(content.split(' ').length / 200), // minutes
-      hashtags: extractHashtags(validatedThread.join(' '))
-    })
-  } catch (error) {
-    console.error('Error generating thread:', error)
     return NextResponse.json(
       { error: 'Failed to generate thread' },
       { status: 500 }
     )
   }
-}
-
-function extractHashtags(text: string): string[] {
-  const hashtagRegex = /#\w+/g
-  const matches = text.match(hashtagRegex) || []
-  return [...new Set(matches)] // Remove duplicates
 } 

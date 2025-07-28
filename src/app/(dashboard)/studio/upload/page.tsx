@@ -200,6 +200,16 @@ export default function UploadPage() {
       const finalName = sanitizedName || 'video';
       const fileName = `${timestamp}-${finalName}${extension}`;
       
+      // Log file details for debugging
+      console.log('Upload Debug:', {
+        originalName: file.name,
+        sanitizedName: finalName,
+        extension: extension,
+        finalFileName: fileName,
+        fileType: file.type,
+        fileSize: file.size
+      });
+      
       // Upload via API route (which uses service role to bypass RLS)
       const formData = new FormData();
       formData.append('file', file);
