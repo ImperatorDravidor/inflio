@@ -139,7 +139,7 @@ Format the response as clean HTML that can be rendered directly, using appropria
 Include timestamp references in the format [0:23] when mentioning specific video moments.`
     
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-2024-08-06',
+      model: 'gpt-4-turbo-preview',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

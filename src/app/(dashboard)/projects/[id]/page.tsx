@@ -1329,9 +1329,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         </div>
 
         {/* Main Content Grid - Video Left, Transcription Right */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Video Player & Content Section */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6">
             {/* Video Player Card */}
             <Card className="overflow-hidden">
               {/* Video Header */}
@@ -1378,7 +1378,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               </div>
               
               {/* Video Container */}
-              <div className="relative bg-black">
+              <div className="relative bg-black rounded-lg overflow-hidden">
                 {project.video_url ? (
                   <>
                     {/* Loading Overlay */}
@@ -1387,6 +1387,30 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <div className="text-center">
                           <IconLoader2 className="h-10 w-10 animate-spin text-white/70 mx-auto" />
                           <p className="text-white/60 text-sm mt-2">Loading video...</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Thumbnail Display (when video is not playing) */}
+                    {project.thumbnail_url && !videoLoading && (
+                      <div className="absolute inset-0 z-5 group cursor-pointer"
+                        onClick={() => {
+                          if (videoRef.current) {
+                            videoRef.current.play()
+                            setVideoLoading(false)
+                          }
+                        }}
+                        style={{ display: videoRef.current?.paused === false ? 'none' : 'flex' }}
+                      >
+                        <img 
+                          src={project.thumbnail_url} 
+                          alt="Video thumbnail" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                          <div className="bg-white/90 backdrop-blur-sm rounded-full p-6 shadow-xl group-hover:scale-110 transition-transform">
+                            <IconPlayerPlay className="h-12 w-12 text-black" />
+                          </div>
                         </div>
                       </div>
                     )}
@@ -3038,21 +3062,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </div>
 
           {/* Enhanced Transcription Panel - Right Side */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-4 h-[calc(100vh-120px)] overflow-hidden border-2 border-primary/10 shadow-lg">
+          <div>
+            <Card className="sticky top-4 h-[calc(100vh-120px)] overflow-hidden border-2 border-primary/10 shadow-xl">
               {project.transcription ? (
                 <div className="h-full flex flex-col">
                   {/* Transcription Header */}
-                  <div className="p-4 border-b bg-gradient-to-r from-background to-muted/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <IconFileText className="h-4 w-4 text-primary" />
-                        Transcript
-                      </h3>
+                  <div className="p-5 border-b bg-gradient-to-br from-primary/5 via-background to-muted/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                          <IconFileText className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-lg">Transcript & Subtitles</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Edit segments for perfect subtitle timing
+                          </p>
+                        </div>
+                      </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10">
-                            <IconDots className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10">
+                            <IconDots className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -3080,15 +3111,34 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <IconLanguage className="h-3 w-3" />
-                        {project.transcription.language.toUpperCase()}
-                      </span>
-                      <span>•</span>
-                      <span>{project.transcription.segments.length} segments</span>
-                      <span>•</span>
-                      <span>{project.transcription.text.split(' ').length} words</span>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-background/60 backdrop-blur-sm rounded-lg p-2.5 border border-border/50">
+                        <div className="flex items-center gap-2">
+                          <IconLanguage className="h-4 w-4 text-primary/70" />
+                          <div>
+                            <p className="text-xs font-medium">Language</p>
+                            <p className="text-sm font-semibold">{project.transcription.language.toUpperCase()}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-background/60 backdrop-blur-sm rounded-lg p-2.5 border border-border/50">
+                        <div className="flex items-center gap-2">
+                          <IconFileText className="h-4 w-4 text-primary/70" />
+                          <div>
+                            <p className="text-xs font-medium">Segments</p>
+                            <p className="text-sm font-semibold">{project.transcription.segments.length}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-background/60 backdrop-blur-sm rounded-lg p-2.5 border border-border/50">
+                        <div className="flex items-center gap-2">
+                          <IconArticle className="h-4 w-4 text-primary/70" />
+                          <div>
+                            <p className="text-xs font-medium">Words</p>
+                            <p className="text-sm font-semibold">{project.transcription.text.split(' ').length}</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   
