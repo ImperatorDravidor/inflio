@@ -102,6 +102,9 @@ import { StagingService } from "@/lib/staging/staging-service"
 import { PersonaManager } from "@/components/persona-manager"
 import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 import type { StagedContent } from "@/lib/staging/staging-service"
+import { ThreadGeneratorComponent } from "@/components/thread-generator"
+import { VideoChapters } from "@/components/video-chapters"
+import { QuoteCardsGenerator } from "@/components/quote-cards-generator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
@@ -176,6 +179,13 @@ function ProjectDetailPageContent() {
   const [showContentSelectionDialog, setShowContentSelectionDialog] = useState(false)
   const [selectedContentIds, setSelectedContentIds] = useState<Set<string>>(new Set())
   const [contentPreviewId, setContentPreviewId] = useState<string | null>(null)
+  
+  // Thread Generator State
+  const [threadGeneratorState, setThreadGeneratorState] = useState<{
+    isOpen: boolean
+    content: string
+    title: string
+  }>({ isOpen: false, content: '', title: '' })
 
   // Project loading is handled by useProject hook
   
@@ -1582,7 +1592,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1636,6 +1646,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Graphics</span>
                         <span className="text-[10px] text-muted-foreground">
                           {totalImages} images
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="quotes" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconQuote className="h-5 w-5" />
+                        <span className="text-xs font-medium">Quotes</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Cards
                         </span>
                       </TabsTrigger>
                       
@@ -1920,6 +1941,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   </p>
                                 </CardContent>
                               </Card>
+
+                              {/* Video Chapters */}
+                              <div className="mt-4">
+                                <VideoChapters
+                                  projectId={project.id}
+                                  videoDuration={project.metadata?.duration || 0}
+                                  hasTranscript={!!project.transcription}
+                                />
+                              </div>
 
                               {/* Key Moments */}
                               {project.content_analysis.keyMoments.length > 0 && (
@@ -2419,6 +2449,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                       <DropdownMenuItem onClick={() => exportBlogAsMarkdown(post)}>
                                         <IconDownload className="h-4 w-4 mr-2" />
                                         Export as Markdown
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => setThreadGeneratorState({ isOpen: true, content: post.content, title: post.title })}>
+                                        <IconBrandTwitter className="h-4 w-4 mr-2" />
+                                        Generate Thread
                                       </DropdownMenuItem>
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem 
@@ -3059,6 +3093,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             } : undefined}
                           />
                         )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="quotes" className="mt-0">
+                      <div className="space-y-6">
+                        <QuoteCardsGenerator
+                          projectId={project.id}
+                          hasTranscript={!!project.transcription}
+                          projectTitle={project.title}
+                        />
                       </div>
                     </TabsContent>
 
@@ -3969,6 +4013,24 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
         }}
         transcript={selectedTranscript}
       />
+      
+      {/* Thread Generator */}
+      {threadGeneratorState.isOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0" onClick={() => setThreadGeneratorState({ isOpen: false, content: '', title: '' })} />
+          <div className="relative z-50">
+            <ThreadGeneratorComponent
+              content={threadGeneratorState.content}
+              title={threadGeneratorState.title}
+              sourceType="blog"
+              onThreadGenerated={(thread) => {
+                toast.success('Thread generated successfully!')
+                console.log('Generated thread:', thread)
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

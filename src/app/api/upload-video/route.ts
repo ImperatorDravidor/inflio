@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing file or fileName' }, { status: 400 });
     }
 
+    // Log received data for debugging
+    console.log('Upload API Debug:', {
+      fileName: fileName,
+      fileType: file.type,
+      fileSize: file.size,
+      fileNameLength: fileName.length,
+      fileNamePattern: /^[\w\d\-_.]+$/.test(fileName) ? 'valid' : 'invalid'
+    });
+
     // Create Supabase client with service role (bypasses RLS)
     const supabase = createSupabaseServerClient();
 
@@ -26,11 +35,21 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Ensure the file path is valid for Supabase
+    // Supabase expects paths without leading slashes and with proper formatting
+    const storagePath = fileName.replace(/^\/+/, ''); // Remove any leading slashes
+    
+    console.log('Supabase upload attempt:', {
+      bucket: 'videos',
+      path: storagePath,
+      contentType: file.type || 'video/mp4'
+    });
+
     // Upload to Supabase storage using service role
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('videos')
-      .upload(fileName, buffer, {
-        contentType: file.type,
+      .upload(storagePath, buffer, {
+        contentType: file.type || 'video/mp4',
         cacheControl: '3600',
         upsert: false
       });
@@ -43,10 +62,10 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Get public URL
+    // Get public URL using the same path we uploaded to
     const { data: publicUrlData } = supabase.storage
       .from('videos')
-      .getPublicUrl(fileName);
+      .getPublicUrl(uploadData.path);
 
     return NextResponse.json({ 
       success: true,
