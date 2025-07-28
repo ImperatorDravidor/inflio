@@ -1588,9 +1588,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             </Card>
 
             {/* Enhanced Content Tabs */}
-            <Card className="overflow-hidden shadow-lg">
+            <Card className="shadow-lg">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="border-b bg-gradient-to-r from-background to-muted/20">
+                <div className="border-b bg-gradient-to-r from-background to-muted/20 rounded-t-lg overflow-hidden">
                   <div className="px-6 pt-6 pb-0">
                     <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
@@ -1628,17 +1628,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </TabsTrigger>
                       
                       <TabsTrigger 
-                        value="social" 
-                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        <IconShare2 className="h-5 w-5" />
-                        <span className="text-xs font-medium">Social</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {stats.totalSocialPosts} posts
-                        </span>
-                      </TabsTrigger>
-                      
-                      <TabsTrigger 
                         value="graphics" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                       >
@@ -1668,6 +1657,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Personas</span>
                         <span className="text-[10px] text-muted-foreground">
                           AI Personas
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="social" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconShare2 className="h-5 w-5" />
+                        <span className="text-xs font-medium">Social</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {stats.totalSocialPosts} posts
                         </span>
                       </TabsTrigger>
                     </TabsList>
@@ -2919,16 +2919,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   <Card 
                                     key={suggestion.id}
                                     className={cn(
-                                      "cursor-pointer transition-all hover:shadow-xl overflow-hidden group",
+                                      "cursor-pointer transition-all hover:shadow-xl group relative",
                                       selectedSuggestion?.id === suggestion.id && "ring-2 ring-primary"
                                     )}
                                     onClick={() => handleGenerateFromSuggestion(suggestion)}
                                   >
                                     <div className={cn(
-                                      "h-1 bg-gradient-to-r",
+                                      "absolute inset-x-0 top-0 h-2 bg-gradient-to-r",
                                       typeConfig.color
                                     )} />
-                                    <CardHeader className="pb-3">
+                                    <CardHeader className="pb-3 pt-4">
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                           <div className={cn(
