@@ -181,13 +181,24 @@ export default function UploadPage() {
     try {
       // Generate unique filename
       const timestamp = Date.now();
-      const sanitizedName = file.name
+      
+      // Extract file extension
+      const lastDotIndex = file.name.lastIndexOf('.');
+      const extension = lastDotIndex > 0 ? file.name.substring(lastDotIndex) : '.mp4';
+      const nameWithoutExt = lastDotIndex > 0 ? file.name.substring(0, lastDotIndex) : file.name;
+      
+      // Sanitize the name part only (preserve extension)
+      const sanitizedName = nameWithoutExt
         .replace(/[｜|]/g, '-')
-        .replace(/[^\w\s.-]/g, '')
+        .replace(/[^\w\s-]/g, '') // Remove all non-alphanumeric except spaces and hyphens
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      const fileName = `${timestamp}-${sanitizedName || 'video.mp4'}`;
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase(); // Convert to lowercase for consistency
+      
+      // Ensure we have a valid name
+      const finalName = sanitizedName || 'video';
+      const fileName = `${timestamp}-${finalName}${extension}`;
       
       // Upload via API route (which uses service role to bypass RLS)
       const formData = new FormData();
