@@ -1,10 +1,10 @@
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 
 export interface UserUsage {
   user_id: string
   used: number
-  limit: number
+  usage_limit: number
   plan: 'basic' | 'pro' | 'enterprise'
   reset_date: string
   created_at?: string
@@ -26,7 +26,7 @@ export class ServerUsageService {
    * Get or create usage record for a user
    */
   static async getUsage(userId: string): Promise<UserUsage> {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createSupabaseServerClient()
     
     // Try to get existing usage record
     const { data: existingUsage, error: fetchError } = await supabase
@@ -56,12 +56,12 @@ export class ServerUsageService {
    * Create a new usage record for a user
    */
   private static async createUsageRecord(userId: string): Promise<UserUsage> {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createSupabaseServerClient()
     
     const newUsage: UserUsage = {
       user_id: userId,
       used: 0,
-      limit: this.PLAN_LIMITS.basic,
+      usage_limit: this.PLAN_LIMITS.basic,
       plan: 'basic',
       reset_date: this.getNextResetDate().toISOString(),
       created_at: new Date().toISOString(),
@@ -85,7 +85,7 @@ export class ServerUsageService {
    * Reset monthly usage for a user
    */
   private static async resetMonthlyUsage(userId: string, currentUsage: UserUsage): Promise<UserUsage> {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createSupabaseServerClient()
     
     const updatedUsage = {
       ...currentUsage,
@@ -113,13 +113,13 @@ export class ServerUsageService {
    * Returns true if successful, false if limit reached
    */
   static async incrementUsage(userId: string): Promise<boolean> {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createSupabaseServerClient()
     
     // Get current usage
     const usage = await this.getUsage(userId)
     
     // Check if limit reached (unless unlimited)
-    if (usage.limit !== -1 && usage.used >= usage.limit) {
+    if (usage.usage_limit !== -1 && usage.used >= usage.usage_limit) {
       return false
     }
 
@@ -145,7 +145,7 @@ export class ServerUsageService {
   static async canProcessVideo(userId: string): Promise<boolean> {
     try {
       const usage = await this.getUsage(userId)
-      return usage.limit === -1 || usage.used < usage.limit
+      return usage.usage_limit === -1 || usage.used < usage.usage_limit
     } catch (error) {
       console.error('Error checking usage:', error)
       // Default to allowing if there's an error (to not block users)
@@ -157,13 +157,13 @@ export class ServerUsageService {
    * Update user's plan
    */
   static async updatePlan(userId: string, plan: 'basic' | 'pro' | 'enterprise'): Promise<UserUsage> {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = createSupabaseServerClient()
     
     const { data, error } = await supabase
       .from('user_usage')
       .update({
         plan,
-        limit: this.PLAN_LIMITS[plan],
+        usage_limit: this.PLAN_LIMITS[plan],
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)

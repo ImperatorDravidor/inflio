@@ -179,10 +179,6 @@ export default function UploadPage() {
     const toastId = toast.loading("Uploading video to cloud storage...");
 
     try {
-      // Always use direct Supabase upload
-      const { createSupabaseBrowserClient } = await import('@/lib/supabase/client');
-      const supabase = createSupabaseBrowserClient();
-      
       // Generate unique filename
       const timestamp = Date.now();
       const sanitizedName = file.name
@@ -193,33 +189,36 @@ export default function UploadPage() {
         .replace(/^-+|-+$/g, '');
       const fileName = `${timestamp}-${sanitizedName || 'video.mp4'}`;
       
-      // Upload directly to Supabase
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Supabase upload error:', uploadError);
+      // Upload via API route (which uses service role to bypass RLS)
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('fileName', fileName);
+      
+      const uploadResponse = await fetch('/api/upload-video', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const uploadResult = await uploadResponse.json();
+      
+      if (!uploadResponse.ok) {
+        console.error('Upload error:', uploadResult);
         
         // Handle specific error cases
-        if (uploadError.message.includes('row size exceeds maximum')) {
+        const errorMessage = uploadResult.error || 'Upload failed';
+        
+        if (errorMessage.includes('row size exceeds maximum')) {
           throw new Error('File is too large. Maximum size is 2GB.');
-        } else if (uploadError.message.includes('Bucket not found')) {
+        } else if (errorMessage.includes('Bucket not found')) {
           throw new Error('Storage configuration error. Please contact support.');
+        } else if (errorMessage.includes('Unauthorized')) {
+          throw new Error('Authentication error. Please sign in again.');
         } else {
-          throw new Error(`Upload failed: ${uploadError.message}`);
+          throw new Error(`Upload failed: ${errorMessage}`);
         }
       }
-
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage
-        .from('videos')
-        .getPublicUrl(fileName);
-        
-      const supabaseVideoUrl = publicUrlData.publicUrl;
+      
+      const supabaseVideoUrl = uploadResult.url;
       
       if (!supabaseVideoUrl) {
         throw new Error("Failed to get video URL from storage.");
