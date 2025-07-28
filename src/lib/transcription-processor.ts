@@ -26,6 +26,76 @@ const mockContentAnalysis = {
   analyzedAt: new Date().toISOString()
 }
 
+// Group words into proper segments for subtitles
+function groupWordsIntoSegments(words: any[]): any[] {
+  if (!words || words.length === 0) return []
+  
+  const segments: any[] = []
+  let currentSegment: any = {
+    id: 'seg-0',
+    text: '',
+    start: 0,
+    end: 0,
+    confidence: 0,
+    wordCount: 0
+  }
+  
+  const maxWordsPerSegment = 10 // Target around 10 words per segment
+  const maxDuration = 5 // Maximum 5 seconds per segment
+  const punctuationMarks = ['.', '!', '?', ':', ';']
+  
+  words.forEach((word, index) => {
+    const wordStartTime = word.start / 1000
+    const wordEndTime = word.end / 1000
+    const segmentDuration = wordEndTime - currentSegment.start
+    
+    // Check if we should start a new segment
+    const shouldSplit = 
+      currentSegment.wordCount >= maxWordsPerSegment ||
+      segmentDuration >= maxDuration ||
+      (currentSegment.wordCount >= 5 && punctuationMarks.some(p => word.text.endsWith(p)))
+    
+    if (shouldSplit && currentSegment.text.trim()) {
+      // Finalize current segment
+      currentSegment.confidence = currentSegment.confidence / currentSegment.wordCount
+      segments.push({ ...currentSegment })
+      
+      // Start new segment
+      currentSegment = {
+        id: `seg-${segments.length}`,
+        text: '',
+        start: wordStartTime,
+        end: wordEndTime,
+        confidence: 0,
+        wordCount: 0
+      }
+    }
+    
+    // Add word to current segment
+    if (currentSegment.text) {
+      currentSegment.text += ' '
+    }
+    currentSegment.text += word.text
+    currentSegment.end = wordEndTime
+    currentSegment.confidence += word.confidence
+    currentSegment.wordCount++
+    
+    // Set start time if this is the first word
+    if (currentSegment.wordCount === 1) {
+      currentSegment.start = wordStartTime
+    }
+  })
+  
+  // Add the last segment if it has content
+  if (currentSegment.text.trim()) {
+    currentSegment.confidence = currentSegment.confidence / currentSegment.wordCount
+    segments.push(currentSegment)
+  }
+  
+  // Clean up segments - remove wordCount as it's not needed in final output
+  return segments.map(({ wordCount, ...segment }) => segment)
+}
+
 // Mock transcription generator
 function generateMockTranscription(videoUrl: string, language: string = 'en'): TranscriptionData {
   const mockSegments = [
@@ -190,15 +260,12 @@ export async function processTranscription(params: {
         console.log('[TranscriptionProcessor] Updated progress to 60%')
 
         // Convert AssemblyAI format to our internal format
+        // Group words into proper segments for subtitles
+        const segments = groupWordsIntoSegments(transcript.words || [])
+        
         transcription = {
           text: transcript.text || '',
-          segments: transcript.words?.map((word, index) => ({
-            id: `seg-${index}`,
-            start: word.start / 1000,
-            end: word.end / 1000,
-            text: word.text,
-            confidence: word.confidence
-          })) || [],
+          segments: segments,
           language: transcript.language_code || 'en',
           duration: transcript.audio_duration || 0
         }

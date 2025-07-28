@@ -8,7 +8,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
@@ -29,7 +28,6 @@ export default function UploadPage() {
   
   const [file, setFile] = useState<File | null>(null)
   const [projectTitle, setProjectTitle] = useState("")
-  const [projectDescription, setProjectDescription] = useState("")
   const [videoPreview, setVideoPreview] = useState<string>("")
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -144,7 +142,6 @@ export default function UploadPage() {
     setVideoMetadata(null)
     setProcessing(false)
     setProjectTitle("")
-    setProjectDescription("")
     setShowMetadata(false)
     setShowWorkflowSelection(false)
     setWorkflowOptions({
@@ -262,8 +259,7 @@ export default function UploadPage() {
           videoUrl: supabaseVideoUrl,
           thumbnailUrl: thumbnail,
           metadata: videoMetadata,
-          workflowOptions,
-          description: projectDescription
+          workflowOptions
         })
       });
 
@@ -414,16 +410,6 @@ export default function UploadPage() {
                                   onChange={(e) => setProjectTitle(e.target.value)}
                                   placeholder="Give your project a title"
                                   className="text-base"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="project-description">Description (optional)</Label>
-                                <Textarea
-                                  id="project-description"
-                                  value={projectDescription}
-                                  onChange={(e) => setProjectDescription(e.target.value)}
-                                  placeholder="What's this video about?"
-                                  rows={2}
                                 />
                               </div>
                               <Button 

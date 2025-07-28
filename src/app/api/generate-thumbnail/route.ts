@@ -281,21 +281,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Project ID required' }, { status: 400 })
     }
 
-    const { data: project, error } = await supabase
-      .from('projects')
-      .select('folders')
-      .eq('id', projectId)
-      .single()
-
-    if (error || !project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-    }
-
-    const thumbnailHistory = project.folders?.thumbnails || []
-
+    // For now, return empty history since thumbnail history is not implemented
+    // TODO: Implement proper thumbnail history storage in the database
+    
     return NextResponse.json({
-      history: thumbnailHistory,
-      count: thumbnailHistory.length
+      history: [],
+      count: 0
     })
 
   } catch (error) {
