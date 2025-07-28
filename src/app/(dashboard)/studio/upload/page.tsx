@@ -187,15 +187,17 @@ export default function UploadPage() {
       // Sanitize the name part only (preserve extension)
       const sanitizedName = nameWithoutExt
         .replace(/[｜|]/g, '-')
-        .replace(/[^\w\s-]/g, '') // Remove all non-alphanumeric except spaces and hyphens
-        .replace(/\s+/g, '-')
+        .replace(/[^\w-]/g, '') // Remove all non-alphanumeric except hyphens (more strict)
         .replace(/-+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .toLowerCase(); // Convert to lowercase for consistency
+        .toLowerCase() // Convert to lowercase for consistency
+        .substring(0, 50); // Limit name length to 50 chars
       
       // Ensure we have a valid name
       const finalName = sanitizedName || 'video';
-      const fileName = `${timestamp}-${finalName}${extension}`;
+      
+      // Create a more conservative file name for production
+      const fileName = `${timestamp}-${finalName}${extension.toLowerCase()}`;
       
       // Log file details for debugging
       console.log('Upload Debug:', {
