@@ -840,12 +840,12 @@ export function ThumbnailCreator({
           )}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[75vh] flex flex-col p-0 overflow-hidden">
-        <div className="px-4 pt-4 pb-3 border-b flex-shrink-0">
+      <DialogContent className="max-w-6xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <div className="px-6 pt-5 pb-4 border-b flex-shrink-0">
         <DialogHeader>
-          <DialogTitle>Create Video Thumbnail</DialogTitle>
-          <DialogDescription>
-              Use FAL AI to generate professional thumbnails or upload your own
+          <DialogTitle className="text-xl font-semibold">Create Video Thumbnail</DialogTitle>
+          <DialogDescription className="text-sm">
+              Generate professional thumbnails with FAL AI or upload your own
           </DialogDescription>
         </DialogHeader>
         </div>
@@ -854,7 +854,7 @@ export function ThumbnailCreator({
         <video ref={videoRef} className="hidden" crossOrigin="anonymous" />
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "generate" | "upload" | "history")} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="mx-4 mt-3 grid w-auto grid-cols-3 flex-shrink-0">
+          <TabsList className="mx-6 mt-4 grid w-auto grid-cols-3 flex-shrink-0">
             <TabsTrigger value="generate" className="gap-2">
               <IconSparkles className="h-4 w-4" />
               AI Generate
@@ -869,8 +869,11 @@ export function ThumbnailCreator({
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
-            <TabsContent value="generate" className="space-y-4 mt-0">
+          <div className="flex-1 p-6 min-h-0">
+            <TabsContent value="generate" className="h-full mt-0">
+              <div className="grid grid-cols-5 gap-6 h-full">
+                {/* Left Side - Controls (60%) */}
+                <div className="col-span-3 overflow-y-auto pr-4 space-y-4 custom-scrollbar">
               {/* YouTube Thumbnail Best Practices Alert */}
               {!isEditMode && selectedPhotos.length === 0 && (
                 <Alert className="border-yellow-500/50 bg-yellow-500/10">
@@ -1402,9 +1405,12 @@ export function ThumbnailCreator({
                 className="resize-none"
               />
             </div>
-
-            {/* Generate Button */}
-            <div className="flex gap-2">
+                </div>
+                
+                {/* Right Side - Preview (40%) */}
+                <div className="col-span-2 space-y-4">
+                  {/* Generate Button */}
+                  <div className="flex gap-2">
             <Button
                 className="flex-1"
                 size="lg"
@@ -1524,10 +1530,13 @@ export function ThumbnailCreator({
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
+                </div>
+              </div>
+            </TabsContent>
 
-            <TabsContent value="upload" className="space-y-4 mt-0">
-            <div className="space-y-4">
+            <TabsContent value="upload" className="h-full mt-0">
+              <div className="grid grid-cols-2 gap-6 h-full">
+                <div className="col-span-1 space-y-4">
                 <div>
                   <Label className="text-base">Upload Custom Thumbnail</Label>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -1557,9 +1566,12 @@ export function ThumbnailCreator({
                   </div>
                 </Label>
               </div>
-
-              {/* Upload Preview */}
-              {uploadPreview && (
+                </div>
+                
+                {/* Right Side - Preview */}
+                <div className="col-span-1">
+                  {/* Upload Preview */}
+                  {uploadPreview && (
                 <Card>
                     <CardHeader className="pb-3">
                     <CardTitle className="text-base">Uploaded Thumbnail</CardTitle>
@@ -1583,11 +1595,13 @@ export function ThumbnailCreator({
                   </CardContent>
                 </Card>
               )}
-            </div>
-          </TabsContent>
+                </div>
+              </div>
+            </TabsContent>
 
-            <TabsContent value="history" className="space-y-4 mt-0">
-              <div className="space-y-4">
+            <TabsContent value="history" className="h-full mt-0">
+              <div className="grid grid-cols-1 gap-6 h-full">
+                <div className="space-y-4 overflow-y-auto custom-scrollbar">
                 <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base">Thumbnail History</Label>
@@ -1746,6 +1760,7 @@ export function ThumbnailCreator({
                     <p className="text-sm">Generated thumbnails will appear here</p>
           </div>
         )}
+                </div>
               </div>
             </TabsContent>
           </div>
