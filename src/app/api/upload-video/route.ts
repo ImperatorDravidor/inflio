@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+// Configure runtime and limits
+export const runtime = 'nodejs'; // Use Node.js runtime instead of Edge
+export const maxDuration = 300; // 5 minutes timeout
+
 export async function POST(request: NextRequest) {
   try {
     // Authenticate with Clerk
@@ -31,9 +35,25 @@ export async function POST(request: NextRequest) {
     // Create Supabase client with service role (bypasses RLS)
     const supabase = createSupabaseServerClient();
 
+    // Check file size before processing
+    const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ 
+        error: 'File too large. Maximum size is 2GB.' 
+      }, { status: 413 });
+    }
+
     // Convert file to buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    let buffer: Buffer;
+    try {
+      const bytes = await file.arrayBuffer();
+      buffer = Buffer.from(bytes);
+    } catch (bufferError) {
+      console.error('Buffer conversion error:', bufferError);
+      return NextResponse.json({ 
+        error: 'Failed to process file. The file may be too large or corrupted.' 
+      }, { status: 400 });
+    }
 
     // Ensure the file path is valid for Supabase
     // Supabase expects paths without leading slashes and with proper formatting
@@ -121,10 +141,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '2gb',
-    },
-  },
-};
+// Note: For App Router, body size limits are handled differently
+// The maxDuration export above handles timeouts
+// For large file uploads, we rely on streaming through FormData
