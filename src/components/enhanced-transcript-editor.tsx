@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { toast } from 'sonner'
-import { Loader2, Play, SkipBack, SkipForward, Download, Copy, Check, AlertCircle, Sparkles, FileText, Settings, Eye, Video, Clock, CheckCircle2 } from 'lucide-react'
+import { Loader2, Play, SkipBack, SkipForward, Download, Copy, Check, AlertCircle, Sparkles, FileText, Settings, Eye, Video, Clock, CheckCircle2, Edit, Scissors } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -352,11 +352,32 @@ export function EnhancedTranscriptEditor({
       
       <CardContent className="flex-1 overflow-hidden p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="edit">Edit</TabsTrigger>
-            <TabsTrigger value="subtitles">Subtitles</TabsTrigger>
-            <TabsTrigger value="export">Export</TabsTrigger>
-          </TabsList>
+          <div className="mb-4 space-y-4">
+            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-background rounded-lg p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <p className="text-muted-foreground">
+                  <span className="font-medium text-foreground">Pro tip:</span> Each segment represents a subtitle that will appear on your video. 
+                  Keep them concise for better readability.
+                </p>
+              </div>
+            </div>
+            
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="edit" className="gap-2">
+                <Edit className="h-3 w-3" />
+                Edit
+              </TabsTrigger>
+              <TabsTrigger value="subtitles" className="gap-2">
+                <Settings className="h-3 w-3" />
+                Style
+              </TabsTrigger>
+              <TabsTrigger value="export" className="gap-2">
+                <Download className="h-3 w-3" />
+                Export
+              </TabsTrigger>
+            </TabsList>
+          </div>
           
           <div className="flex-1 overflow-hidden">
             <TabsContent value="edit" className="h-full space-y-4">
@@ -399,15 +420,15 @@ export function EnhancedTranscriptEditor({
                 </div>
               </div>
               
-              <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-400px)]">
+              <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-400px)] custom-scrollbar">
                 {editingSegments.map((segment, index) => (
                   <div
                     key={index}
                     className={cn(
-                      "p-4 rounded-lg border transition-all cursor-pointer",
+                      "p-4 rounded-lg border-2 transition-all cursor-pointer group",
                       index === currentSegmentIndex 
-                        ? "border-primary bg-primary/5" 
-                        : "hover:bg-muted/50"
+                        ? "border-primary bg-primary/5 shadow-md" 
+                        : "border-border hover:border-primary/50 hover:bg-muted/30"
                     )}
                     onClick={() => {
                       setCurrentSegmentIndex(index)
@@ -415,17 +436,54 @@ export function EnhancedTranscriptEditor({
                     }}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 pt-1">
-                        <Badge variant="outline" className="font-mono text-xs">
+                      <div className="flex-shrink-0 space-y-1">
+                        <Badge variant="outline" className="font-mono text-xs bg-background">
                           {formatTime(segment.start)}
                         </Badge>
+                        <div className="text-[10px] text-muted-foreground text-center">
+                          {Math.round(segment.end - segment.start)}s
+                        </div>
                       </div>
-                      <Textarea
-                        value={segment.text}
-                        onChange={(e) => handleSegmentEdit(index, 'text', e.target.value)}
-                        className="flex-1 min-h-[60px] resize-none"
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Segment {index + 1} • {segment.text.split(' ').length} words
+                          </span>
+                          {index === currentSegmentIndex && (
+                            <Badge variant="default" className="text-xs">
+                              <Edit className="h-3 w-3 mr-1" />
+                              Editing
+                            </Badge>
+                          )}
+                        </div>
+                        <Textarea
+                          value={segment.text}
+                          onChange={(e) => handleSegmentEdit(index, 'text', e.target.value)}
+                          className="flex-1 min-h-[80px] resize-none font-medium text-sm leading-relaxed"
+                          placeholder="Enter subtitle text..."
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <span>Duration: {formatTime(segment.end)} - {formatTime(segment.start)}</span>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Split segment functionality
+                              }}
+                            >
+                              <Scissors className="h-3 w-3 mr-1" />
+                              Split
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -734,41 +792,59 @@ export function EnhancedTranscriptEditor({
                       />
                     </div>
                     {showPreview && (
-                      <div className="bg-black rounded-lg p-8 flex items-center justify-center aspect-video relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
-                        <div 
-                          className="relative"
-                          style={{
-                            maxWidth: `${subtitleSettings.maxWidth}%`,
-                            textAlign: subtitleSettings.alignment as any,
-                            position: 'absolute',
-                            bottom: subtitleSettings.position === 'bottom' ? '10%' : undefined,
-                            top: subtitleSettings.position === 'top' ? '10%' : undefined,
-                            left: '50%',
-                            transform: 'translateX(-50%)'
-                          }}
-                        >
-                          <p 
+                      <div className="space-y-3">
+                        <div className="bg-black rounded-lg p-8 flex items-center justify-center aspect-video relative overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+                          
+                          {/* Video placeholder */}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-30">
+                            <Video className="h-24 w-24 text-white/50" />
+                          </div>
+                          
+                          {/* Subtitle preview */}
+                          <div 
+                            className="relative"
                             style={{
-                              fontFamily: `${subtitleSettings.fontFamily}, sans-serif`,
-                              fontSize: `${subtitleSettings.fontSize}px`,
-                              color: subtitleSettings.fontColor,
-                              backgroundColor: subtitleSettings.backgroundColor + Math.round(subtitleSettings.backgroundOpacity * 2.55).toString(16).padStart(2, '0'),
-                              padding: `${subtitleSettings.padding}px ${subtitleSettings.padding * 2}px`,
-                              borderRadius: '4px',
-                              lineHeight: subtitleSettings.lineHeight,
-                              textShadow: subtitleSettings.strokeWidth > 0 
-                                ? `${subtitleSettings.strokeColor} 0px 0px ${subtitleSettings.strokeWidth}px` 
-                                : undefined,
-                              boxShadow: subtitleSettings.shadow 
-                                ? `${subtitleSettings.shadowColor} 0px 2px ${subtitleSettings.shadowBlur}px` 
-                                : undefined,
-                              display: 'inline-block'
+                              maxWidth: `${subtitleSettings.maxWidth}%`,
+                              textAlign: subtitleSettings.alignment as any,
+                              position: 'absolute',
+                              bottom: subtitleSettings.position === 'bottom' ? '10%' : undefined,
+                              top: subtitleSettings.position === 'top' ? '10%' : undefined,
+                              left: '50%',
+                              transform: 'translateX(-50%)'
                             }}
                           >
-                            This is how your subtitles will appear on the video
-                          </p>
+                            <p 
+                              style={{
+                                fontFamily: `${subtitleSettings.fontFamily}, sans-serif`,
+                                fontSize: `${subtitleSettings.fontSize}px`,
+                                color: subtitleSettings.fontColor,
+                                backgroundColor: subtitleSettings.backgroundColor + Math.round(subtitleSettings.backgroundOpacity * 2.55).toString(16).padStart(2, '0'),
+                                padding: `${subtitleSettings.padding}px ${subtitleSettings.padding * 2}px`,
+                                borderRadius: '4px',
+                                lineHeight: subtitleSettings.lineHeight,
+                                textShadow: subtitleSettings.strokeWidth > 0 
+                                  ? `${subtitleSettings.strokeColor} 0px 0px ${subtitleSettings.strokeWidth}px` 
+                                  : undefined,
+                                boxShadow: subtitleSettings.shadow 
+                                  ? `${subtitleSettings.shadowColor} 0px 2px ${subtitleSettings.shadowBlur}px` 
+                                  : undefined,
+                                display: 'inline-block',
+                                whiteSpace: 'pre-wrap'
+                              }}
+                            >
+                              {editingSegments[currentSegmentIndex]?.text || 'This is how your subtitles will appear on the video'}
+                            </p>
+                          </div>
                         </div>
+                        
+                        <Alert className="border-primary/20 bg-primary/5">
+                          <AlertCircle className="h-4 w-4 text-primary" />
+                          <AlertDescription className="text-sm">
+                            <strong>Subtitle Preview:</strong> This shows how the currently selected segment will appear when burned into your video. 
+                            Adjust the styling options above to customize the appearance.
+                          </AlertDescription>
+                        </Alert>
                       </div>
                     )}
                   </div>

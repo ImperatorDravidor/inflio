@@ -48,7 +48,7 @@ export async function POST(
           projectId: project.id,
           videoUrl: project.video_url,
           language: 'en',
-          userId
+          userId: userId!
         }).then(() => {
           console.log('[Process Route] Transcription completed successfully');
         }).catch(error => {

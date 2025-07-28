@@ -43,10 +43,10 @@ export async function POST(request: NextRequest) {
       const usage = await ServerUsageService.getUsage(userId)
       return NextResponse.json(
         { 
-          error: `You've reached your monthly limit of ${usage.limit} videos. Please upgrade your plan to continue.`,
+          error: `You've reached your monthly limit of ${usage.usage_limit} videos. Please upgrade your plan to continue.`,
           usage: {
             used: usage.used,
-            limit: usage.limit,
+            limit: usage.usage_limit,
             plan: usage.plan
           }
         },
