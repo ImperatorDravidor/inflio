@@ -24,11 +24,14 @@ import {
   IconBulb,
   IconBolt,
   IconCrown,
-  IconX
+  IconX,
+  IconVideo,
+  IconCamera
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
+import { extractVideoFrames, formatDuration } from "@/lib/video-utils"
 
 interface ThumbnailCreatorProps {
   projectId: string
@@ -42,6 +45,11 @@ interface ThumbnailCreatorProps {
 
 type CreationMethod = 'quick' | 'custom' | 'upload'
 type Step = 'method' | 'create' | 'preview'
+
+interface VideoFrame {
+  time: number
+  dataUrl: string
+}
 
 const quickTemplates = [
   {
@@ -89,6 +97,14 @@ export function ThumbnailCreatorV2({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploadPreview, setUploadPreview] = useState<string>("")
   const [progress, setProgress] = useState(0)
+  
+  // Video frame extraction states
+  const [showVideoFrames, setShowVideoFrames] = useState(false)
+  const [videoFrames, setVideoFrames] = useState<VideoFrame[]>([])
+  const [selectedFrames, setSelectedFrames] = useState<VideoFrame[]>([])
+  const [loadingFrames, setLoadingFrames] = useState(false)
+  const [iterationPrompt, setIterationPrompt] = useState("")
+  const [isIterating, setIsIterating] = useState(false)
 
   // Reset state when dialog closes
   const handleClose = () => {
@@ -100,6 +116,38 @@ export function ThumbnailCreatorV2({
     setUploadedFile(null)
     setUploadPreview("")
     setProgress(0)
+    setVideoFrames([])
+    setSelectedFrames([])
+    setIterationPrompt("")
+  }
+
+  // Extract video frames
+  const extractFrames = async () => {
+    if (!projectVideoUrl) return
+    
+    setLoadingFrames(true)
+    try {
+      const frames = await extractVideoFrames(projectVideoUrl, 8)
+      setVideoFrames(frames)
+      setShowVideoFrames(true)
+    } catch (error) {
+      console.error("Failed to extract video frames:", error)
+      toast.error("Failed to extract video frames")
+    } finally {
+      setLoadingFrames(false)
+    }
+  }
+
+  // Handle frame selection
+  const toggleFrameSelection = (frame: VideoFrame) => {
+    setSelectedFrames(prev => {
+      const isSelected = prev.some(f => f.time === frame.time)
+      if (isSelected) {
+        return prev.filter(f => f.time !== frame.time)
+      } else {
+        return [...prev, frame].slice(0, 3) // Max 3 frames
+      }
+    })
   }
 
   // Handle method selection
@@ -142,6 +190,12 @@ export function ThumbnailCreatorV2({
 
       // Prepare persona photos for API
       const personaPhotos = selectedPersona?.photos?.map((photo: any) => photo.url) || []
+      
+      // Add selected video frames
+      const videoSnippets = selectedFrames.map(frame => ({
+        timestamp: frame.time,
+        thumbnailUrl: frame.dataUrl
+      }))
 
       const response = await fetch('/api/generate-thumbnail', {
         method: 'POST',
@@ -153,7 +207,8 @@ export function ThumbnailCreatorV2({
           quality: 'high',
           personalPhotos: personaPhotos,
           personaName: selectedPersona?.name,
-          mergeVideoWithPersona: true
+          mergeVideoWithPersona: true,
+          videoSnippets: videoSnippets.length > 0 ? videoSnippets : undefined
         })
       })
 
@@ -541,6 +596,71 @@ export function ThumbnailCreatorV2({
                   </div>
                 )}
 
+                {/* Video Frame Selection */}
+                {projectVideoUrl && selectedMethod !== 'upload' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">Use video frames (Optional)</Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={extractFrames}
+                        disabled={loadingFrames}
+                        type="button"
+                      >
+                        {loadingFrames ? (
+                          <IconLoader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <IconVideo className="h-4 w-4 mr-1" />
+                            Extract Frames
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {showVideoFrames && videoFrames.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-4 gap-2">
+                          {videoFrames.map((frame) => (
+                            <div
+                              key={frame.time}
+                              className={cn(
+                                "relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all",
+                                selectedFrames.some(f => f.time === frame.time) 
+                                  ? "border-primary ring-2 ring-primary/20" 
+                                  : "border-muted hover:border-primary/30"
+                              )}
+                              onClick={() => toggleFrameSelection(frame)}
+                            >
+                              <img 
+                                src={frame.dataUrl} 
+                                alt={`Frame at ${formatDuration(frame.time)}`}
+                                className="w-full h-20 object-cover"
+                              />
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-1 py-0.5">
+                                {formatDuration(frame.time)}
+                              </div>
+                              {selectedFrames.some(f => f.time === frame.time) && (
+                                <div className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full p-1">
+                                  <IconCheck className="h-3 w-3" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {selectedFrames.length > 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            <IconCamera className="inline h-4 w-4 mr-1" />
+                            {selectedFrames.length} frame{selectedFrames.length > 1 ? 's' : ''} selected - these will be incorporated into your thumbnail
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-2">
                   <Button
@@ -639,6 +759,77 @@ export function ThumbnailCreatorV2({
                       </>
                     )}
                   </div>
+                  
+                  {/* Iteration Section */}
+                  {generatedUrl && !isIterating && (
+                    <div className="mt-6 p-4 bg-muted/50 rounded-xl space-y-3">
+                      <Label className="text-sm font-medium">Want to refine this thumbnail?</Label>
+                      <Textarea
+                        placeholder="Describe what you'd like to change (e.g., 'Make the text bigger', 'Add more contrast', 'Change the background color to blue')"
+                        value={iterationPrompt}
+                        onChange={(e) => setIterationPrompt(e.target.value)}
+                        rows={2}
+                        className="resize-none text-sm"
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={async () => {
+                          if (!iterationPrompt.trim()) return
+                          
+                          setIsIterating(true)
+                          try {
+                            const response = await fetch('/api/generate-thumbnail', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                projectId,
+                                prompt: `${customPrompt || `YouTube thumbnail for "${projectTitle}"`}. IMPORTANT CHANGES: ${iterationPrompt}`,
+                                style: selectedMethod === 'quick' ? quickTemplates.find(t => t.id === selectedTemplate)?.style : 'photorealistic',
+                                quality: 'high',
+                                personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
+                                personaName: selectedPersona?.name,
+                                mergeVideoWithPersona: true,
+                                videoSnippets: selectedFrames.length > 0 ? selectedFrames.map(f => ({
+                                  timestamp: f.time,
+                                  thumbnailUrl: f.dataUrl
+                                })) : undefined,
+                                referenceImageUrl: generatedUrl
+                              })
+                            })
+                            
+                            if (response.ok) {
+                              const data = await response.json()
+                              if (data.imageUrl) {
+                                setGeneratedUrl(data.imageUrl)
+                                setIterationPrompt("")
+                                toast.success("Thumbnail refined successfully!")
+                              }
+                            }
+                          } catch (error) {
+                            console.error("Failed to refine thumbnail:", error)
+                            toast.error("Failed to refine thumbnail")
+                          } finally {
+                            setIsIterating(false)
+                          }
+                        }}
+                        disabled={!iterationPrompt.trim() || isIterating}
+                        className="w-full"
+                      >
+                        {isIterating ? (
+                          <>
+                            <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Refining...
+                          </>
+                        ) : (
+                          <>
+                            <IconWand className="h-4 w-4 mr-2" />
+                            Refine Thumbnail
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}

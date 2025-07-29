@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
       style = 'modern',
       quality = 'hd',
       projectContext,
-      mergeVideoWithPersona = false
+      mergeVideoWithPersona = false,
+      personaName
     } = body
 
     // Validate inputs
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
       mergeVideoWithPersona,
       style,
       quality,
-      promptLength: prompt.length
+      promptLength: prompt.length,
+      hasReferenceImage: !!referenceImageUrl
     })
 
     // Fetch project for additional context
@@ -70,33 +72,40 @@ export async function POST(req: NextRequest) {
     
     // If no custom prompt provided, generate an intelligent one
     if (!prompt) {
-      const contentAnalysis = project.content_analysis || projectContext
-      const videoTitle = project.title || ''
-      const topics = contentAnalysis.topics || []
-      const keywords = contentAnalysis.keywords || []
-      const sentiment = contentAnalysis.sentiment || 'neutral'
-      const keyMoments = contentAnalysis.keyMoments || []
+      enhancedPrompt = `YouTube thumbnail for video titled "${project.title}". `
       
-      // Build context-aware prompt
-      enhancedPrompt = `YouTube thumbnail for video titled "${videoTitle}". `
-      
-      // Add topic context
-      if (topics.length > 0) {
-        enhancedPrompt += `Main topic: ${topics[0]}. `
+      // Add content analysis context
+      if (project.content_analysis) {
+        const { topics, keywords, mood } = project.content_analysis
+        
+        // Add topic context
+        if (topics && topics.length > 0) {
+          enhancedPrompt += `Main topics: ${topics.slice(0, 2).join(', ')}. `
+        }
+        
+        // Add mood/tone
+        if (mood) {
+          const moodMap: Record<string, string> = {
+            'exciting': 'high-energy, vibrant colors',
+            'educational': 'clear, informative design',
+            'serious': 'professional, trustworthy appearance',
+            'funny': 'playful, eye-catching elements'
+          }
+          enhancedPrompt += `${moodMap[mood] || 'engaging design'}. `
+        }
+        
+        // Add key visual elements
+        if (keywords && keywords.length > 0) {
+          enhancedPrompt += `Key elements to visualize: ${keywords.slice(0, 3).join(', ')}. `
+        }
       }
-      
-      // Add visual style based on content
-      if (sentiment === 'positive') {
-        enhancedPrompt += 'Bright, energetic, uplifting visual style. '
-      } else if (sentiment === 'negative') {
-        enhancedPrompt += 'Serious, dramatic, attention-grabbing visual style. '
-      } else {
-        enhancedPrompt += 'Professional, clean, engaging visual style. '
-      }
-      
-      // Add key visual elements
-      if (keywords.length > 0) {
-        enhancedPrompt += `Key elements to visualize: ${keywords.slice(0, 3).join(', ')}. `
+    }
+    
+    // Handle video snippets integration
+    if (videoSnippets.length > 0 && mergeVideoWithPersona) {
+      enhancedPrompt += `\nIMPORTANT: Integrate the provided video frames as background or context. `
+      if (personaName) {
+        enhancedPrompt += `Feature ${personaName} prominently in the foreground, merged naturally with the video scene. `
       }
     }
     
@@ -117,36 +126,75 @@ export async function POST(req: NextRequest) {
     
     ${mergeVideoWithPersona ? 'Seamlessly blend the person with video background elements. ' : ''}
     ${personalPhotos.length > 0 ? 'Feature the person prominently with engaging expression. ' : ''}
+    ${videoSnippets.length > 0 ? 'Use the video frames as visual context or background. ' : ''}
     
     Style: ${style}, photorealistic, ultra HD quality, professional YouTube thumbnail`
     
-    // Determine the best model based on requirements
-    const useDALLE3 = quality === 'hd' || personalPhotos.length > 0 || mode === 'edit'
-    
     let imageUrl: string
     
-    if (useDALLE3) {
-      // DALL-E 3 for highest quality
+    // If we have video snippets or reference images, use FAL's image generation with controlnet
+    if (videoSnippets.length > 0 || referenceImageUrl) {
+      try {
+        // Use Flux for better quality and control
+        const input: any = {
+          prompt: thumbnailPrompt,
+          image_size: {
+            width: 1920,
+            height: 1080
+          },
+          num_inference_steps: quality === 'hd' ? 50 : 35,
+          guidance_scale: 8.0,
+          output_format: 'png',
+          enable_safety_checker: true
+        }
+        
+        // Add reference image if editing/iterating
+        if (referenceImageUrl) {
+          input.image = referenceImageUrl
+          input.strength = 0.6 // Allow significant changes while keeping composition
+        }
+        
+        // If we have video snippets, use the first one as base
+        if (videoSnippets.length > 0 && !referenceImageUrl) {
+          input.image = videoSnippets[0].thumbnailUrl
+          input.strength = 0.7
+        }
+        
+        const result = await fal.subscribe("fal-ai/flux-general", {
+          input,
+          logs: true
+        })
+        
+        imageUrl = result.data?.images?.[0]?.url || ''
+      } catch (falError) {
+        console.error('FAL AI error, falling back to OpenAI:', falError)
+        // Fallback to OpenAI
+        const response = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: thumbnailPrompt,
+          n: 1,
+          size: "1792x1024",
+          quality: quality === 'hd' ? 'hd' : 'standard',
+          style: style === 'vibrant' ? 'vivid' : 'natural'
+        })
+        imageUrl = response.data?.[0]?.url || ''
+      }
+    } else {
+      // Use DALL-E 3 for highest quality when no video snippets
       const response = await openai.images.generate({
         model: "dall-e-3",
         prompt: thumbnailPrompt,
         n: 1,
-        size: "1792x1024", // Closest to 16:9 for DALL-E 3
+        size: "1792x1024",
         quality: quality === 'hd' ? 'hd' : 'standard',
         style: style === 'vibrant' ? 'vivid' : 'natural'
       })
       
       imageUrl = response.data?.[0]?.url || ''
-    } else {
-      // DALL-E 2 for faster generation
-      const response = await openai.images.generate({
-        model: "dall-e-2",
-        prompt: thumbnailPrompt,
-        n: 1,
-        size: "1024x1024"
-      })
-      
-      imageUrl = response.data?.[0]?.url || ''
+    }
+    
+    if (!imageUrl) {
+      throw new Error('Failed to generate thumbnail image')
     }
     
     // Download and optimize the image
@@ -184,7 +232,9 @@ export async function POST(req: NextRequest) {
           ...project.metadata,
           thumbnailGenerated: true,
           thumbnailStyle: style,
-          thumbnailPrompt: thumbnailPrompt
+          thumbnailPrompt: thumbnailPrompt,
+          hasVideoSnippets: videoSnippets.length > 0,
+          hasPersona: personalPhotos.length > 0
         }
       })
       .eq('id', projectId)
@@ -207,13 +257,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       url: publicUrl,
+      imageUrl: publicUrl,
       prompt: thumbnailPrompt,
       textSuggestions,
       metadata: {
         style,
         quality,
-        model: useDALLE3 ? 'dall-e-3' : 'dall-e-2',
-        dimensions: useDALLE3 ? '1792x1024' : '1024x1024'
+        model: videoSnippets.length > 0 ? 'flux' : 'dall-e-3',
+        dimensions: '1920x1080',
+        hasVideoContext: videoSnippets.length > 0,
+        hasPersona: personalPhotos.length > 0
       }
     })
 

@@ -155,3 +155,154 @@ export const retrieveThumbnail = (videoId: string): string | null => {
     return null
   }
 } 
+
+// Generate thumbnail from video URL
+export const generateVideoThumbnailFromUrl = async (
+  videoUrl: string,
+  seekTo: number = 1
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const video = document.createElement('video')
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      
+      if (!context) {
+        reject(new Error('Could not get canvas context'))
+        return
+      }
+
+      // Set crossOrigin to handle CORS
+      video.crossOrigin = 'anonymous'
+
+      video.addEventListener('loadedmetadata', () => {
+        // Set canvas dimensions for HD thumbnail
+        canvas.width = 1280
+        canvas.height = 720
+        
+        // Seek to specific time for thumbnail (avoid black frames at start)
+        const targetTime = Math.min(seekTo, video.duration * 0.1)
+        video.currentTime = targetTime
+      })
+
+      video.addEventListener('seeked', () => {
+        try {
+          // Draw video frame to canvas with proper scaling
+          const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight)
+          const x = (canvas.width - video.videoWidth * scale) / 2
+          const y = (canvas.height - video.videoHeight * scale) / 2
+          
+          context.fillStyle = '#000'
+          context.fillRect(0, 0, canvas.width, canvas.height)
+          context.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale)
+          
+          // Convert to data URL with high quality
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.95)
+          
+          // Cleanup
+          video.src = ''
+          resolve(thumbnail)
+        } catch (error) {
+          reject(error)
+        }
+      })
+
+      video.addEventListener('error', (e) => {
+        reject(new Error(`Failed to load video: ${e}`))
+      })
+
+      // Set video source
+      video.src = videoUrl
+      video.load()
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+// Extract multiple video frames for thumbnail selection
+export const extractVideoFrames = async (
+  videoUrl: string,
+  frameCount: number = 6
+): Promise<{ time: number; dataUrl: string }[]> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const video = document.createElement('video')
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      
+      if (!context) {
+        reject(new Error('Could not get canvas context'))
+        return
+      }
+
+      video.crossOrigin = 'anonymous'
+      const frames: { time: number; dataUrl: string }[] = []
+
+      video.addEventListener('loadedmetadata', async () => {
+        // Set canvas dimensions
+        canvas.width = 640 // Smaller size for frame selection
+        canvas.height = 360
+        
+        const duration = video.duration
+        const interval = duration / (frameCount + 1) // Avoid start and end
+        
+        for (let i = 1; i <= frameCount; i++) {
+          const time = interval * i
+          
+          try {
+            const frame = await extractFrameAtTime(video, canvas, context, time)
+            frames.push({ time, dataUrl: frame })
+          } catch (error) {
+            console.warn(`Failed to extract frame at ${time}:`, error)
+          }
+        }
+        
+        // Cleanup
+        video.src = ''
+        resolve(frames)
+      })
+
+      video.addEventListener('error', (e) => {
+        reject(new Error(`Failed to load video: ${e}`))
+      })
+
+      video.src = videoUrl
+      video.load()
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+// Helper function to extract a single frame
+async function extractFrameAtTime(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  time: number
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const seekHandler = () => {
+      try {
+        // Draw frame to canvas
+        const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight)
+        const x = (canvas.width - video.videoWidth * scale) / 2
+        const y = (canvas.height - video.videoHeight * scale) / 2
+        
+        context.fillStyle = '#000'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale)
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+        video.removeEventListener('seeked', seekHandler)
+        resolve(dataUrl)
+      } catch (error) {
+        reject(error)
+      }
+    }
+    
+    video.addEventListener('seeked', seekHandler)
+    video.currentTime = time
+  })
+} 

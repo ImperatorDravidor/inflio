@@ -70,7 +70,7 @@ import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/empty-state"
-import { formatDuration } from "@/lib/video-utils"
+import { formatDuration, generateVideoThumbnailFromUrl } from "@/lib/video-utils"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { motion, AnimatePresence } from "framer-motion"
@@ -111,6 +111,7 @@ import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
 import type { Persona } from "@/lib/types/persona"
+import { PersonaConfigureDialog } from "@/components/persona-configure-dialog"
 
 
 const platformIcons = {
@@ -174,6 +175,7 @@ function ProjectDetailPageContent() {
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
+  const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
   
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
   
@@ -194,6 +196,22 @@ function ProjectDetailPageContent() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
 
   // Project loading is handled by useProject hook
+  
+  // Generate default thumbnail from video if no thumbnail exists
+  useEffect(() => {
+    async function generateDefaultThumbnail() {
+      if (project?.video_url && !project.thumbnail_url && !defaultThumbnail) {
+        try {
+          const thumbnail = await generateVideoThumbnailFromUrl(project.video_url, 2)
+          setDefaultThumbnail(thumbnail)
+        } catch (error) {
+          console.error("Failed to generate default thumbnail:", error)
+        }
+      }
+    }
+    
+    generateDefaultThumbnail()
+  }, [project?.video_url, project?.thumbnail_url, defaultThumbnail])
   
   // Update actively processing state based on clips task
   useEffect(() => {
@@ -1094,6 +1112,23 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Button>
                   )
                 })()}
+                
+                {/* Configure Persona Button */}
+                <PersonaConfigureDialog 
+                  onPersonaCreated={(persona) => {
+                    setSelectedPersona(persona)
+                    toast.success(`Persona "${persona.name}" created successfully!`)
+                  }}
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center gap-2"
+                  >
+                    <IconUsers className="h-4 w-4" />
+                    Configure Persona
+                  </Button>
+                </PersonaConfigureDialog>
               </div>
             </div>
           </div>
@@ -1454,7 +1489,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     )}
                     
                     {/* Thumbnail Display (when video is not playing) */}
-                    {project.thumbnail_url && !videoLoading && (
+                    {(project.thumbnail_url || defaultThumbnail) && !videoLoading && (
                       <div className="absolute inset-0 z-5 group cursor-pointer"
                         onClick={() => {
                           if (videoRef.current) {
@@ -1465,7 +1500,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         style={{ display: videoRef.current?.paused === false ? 'none' : 'flex' }}
                       >
                         <img 
-                          src={project.thumbnail_url} 
+                          src={project.thumbnail_url || defaultThumbnail} 
                           alt="Video thumbnail" 
                           className="w-full h-full object-cover"
                         />
@@ -1481,7 +1516,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <video
                       ref={videoRef}
                       src={project.video_url}
-                      poster={project.thumbnail_url || thumbnailUrl || undefined}
+                      poster={project.thumbnail_url || thumbnailUrl || defaultThumbnail || undefined}
                       className="w-full aspect-video bg-black"
                       controls
                       playsInline
@@ -1642,7 +1677,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20 rounded-t-lg overflow-hidden">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1696,17 +1731,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Quotes</span>
                         <span className="text-[10px] text-muted-foreground">
                           Cards
-                        </span>
-                      </TabsTrigger>
-                      
-                      <TabsTrigger 
-                        value="personas" 
-                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        <IconUsers className="h-5 w-5" />
-                        <span className="text-xs font-medium">Personas</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          AI Personas
                         </span>
                       </TabsTrigger>
                       
@@ -3152,17 +3176,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           projectId={project.id}
                           hasTranscript={!!project.transcription}
                           projectTitle={project.title}
-                        />
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="personas" className="mt-0">
-                      <div className="space-y-6">
-                        <PersonaManager
-                          onPersonaSelect={(persona) => {
-                            toast.success(`Selected persona: ${persona.name}`)
-                            // Persona can be used in thumbnail creator and other AI features
-                          }}
                         />
                       </div>
                     </TabsContent>
