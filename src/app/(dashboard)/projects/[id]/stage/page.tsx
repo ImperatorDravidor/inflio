@@ -454,6 +454,13 @@ export default function ProjectStagePage() {
       
       toast.success('Content scheduled successfully!')
       
+      // Show info about demo mode
+      setTimeout(() => {
+        toast.info('Note: Posts are scheduled in demo mode. Connect social accounts in Settings to publish for real.', {
+          duration: 5000
+        })
+      }, 1000)
+      
       // Redirect to social calendar
       router.push('/social/calendar')
     } catch (error) {

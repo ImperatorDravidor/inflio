@@ -112,6 +112,10 @@ import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
 import type { Persona } from "@/lib/types/persona"
 import { PersonaConfigureDialog } from "@/components/persona-configure-dialog"
+import { SocialGraphicsGenerator } from "@/components/social-graphics-generator"
+import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
+import { UserGuideTooltip } from "@/components/user-guide-tooltip"
+import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 
 
 const platformIcons = {
@@ -195,6 +199,7 @@ function ProjectDetailPageContent() {
   // Persona state
   const [selectedPersona, setSelectedPersona] = useState<any>(null)
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
+  const [loadingPersona, setLoadingPersona] = useState(false)
 
   // Project loading is handled by useProject hook
   
@@ -221,6 +226,32 @@ function ProjectDetailPageContent() {
       const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
       setIsActivelyProcessing(isClipsProcessing || false)
     }
+  }, [project])
+  
+  // Load persona from project or local storage
+  useEffect(() => {
+    async function loadPersona() {
+      if (project && !selectedPersona) {
+        setLoadingPersona(true)
+        try {
+          // First check project metadata
+          const selectedId = (project as any).selected_persona_id || (project.metadata as any)?.currentPersona?.id
+          if (selectedId) {
+            const personas = JSON.parse(localStorage.getItem('personas') || '[]')
+            const persona = personas.find((p: any) => p.id === selectedId)
+            if (persona) {
+              setSelectedPersona(persona)
+              setSelectedPersonaId(persona.id)
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load persona:', error)
+        } finally {
+          setLoadingPersona(false)
+        }
+      }
+    }
+    loadPersona()
   }, [project])
   
 
@@ -805,22 +836,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
 
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="max-w-md w-full mx-4 shadow-xl border-primary/20">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10 w-fit">
-              <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
-            </div>
-            <CardTitle className="text-2xl">Loading Project</CardTitle>
-            <CardDescription className="text-base">
-              Fetching your project details...
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    )
+  if (loading || loadingPersona) {
+    return <ProjectPageSkeleton />
   }
 
   if (!project) return null
@@ -1117,21 +1134,29 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 })()}
                 
                 {/* Configure Persona Button */}
-                <PersonaConfigureDialog 
-                  onPersonaCreated={(persona) => {
-                    setSelectedPersona(persona)
-                    toast.success(`Persona "${persona.name}" created successfully!`)
-                  }}
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-center gap-2"
-                  >
-                    <IconUsers className="h-4 w-4" />
-                    Configure Persona
-                  </Button>
-                </PersonaConfigureDialog>
+                                    <UserGuideTooltip
+                      id="configure-persona"
+                      title="Add your persona"
+                      content="Create a professional persona to feature in all your AI-generated content"
+                      side="left"
+                      delay={2000}
+                    >
+                      <PersonaConfigureDialog
+                        onPersonaCreated={(persona) => {
+                          setSelectedPersona(persona)
+                          toast.success(`Persona "${persona.name}" created successfully!`)
+                        }}
+                      >
+                        <Button 
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-center gap-2"
+                        >
+                          <IconUsers className="h-4 w-4" />
+                          Configure Persona
+                        </Button>
+                      </PersonaConfigureDialog>
+                    </UserGuideTooltip>
               </div>
             </div>
           </div>
@@ -2712,9 +2737,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               )
                             })}
 
-                            {/* AI-Generated Images */}
-                            {project.folders.images?.map((image: any) => (
-                              <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                                                      {/* Social Graphics Display */}
+                          <div className="col-span-full">
+                            <Card>
+                              <CardHeader>
+                                <CardTitle>Social Graphics Library</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <SocialGraphicsDisplay 
+                                  projectId={project.id}
+                                  onSchedule={(graphic) => {
+                                    // TODO: Implement scheduling
+                                    toast.info("Scheduling feature coming soon!")
+                                  }}
+                                  onEdit={(graphic) => {
+                                    // TODO: Implement editing
+                                    toast.info("Edit feature coming soon!")
+                                  }}
+                                />
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          {/* AI-Generated Images */}
+                          {project.folders.images?.map((image: any) => (
+                            <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                                 <div className="aspect-square relative bg-muted">
                                   <img
                                     src={image.url}
@@ -2917,23 +2964,35 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               </div>
                             </div>
 
-                            <Button
-                              onClick={handleGenerateCustom}
-                            disabled={isGeneratingImage || !customPrompt.trim()}
-                              className="w-full"
-                            >
-                            {isGeneratingImage ? (
-                                <>
-                                  <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
-                                </>
-                              ) : (
-                                <>
-                                  <IconSparkles className="h-4 w-4 mr-2" />
-                                  Generate Image
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={handleGenerateCustom}
+                                disabled={isGeneratingImage || !customPrompt.trim()}
+                                className="flex-1"
+                              >
+                                {isGeneratingImage ? (
+                                  <>
+                                    <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
+                                  </>
+                                ) : (
+                                  <>
+                                    <IconSparkles className="h-4 w-4 mr-2" />
+                                    Generate Image
+                                  </>
+                                )}
+                              </Button>
+                              <SocialGraphicsGenerator
+                                projectId={project.id}
+                                projectTitle={project.title}
+                                contentAnalysis={project.content_analysis}
+                                selectedPersona={selectedPersona}
+                                onGraphicsGenerated={(graphics) => {
+                                  loadProject() // Reload to show new graphics
+                                  toast.success(`Generated ${graphics.length} social graphics!`)
+                                }}
+                              />
+                            </div>
                           </CardContent>
                         </Card>
 

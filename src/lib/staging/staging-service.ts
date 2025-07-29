@@ -1148,28 +1148,21 @@ Return JSON array of optimal times:
   ): Promise<void> {
     const supabase = createSupabaseBrowserClient()
     
-    // First, check if user has connected social accounts
-    const { data: integrations, error: integrationsError } = await supabase
+    // First, check if user has connected social accounts (optional for demo)
+    const { data: integrations } = await supabase
       .from('social_integrations')
       .select('id, platform')
       .eq('user_id', userId)
     
-    if (integrationsError) {
-      console.error('Error fetching integrations:', integrationsError)
-      throw new AppError('Failed to fetch social integrations', 'INTEGRATIONS_FETCH_FAILED', 500)
-    }
-    
-    if (!integrations || integrations.length === 0) {
-      // Instead of throwing error, create draft posts without integration
-      console.log('No social integrations found, creating draft posts')
-    }
-    
     // Create a map of platform to integration id
     const platformIntegrationMap: Record<string, string> = {}
-    if (integrations) {
+    if (integrations && integrations.length > 0) {
       integrations.forEach(int => {
         platformIntegrationMap[int.platform] = int.id
       })
+      console.log(`Found ${integrations.length} connected social accounts`)
+    } else {
+      console.log('No social integrations found - creating demo scheduled posts')
     }
     
     // Prepare posts for insertion with comprehensive metadata
@@ -1211,18 +1204,13 @@ Return JSON array of optimal times:
           analytics: stagedContent.analytics
         }
         
-        // Skip platforms without integration for now
+        // Check if we have integration for this platform
         const integrationId = platformIntegrationMap[platform]
-        if (!integrationId) {
-          console.log(`No integration found for platform ${platform}, skipping`)
-          return null
-        }
         
         // Build the social post record
-        return {
+        const postRecord: any = {
           user_id: userId,
           project_id: projectId,
-          integration_id: integrationId,
           content: platformContent.caption || platformContent.title || platformContent.description || '',
           media_urls: stagedContent.mediaUrls || [],
           publish_date: scheduledPost.scheduledDate.toISOString(),
@@ -1232,6 +1220,16 @@ Return JSON array of optimal times:
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
+        
+        // If we have an integration, use it; otherwise mark as demo
+        if (integrationId) {
+          postRecord.integration_id = integrationId
+        } else {
+          postRecord.demo_platform = platform
+          console.log(`Creating demo scheduled post for ${platform}`)
+        }
+        
+        return postRecord
       }).filter(Boolean)
     })
     
@@ -1239,15 +1237,7 @@ Return JSON array of optimal times:
     const validPosts = postsToInsert.filter(post => post !== null)
     
     if (validPosts.length === 0) {
-      // If no valid posts due to missing integrations, provide helpful message
-      if (!integrations || integrations.length === 0) {
-        throw new AppError(
-          'No social media accounts connected. Please connect your social accounts in Settings > Social Media to publish content.',
-          'NO_INTEGRATIONS',
-          400
-        )
-      }
-      throw new AppError('No posts could be created for the selected platforms. Please check your social media connections.', 'NO_VALID_POSTS', 400)
+      throw new AppError('No posts could be created. Please check your content and try again.', 'NO_VALID_POSTS', 400)
     }
     
     // Insert all posts in a batch
