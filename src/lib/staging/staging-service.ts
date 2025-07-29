@@ -221,7 +221,7 @@ export class StagingService {
 
   private static async prepareClipContent(clip: ClipData, project: Project): Promise<StagedContent> {
     // Check if clip already has publication captions from Klap
-    let platformContent: StagedContent['platformContent'] = {}
+    const platformContent: StagedContent['platformContent'] = {}
     
     if (clip.publicationCaptions) {
       // Use existing captions from Klap and format them for our system

@@ -580,7 +580,7 @@ Requirements:
 
     // Calculate positions based on layout
     let textX = padding
-    let textY = (height - textHeight) / 2
+    const textY = (height - textHeight) / 2
     let textAnchor = 'start'
     
     if (layout === 'centered') {

@@ -115,7 +115,7 @@ export function SubtitleTimeline({
     const updatedSegments = segments.map(segment => {
       if (segment.id !== selectedSegment) return segment
 
-      let newSegment = { ...segment }
+      const newSegment = { ...segment }
 
       switch (dragMode) {
         case 'move':

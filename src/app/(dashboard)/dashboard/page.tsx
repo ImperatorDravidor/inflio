@@ -223,7 +223,7 @@ export default function DashboardPage() {
 
       // Calculate consecutive days
       let streak = 0
-      let currentDate = new Date()
+      const currentDate = new Date()
       currentDate.setHours(0, 0, 0, 0)
 
       for (let i = 0; i < 30; i++) {

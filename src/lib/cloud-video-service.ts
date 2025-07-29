@@ -8,9 +8,20 @@ export interface SubtitleSettings {
   fontSize: number
   fontColor: string
   backgroundColor: string
+  backgroundOpacity?: number
   position: 'top' | 'center' | 'bottom'
   alignment: 'left' | 'center' | 'right'
-  opacity: number
+  opacity?: number
+  lineHeight?: number
+  padding?: number
+  strokeWidth?: number
+  strokeColor?: string
+  shadow?: boolean
+  shadowColor?: string
+  shadowBlur?: number
+  animation?: 'none' | 'fade' | 'slide'
+  animationDuration?: number
+  maxWidth?: number
 }
 
 export interface TranscriptSegment {
@@ -25,6 +36,7 @@ export interface ApplySubtitlesResult {
   progress: number
   videoUrl?: string
   vttUrl?: string
+  downloadUrl?: string
   provider: string
   error?: string
 }
@@ -116,13 +128,15 @@ export class CloudVideoService {
   
   private async applySubtitlesCloudinary(videoUrl: string, segments: TranscriptSegment[], taskId: string, settings?: SubtitleSettings): Promise<ApplySubtitlesResult> {
     try {
-      console.log('Starting Cloudinary subtitle application...')
+      console.log('Starting Cloudinary subtitle burning...')
       
       // Upload the video to Cloudinary first
       const uploadResult = await cloudinary.uploader.upload(videoUrl, {
         resource_type: 'video',
-        public_id: `subtitled_${taskId}`,
+        public_id: `video_${taskId}`,
         folder: 'inflio/subtitled',
+        eager_async: true, // Process asynchronously
+        eager_notification_url: process.env.CLOUDINARY_WEBHOOK_URL
       })
       
       console.log('Video uploaded to Cloudinary:', uploadResult.public_id)
@@ -135,7 +149,7 @@ export class CloudVideoService {
         `data:text/plain;base64,${Buffer.from(srtContent).toString('base64')}`,
         {
           resource_type: 'raw',
-          public_id: `subtitle_${taskId}`,
+          public_id: `srt_${taskId}`,
           folder: 'inflio/subtitles',
           format: 'srt'
         }
@@ -143,11 +157,12 @@ export class CloudVideoService {
       
       console.log('SRT file uploaded:', srtUpload.public_id)
       
-      // Build subtitle style string for Cloudinary
+      // Build subtitle transformation with custom styling
+      const fontFamily = settings?.fontFamily?.replace(' ', '_') || 'Arial'
+      const fontSize = Math.round((settings?.fontSize || 24) * 2) // Cloudinary uses different scale
       const textColor = settings?.fontColor?.replace('#', '') || 'ffffff'
       const bgColor = settings?.backgroundColor?.replace('#', '') || '000000'
-      const fontSize = settings?.fontSize || 24
-      const fontFamily = settings?.fontFamily?.replace(' ', '_') || 'Arial'
+      const bgOpacity = Math.round((settings?.backgroundOpacity || 0.75) * 100)
       
       // Position mapping
       const gravityMap = {
@@ -157,40 +172,44 @@ export class CloudVideoService {
       }
       const gravity = gravityMap[settings?.position || 'bottom']
       
-      // For now, let's generate a URL with the video and provide VTT subtitles
-      // Cloudinary's subtitle burning requires specific setup that may not be available
-      // So we'll provide both the original video and VTT subtitles for the player
+      // Generate video URL with burned subtitles
       const processedUrl = cloudinary.url(uploadResult.public_id, {
         resource_type: 'video',
         transformation: [
           {
-            quality: 'auto',
-            fetch_format: 'auto'
+            // Add subtitles overlay
+            overlay: {
+              resource_type: 'subtitles',
+              public_id: srtUpload.public_id.replace('.srt', '')
+            },
+            // Subtitle styling
+            font_family: fontFamily,
+            font_size: fontSize,
+            color: textColor,
+            background: `#${bgColor}${bgOpacity.toString(16).padStart(2, '0')}`,
+            gravity: gravity,
+            y: settings?.position === 'bottom' ? 50 : 0,
+            // Additional styling
+            font_weight: 'bold',
+            letter_spacing: 1,
+            line_spacing: settings?.lineHeight ? Math.round(settings.lineHeight * 10) : 15
+          },
+          {
+            // Apply the subtitle layer
+            flags: 'layer_apply'
+          },
+          {
+            // Video quality settings
+            quality: 'auto:good',
+            format: 'mp4'
           }
         ]
       })
       
-      console.log('Generated video URL:', processedUrl)
+      console.log('Generated video URL with burned subtitles:', processedUrl)
       
-      // Also generate a VTT file for the video player
-      const vttContent = this.generateVTT(segments)
-      const vttFileName = `${taskId}.vtt`
-      
-      // Upload VTT to Supabase for web player
-      const { data: vttUploadData, error: vttUploadError } = await supabaseAdmin.storage
-        .from('project-files')
-        .upload(`subtitles/${vttFileName}`, new Blob([vttContent], { type: 'text/vtt' }), {
-          contentType: 'text/vtt',
-          upsert: true
-        })
-        
-      let vttUrl: string | undefined
-      if (!vttUploadError) {
-        const { data: { publicUrl } } = supabaseAdmin.storage
-          .from('project-files')
-          .getPublicUrl(`subtitles/${vttFileName}`)
-        vttUrl = publicUrl
-      }
+      // Also generate a download URL with proper filename
+      const downloadUrl = processedUrl + '?attachment=true'
       
       // Update task status
       const task = activeTasks.get(taskId)
@@ -198,17 +217,16 @@ export class CloudVideoService {
         task.status = 'completed'
         task.progress = 100
         task.outputVideoUrl = processedUrl
-        task.vttUrl = vttUrl
         task.completedAt = new Date().toISOString()
       }
-      
+        
       return {
         taskId,
         status: 'completed',
         progress: 100,
         videoUrl: processedUrl,
-        vttUrl,
-        provider: 'cloudinary'
+        provider: 'cloudinary',
+        downloadUrl
       }
     } catch (error) {
       console.error('Cloudinary processing error:', error)

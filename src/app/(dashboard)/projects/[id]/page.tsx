@@ -285,12 +285,15 @@ function ProjectDetailPageContent() {
     }
   }, [activeTab, project?.folders?.clips])
 
-  // Auto-redirect if processing
+  // Auto-redirect if processing and transcription not complete
   useEffect(() => {
     if (project) {
-      const progress = ProjectService.calculateProjectProgress(project)
-      // Only redirect if actually processing (not at 100%)
-      if (project.status === 'processing' && progress < 100) {
+      const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+      const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+        (project.transcription && project.transcription.text)
+      
+      // Only redirect if transcription is not complete
+      if (project.status === 'processing' && !isTranscriptionComplete) {
         const timer = setTimeout(() => {
           router.push(`/studio/processing/${projectId}`)
         }, 1500)
@@ -831,7 +834,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   const stats = ProjectService.getProjectStats(project)
   const totalImages = project.folders.images?.length || 0
   const progress = ProjectService.calculateProjectProgress(project)
-  const isProcessing = project.status === 'processing' && progress < 100
+  
+  // Check if transcription is complete
+  const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+  const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+    (project.transcription && project.transcription.text)
+  
+  // Only show processing overlay if transcription is not complete
+  const isProcessing = project.status === 'processing' && !isTranscriptionComplete
   const searchResults = searchQuery && project.transcription
     ? TranscriptionService.searchTranscription(project.transcription.segments, searchQuery)
     : []
@@ -850,9 +860,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10 w-fit">
                 <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
               </div>
-              <CardTitle className="text-2xl">Project Loading</CardTitle>
+              <CardTitle className="text-2xl">Transcription Processing</CardTitle>
               <CardDescription className="text-base">
-                Your video is being processed. Redirecting to processing view...
+                AI is analyzing your video. Redirecting to processing view...
               </CardDescription>
             </CardHeader>
           </Card>
