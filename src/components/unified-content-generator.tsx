@@ -69,7 +69,7 @@ import {
   IconClock,
   IconFileText,
 } from '@tabler/icons-react'
-import { ThumbnailCreator } from './thumbnail-creator'
+import { ThumbnailCreatorV2 } from './thumbnail-creator-v2'
 import { UnifiedContentSuggestion, VideoSnippet, ContentPersona } from '@/lib/unified-content-service'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'

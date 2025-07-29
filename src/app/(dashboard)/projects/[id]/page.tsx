@@ -94,7 +94,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { predefinedStyles, type ImageSuggestion } from "@/lib/ai-image-service"
 import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/blog-generation-dialog"
 import { ImageCarousel } from "@/components/image-carousel"
-import { ThumbnailCreator } from "@/components/thumbnail-creator"
+import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
@@ -109,6 +109,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
+import { PersonaSelector } from "@/components/persona-selector"
+import type { Persona } from "@/lib/types/persona"
 
 
 const platformIcons = {
@@ -186,6 +188,10 @@ function ProjectDetailPageContent() {
     content: string
     title: string
   }>({ isOpen: false, content: '', title: '' })
+
+  // Persona state
+  const [selectedPersona, setSelectedPersona] = useState<any>(null)
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
 
   // Project loading is handled by useProject hook
   
@@ -629,6 +635,12 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           style: selectedStyle
         })
         
+        // Add persona photos if available
+        if (selectedPersona && selectedPersona.photos.length > 0) {
+          params.append('hasPersona', 'true')
+          params.append('personaName', selectedPersona.name)
+        }
+        
         const eventSource = new EventSource(`/api/generate-images?${params}`)
         
         eventSource.onmessage = (event) => {
@@ -671,7 +683,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             quality: selectedQuality,
             size: selectedSize,
             style: selectedStyle,
-            n: 1
+            n: 1,
+            // Include persona photos if available
+            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
+            personaName: selectedPersona?.name
           })
         })
         
@@ -723,6 +738,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             projectId: project!.id,
             prompt: prompts[0], // Use first prompt as base
             quality: suggestion.recommendedQuality,
+            // Include persona photos if available
+            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
+            personaName: selectedPersona?.name,
             size: suggestion.recommendedSize,
             style: suggestion.style || 'gradient',
             n: slides,  // Generate multiple images
@@ -946,6 +964,27 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         </Badge>
                       )}
                 </div>
+                  </div>
+                  
+                  {/* Persona Selector */}
+                  <div className="flex items-center gap-3">
+                    <PersonaSelector
+                      userId={user?.id || ''}
+                      projectId={projectId}
+                      selectedPersonaId={selectedPersonaId}
+                      onSelect={(persona: Persona | null) => {
+                        setSelectedPersona(persona)
+                        setSelectedPersonaId(persona?.id || undefined)
+                      }}
+                      showCreateButton={true}
+                      allowGlobalCreation={true}
+                    />
+                    {selectedPersona && (
+                      <Badge variant="secondary" className="gap-1">
+                        <IconUser className="h-3 w-3" />
+                        AI will use {selectedPersona.name}'s photos
+                      </Badge>
+                    )}
                   </div>
                   
                 {project.description && (
@@ -1361,12 +1400,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   
                   {/* Thumbnail Actions */}
                   <div className="flex items-center gap-1">
-                  <ThumbnailCreator
+                  <ThumbnailCreatorV2
                     projectId={project.id}
                     projectTitle={project.title}
                     projectVideoUrl={project.video_url}
                     contentAnalysis={project.content_analysis}
                     currentThumbnail={project.thumbnail_url}
+                    selectedPersona={selectedPersona}
                     onThumbnailUpdate={async (newThumbnailUrl: string) => {
                       setThumbnailUrl(newThumbnailUrl)
                       await loadProject()

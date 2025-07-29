@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { motion, AnimatePresence } from "framer-motion"
-import { ThumbnailCreator } from "@/components/thumbnail-creator"
+import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
 import {
   IconSearch,
   IconSortDescending,
@@ -214,7 +214,7 @@ function ProjectCard({
             
             {/* Thumbnail Generator Button for List View */}
             <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <ThumbnailCreator
+              <ThumbnailCreatorV2
                 projectId={project.id}
                 projectTitle={project.title}
                 currentThumbnail={project.thumbnail_url}
@@ -378,7 +378,7 @@ function ProjectCard({
         
         {/* Thumbnail Generator Button */}
         <div className="absolute top-3 sm:top-4 left-3 sm:left-4 opacity-0 group-hover:opacity-100 transition-opacity">
-          <ThumbnailCreator
+          <ThumbnailCreatorV2
             projectId={project.id}
             projectTitle={project.title}
             currentThumbnail={project.thumbnail_url}
