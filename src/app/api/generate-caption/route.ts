@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
           openai = getOpenAI()
         } catch (error) {
           console.error('OpenAI initialization error:', error)
-          throw new AppError('OpenAI API key not configured. Please set OPENAI_API_KEY in your environment variables.', 'OPENAI_CONFIG_ERROR', 500)
+          throw new AppError('OpenAI API key not configured. Please set OPENAI_API_KEY in your environment variables.', 'OPENAI_CONFIG_ERROR', 503)
         }
         
         // Platform-specific constraints
@@ -247,16 +247,38 @@ Return JSON in this format:
   }
 }`
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-2024-08-06', // Using the standard GPT-4o model
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7, // Slightly lower for more consistent results
-          max_tokens: 1500,
-          response_format: { type: 'json_object' }
-        })
+        let completion
+        try {
+          completion = await openai.chat.completions.create({
+            model: 'gpt-4o-2024-08-06', // Using the standard GPT-4o model
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7, // Slightly lower for more consistent results
+            max_tokens: 1500,
+            response_format: { type: 'json_object' }
+          })
+        } catch (apiError: any) {
+          console.error('OpenAI API error:', apiError)
+          
+          // Handle specific OpenAI errors
+          if (apiError?.status === 401) {
+            throw new AppError('Invalid OpenAI API key. Please check your configuration.', 'OPENAI_AUTH_ERROR', 401)
+          } else if (apiError?.status === 429) {
+            throw new AppError('OpenAI rate limit exceeded. Please try again later.', 'OPENAI_RATE_LIMIT', 429)
+          } else if (apiError?.status === 500 || apiError?.status === 503) {
+            throw new AppError('OpenAI service temporarily unavailable. Please try again.', 'OPENAI_SERVICE_ERROR', 503)
+          } else if (apiError?.code === 'ENOTFOUND' || apiError?.code === 'ECONNREFUSED') {
+            throw new AppError('Cannot connect to OpenAI. Please check your internet connection.', 'NETWORK_ERROR', 503)
+          } else {
+            throw new AppError(
+              apiError?.message || 'Failed to generate content with AI',
+              'OPENAI_ERROR',
+              500
+            )
+          }
+        }
 
         const response = completion.choices[0].message.content
         if (!response) {

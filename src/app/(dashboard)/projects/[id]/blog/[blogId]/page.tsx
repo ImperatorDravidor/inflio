@@ -2,42 +2,32 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import {
   IconArrowLeft,
-  IconDeviceFloppy,
-  IconEye,
-  IconCode,
-  IconTag,
-  IconClock,
-  IconFileText,
-  IconCopy,
-  IconDownload,
-  IconBold,
-  IconItalic,
-  IconList,
-  IconListNumbers,
-  IconLink,
-  IconQuote,
-  IconH1,
-  IconH2,
-  IconH3,
   IconLoader2
 } from "@tabler/icons-react"
-import { cn } from "@/lib/utils"
 import { ProjectService } from "@/lib/services"
 import { Project, BlogPost } from "@/lib/project-types"
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { BlogEditorV2 } from "@/components/blog-editor-v2"
+
+// Extended BlogPost type for the editor
+interface ExtendedBlogPost extends Omit<BlogPost, 'sections'> {
+  sections?: Array<{ heading: string; content: string }>
+  status?: 'draft' | 'published'
+  author?: {
+    name: string
+    bio?: string
+    avatar?: string
+  }
+  coverImage?: string
+  publishedAt?: string
+  platform?: 'medium' | 'linkedin' | 'newsletter'
+}
+import { BlogPublishingService } from "@/lib/blog-publishing-service"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function ProjectBlogEditorPage() {
   const params = useParams()
@@ -48,9 +38,6 @@ export default function ProjectBlogEditorPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [blog, setBlog] = useState<BlogPost | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState("editor")
 
   useEffect(() => {
     loadProjectAndBlog()
@@ -82,14 +69,18 @@ export default function ProjectBlogEditorPage() {
     }
   }
 
-  const handleSave = async () => {
-    if (!blog || !project) return
+  const handleSave = async (updatedBlog: ExtendedBlogPost) => {
+    if (!project) return
     
-    setIsSaving(true)
     try {
-      // Update the blog post in the project
+      // Update the blog post in the project - ensure sections is included
+      const blogWithSections: BlogPost = {
+        ...updatedBlog,
+        sections: updatedBlog.sections || []
+      } as BlogPost
+      
       const updatedBlogs = project.folders.blog.map(b => 
-        b.id === blogId ? blog : b
+        b.id === blogId ? blogWithSections : b
       )
       
       await ProjectService.updateProject(projectId, {
@@ -99,421 +90,198 @@ export default function ProjectBlogEditorPage() {
         }
       })
       
-      toast.success("Blog post saved successfully")
-      setIsEditing(false)
+      setBlog(blogWithSections)
+      await loadProjectAndBlog() // Reload to ensure consistency
     } catch (error) {
-      toast.error("Failed to save blog post")
-    } finally {
-      setIsSaving(false)
+      console.error("Failed to save blog post:", error)
+      throw error // Let BlogEditorV2 handle the error
     }
   }
 
-  const insertFormatting = (format: string) => {
-    if (!blog) return
-    
-    const textarea = document.getElementById('content-editor') as HTMLTextAreaElement
-    if (!textarea) return
-
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = textarea.value.substring(start, end)
-    let formattedText = selectedText
-
-    switch (format) {
-      case 'bold':
-        formattedText = `**${selectedText}**`
-        break
-      case 'italic':
-        formattedText = `*${selectedText}*`
-        break
-      case 'h1':
-        formattedText = `# ${selectedText}`
-        break
-      case 'h2':
-        formattedText = `## ${selectedText}`
-        break
-      case 'h3':
-        formattedText = `### ${selectedText}`
-        break
-      case 'quote':
-        formattedText = `> ${selectedText}`
-        break
-      case 'link':
-        formattedText = `[${selectedText}](url)`
-        break
-      case 'list':
-        formattedText = `- ${selectedText}`
-        break
-      case 'numbered':
-        formattedText = `1. ${selectedText}`
-        break
+  const handlePublish = async (blog: ExtendedBlogPost, platform: string) => {
+    try {
+      let result
+      
+      switch (platform) {
+        case 'medium':
+          result = await BlogPublishingService.publishToMedium({
+            platform: 'medium',
+            blogPost: {
+              title: blog.title,
+              content: blog.content,
+              excerpt: blog.excerpt,
+              tags: blog.tags,
+              coverImage: blog.coverImage
+            }
+          })
+          break
+          
+        case 'linkedin':
+          result = await BlogPublishingService.publishToLinkedIn({
+            platform: 'linkedin',
+            blogPost: {
+              title: blog.title,
+              content: blog.content,
+              excerpt: blog.excerpt,
+              tags: blog.tags,
+              coverImage: blog.coverImage
+            },
+            platformSpecific: {
+              linkedin: {
+                shareCommentary: blog.excerpt
+              }
+            }
+          })
+          break
+          
+        case 'newsletter':
+          result = await BlogPublishingService.sendNewsletter({
+            platform: 'newsletter',
+            blogPost: {
+              title: blog.title,
+              content: blog.content,
+              excerpt: blog.excerpt,
+              tags: blog.tags,
+              coverImage: blog.coverImage
+            },
+            platformSpecific: {
+              newsletter: {
+                subject: blog.title,
+                preheader: blog.excerpt
+              }
+            }
+          })
+          break
+          
+        default:
+          throw new Error(`Unsupported platform: ${platform}`)
+      }
+      
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      
+      // Update blog status
+      const publishedBlog = {
+        ...blog,
+        status: 'published' as const,
+        publishedAt: new Date().toISOString(),
+        platform: platform as any
+      }
+      
+      await handleSave(publishedBlog)
+      
+      if ('url' in result && result.url) {
+        window.open(result.url, '_blank')
+      }
+    } catch (error) {
+      console.error(`Failed to publish to ${platform}:`, error)
+      throw error // Let BlogEditorV2 handle the error
     }
-
-    const newContent = 
-      textarea.value.substring(0, start) + 
-      formattedText + 
-      textarea.value.substring(end)
-    
-    setBlog({ ...blog, content: newContent })
-    setIsEditing(true)
-  }
-
-  const exportBlogAsMarkdown = () => {
-    if (!blog) return
-    
-    const markdown = `---
-title: ${blog.title}
-date: ${new Date(blog.createdAt).toISOString()}
-tags: ${blog.tags.join(', ')}
-seo_title: ${blog.seoTitle}
-seo_description: ${blog.seoDescription}
-reading_time: ${blog.readingTime} minutes
----
-
-# ${blog.title}
-
-${blog.excerpt}
-
-${blog.content}
-
-## Tags
-${blog.tags.map(tag => `- ${tag}`).join('\n')}
-`
-
-    const blob = new Blob([markdown], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${blog.title.toLowerCase().replace(/\s+/g, '-')}.md`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    
-    toast.success('Blog post exported as Markdown')
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <IconLoader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl px-4 py-6">
+          {/* Header Skeleton */}
+          <div className="flex items-center gap-4 mb-6">
+            <Skeleton className="h-10 w-32" />
+            <Skeleton className="h-6 w-px" />
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          
+          {/* Editor Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-96 w-full" />
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-24" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
   if (!blog || !project) return null
 
+  // Transform blog post to match BlogEditorV2 format
+  const formattedBlog = {
+    ...blog,
+    status: (blog as any).status || 'draft',
+    author: {
+      name: 'Content Creator', // You might want to get this from user profile
+      bio: 'Created with Inflio',
+      avatar: undefined
+    },
+    coverImage: (blog as any).coverImage,
+    publishedAt: (blog as any).publishedAt,
+    platform: (blog as any).platform
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push(`/projects/${projectId}`)}
-            >
-              <IconArrowLeft className="h-4 w-4 mr-2" />
-              Back to Project
-            </Button>
-            <Separator orientation="vertical" className="h-6" />
-            <div>
-              <h1 className="text-2xl font-semibold">Blog Editor</h1>
-              <p className="text-sm text-muted-foreground">
-                {project.title}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {isEditing && (
-              <Badge variant="outline" className="text-orange-600 border-orange-600">
-                Unsaved Changes
-              </Badge>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportBlogAsMarkdown}
-            >
-              <IconDownload className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={!isEditing || isSaving}
-            >
-              <IconDeviceFloppy className="h-4 w-4 mr-2" />
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
+        <div className="flex items-center gap-4 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(`/projects/${projectId}`)}
+          >
+            <IconArrowLeft className="h-4 w-4 mr-2" />
+            Back to Project
+          </Button>
+          <div className="h-6 w-px bg-border" />
+          <div>
+            <h1 className="text-2xl font-semibold">Blog Editor</h1>
+            <p className="text-sm text-muted-foreground">
+              {project.title}
+            </p>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Editor Section */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Content Editor</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setActiveTab("editor")}
-                      className={cn(activeTab === "editor" && "bg-muted")}
-                    >
-                      <IconFileText className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setActiveTab("preview")}
-                      className={cn(activeTab === "preview" && "bg-muted")}
-                    >
-                      <IconEye className="h-4 w-4 mr-2" />
-                      Preview
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
-                  <TabsContent value="editor" className="space-y-4">
-                    {/* Title */}
-                    <div>
-                      <Label htmlFor="title">Title</Label>
-                      <Input
-                        id="title"
-                        value={blog.title}
-                        onChange={(e) => {
-                          setBlog({ ...blog, title: e.target.value })
-                          setIsEditing(true)
-                        }}
-                        className="text-lg font-semibold"
-                        placeholder="Enter blog title..."
-                      />
-                    </div>
-
-                    {/* Excerpt */}
-                    <div>
-                      <Label htmlFor="excerpt">Excerpt</Label>
-                      <Textarea
-                        id="excerpt"
-                        value={blog.excerpt}
-                        onChange={(e) => {
-                          setBlog({ ...blog, excerpt: e.target.value })
-                          setIsEditing(true)
-                        }}
-                        rows={2}
-                        placeholder="Brief description of your blog post..."
-                      />
-                    </div>
-
-                    {/* Formatting Toolbar */}
-                    <div className="flex items-center gap-1 p-2 border rounded-lg bg-muted/50">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('bold')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconBold className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('italic')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconItalic className="h-4 w-4" />
-                      </Button>
-                      <Separator orientation="vertical" className="h-6 mx-1" />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('h1')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconH1 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('h2')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconH2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('h3')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconH3 className="h-4 w-4" />
-                      </Button>
-                      <Separator orientation="vertical" className="h-6 mx-1" />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('list')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconList className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('numbered')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconListNumbers className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('quote')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconQuote className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => insertFormatting('link')}
-                        className="h-8 w-8 p-0"
-                      >
-                        <IconLink className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {/* Content Editor */}
-                    <div>
-                      <Label htmlFor="content-editor">Content (Markdown)</Label>
-                      <Textarea
-                        id="content-editor"
-                        value={blog.content}
-                        onChange={(e) => {
-                          setBlog({ ...blog, content: e.target.value })
-                          setIsEditing(true)
-                        }}
-                        rows={20}
-                        className="font-mono text-sm"
-                        placeholder="Write your blog content in Markdown..."
-                      />
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="preview">
-                    <ScrollArea className="h-[600px] w-full rounded-md border p-6">
-                      <article className="prose prose-sm max-w-none dark:prose-invert">
-                        <h1>{blog.title}</h1>
-                        <p className="lead">{blog.excerpt}</p>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {blog.content}
-                        </ReactMarkdown>
-                      </article>
-                    </ScrollArea>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* SEO Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle>SEO Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="seo-title">SEO Title</Label>
-                  <Input
-                    id="seo-title"
-                    value={blog.seoTitle}
-                    onChange={(e) => {
-                      setBlog({ ...blog, seoTitle: e.target.value })
-                      setIsEditing(true)
-                    }}
-                    placeholder="SEO optimized title..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="seo-description">SEO Description</Label>
-                  <Textarea
-                    id="seo-description"
-                    value={blog.seoDescription}
-                    onChange={(e) => {
-                      setBlog({ ...blog, seoDescription: e.target.value })
-                      setIsEditing(true)
-                    }}
-                    rows={3}
-                    placeholder="Meta description for search engines..."
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Tags */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tags</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {blog.tags.map((tag, index) => (
-                    <Badge key={index} variant="secondary">
-                      <IconTag className="h-3 w-3 mr-1" />
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-                <Input
-                  placeholder="Add tags (comma separated)..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const input = e.currentTarget
-                      const newTags = input.value.split(',').map(t => t.trim()).filter(t => t)
-                      if (newTags.length > 0) {
-                        setBlog({ ...blog, tags: [...blog.tags, ...newTags] })
-                        setIsEditing(true)
-                        input.value = ''
-                      }
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Statistics */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Statistics</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Words</span>
-                  <span className="font-medium">{blog.content.split(' ').filter(w => w).length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Reading Time</span>
-                  <span className="font-medium">{blog.readingTime} min</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Created</span>
-                  <span className="font-medium">{new Date(blog.createdAt).toLocaleDateString()}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        {/* Blog Editor Component */}
+        <BlogEditorV2
+          blog={formattedBlog as any}
+          onSave={handleSave}
+          onPublish={handlePublish}
+          projectTitle={project.title}
+        />
       </div>
     </div>
   )

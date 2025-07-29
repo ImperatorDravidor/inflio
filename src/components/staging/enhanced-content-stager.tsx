@@ -460,9 +460,21 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
       })
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error('Caption generation failed:', error)
-        throw new Error(error.error || 'Failed to generate content')
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
+        console.error('Caption generation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        })
+        
+        // Throw with the actual error message from the server
+        throw new Error(errorData.error || errorData.message || `Failed to generate content (${response.status})`)
       }
       
       const result = await response.json()
@@ -505,8 +517,28 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
       toast.success('AI content generated successfully!')
     } catch (error) {
       console.error('AI generation error:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate AI content'
-      toast.error(errorMessage)
+      
+      // More detailed error handling
+      let errorMessage = 'Failed to generate AI content'
+      
+      if (error instanceof Error) {
+        errorMessage = error.message
+      } else if (typeof error === 'object' && error !== null && 'error' in error) {
+        errorMessage = (error as any).error
+      }
+      
+      // Check for specific error types
+      if (errorMessage.includes('OPENAI_API_KEY')) {
+        errorMessage = 'AI service is not configured. Please contact support.'
+      } else if (errorMessage.includes('rate limit')) {
+        errorMessage = 'Too many requests. Please wait a moment and try again.'
+      } else if (errorMessage.includes('network')) {
+        errorMessage = 'Network error. Please check your connection and try again.'
+      }
+      
+      toast.error(errorMessage, {
+        description: 'You can still fill in the content manually.'
+      })
     } finally {
       setIsGenerating({ [currentPlatform]: false })
     }
