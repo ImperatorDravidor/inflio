@@ -221,7 +221,7 @@ export class StagingService {
 
   private static async prepareClipContent(clip: ClipData, project: Project): Promise<StagedContent> {
     // Check if clip already has publication captions from Klap
-    let platformContent: StagedContent['platformContent'] = {}
+    const platformContent: StagedContent['platformContent'] = {}
     
     if (clip.publicationCaptions) {
       // Use existing captions from Klap and format them for our system
@@ -1148,6 +1148,23 @@ Return JSON array of optimal times:
   ): Promise<void> {
     const supabase = createSupabaseBrowserClient()
     
+    // First, check if user has connected social accounts (optional for demo)
+    const { data: integrations } = await supabase
+      .from('social_integrations')
+      .select('id, platform')
+      .eq('user_id', userId)
+    
+    // Create a map of platform to integration id
+    const platformIntegrationMap: Record<string, string> = {}
+    if (integrations && integrations.length > 0) {
+      integrations.forEach(int => {
+        platformIntegrationMap[int.platform] = int.id
+      })
+      console.log(`Found ${integrations.length} connected social accounts`)
+    } else {
+      console.log('No social integrations found - creating demo scheduled posts')
+    }
+    
     // Prepare posts for insertion with comprehensive metadata
     const postsToInsert = scheduledPosts.flatMap(scheduledPost => {
       const { stagedContent } = scheduledPost
@@ -1187,8 +1204,11 @@ Return JSON array of optimal times:
           analytics: stagedContent.analytics
         }
         
+        // Check if we have integration for this platform
+        const integrationId = platformIntegrationMap[platform]
+        
         // Build the social post record
-        return {
+        const postRecord: any = {
           user_id: userId,
           project_id: projectId,
           content: platformContent.caption || platformContent.title || platformContent.description || '',
@@ -1196,10 +1216,20 @@ Return JSON array of optimal times:
           publish_date: scheduledPost.scheduledDate.toISOString(),
           state: 'scheduled' as const,
           hashtags: platformContent.hashtags || [],
-          metadata,
+          settings: metadata, // Store metadata in settings field
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
+        
+        // If we have an integration, use it; otherwise mark as demo
+        if (integrationId) {
+          postRecord.integration_id = integrationId
+        } else {
+          postRecord.demo_platform = platform
+          console.log(`Creating demo scheduled post for ${platform}`)
+        }
+        
+        return postRecord
       }).filter(Boolean)
     })
     
@@ -1207,7 +1237,7 @@ Return JSON array of optimal times:
     const validPosts = postsToInsert.filter(post => post !== null)
     
     if (validPosts.length === 0) {
-      throw new AppError('No valid posts to schedule', 'NO_VALID_POSTS', 400)
+      throw new AppError('No posts could be created. Please check your content and try again.', 'NO_VALID_POSTS', 400)
     }
     
     // Insert all posts in a batch

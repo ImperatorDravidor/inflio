@@ -91,6 +91,7 @@ export interface SocialPost {
   user_id: string;
   integration?: SocialIntegration;
   integration_id?: string;
+  demo_platform?: string; // Platform name when no integration exists (demo mode)
   content: string;
   media_urls?: string[];
   publish_date: Date;

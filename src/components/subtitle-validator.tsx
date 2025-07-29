@@ -182,7 +182,7 @@ export function SubtitleValidator({
     const segment = segments.find(s => s.id === segmentId)
     if (!segment || !onSegmentFix) return
 
-    let updates: Partial<SubtitleSegment> = {}
+    const updates: Partial<SubtitleSegment> = {}
 
     switch (ruleId) {
       case 'min-duration':

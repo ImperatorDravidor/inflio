@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
+import { IconPlayerPlay } from '@tabler/icons-react'
 
 interface TranscriptSegment {
   start: number
@@ -93,6 +94,10 @@ export function EnhancedTranscriptEditor({
   const [processingStage, setProcessingStage] = useState('')
   const [subtitlesApplied, setSubtitlesApplied] = useState(false)
   const [vttBlobUrl, setVttBlobUrl] = useState<string | null>(null)
+  const [burnSubtitles, setBurnSubtitles] = useState(false)
+  const [ffmpegAvailable, setFfmpegAvailable] = useState(false)
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
+  const [burningProgress, setBurningProgress] = useState(0)
 
   useEffect(() => {
     setEditingSegments(segments)
@@ -106,6 +111,23 @@ export function EnhancedTranscriptEditor({
       }
     }
   }, [vttBlobUrl])
+
+  // Check FFmpeg availability on mount
+  useEffect(() => {
+    checkFFmpegAvailability()
+  }, [])
+
+  const checkFFmpegAvailability = async () => {
+    try {
+      const response = await fetch('/api/check-ffmpeg')
+      if (response.ok) {
+        const data = await response.json()
+        setFfmpegAvailable(data.available)
+      }
+    } catch (error) {
+      console.log('Failed to check FFmpeg availability')
+    }
+  }
 
   const handleSegmentEdit = (index: number, field: keyof TranscriptSegment, value: any) => {
     const newSegments = [...editingSegments]
@@ -127,6 +149,54 @@ export function EnhancedTranscriptEditor({
     return processingMinutes
   }
 
+  const pollBurningProgress = async (taskId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/apply-subtitles?taskId=${taskId}`)
+        if (response.ok) {
+          const task = await response.json()
+          
+          setBurningProgress(task.progress)
+          setProgress(20 + (task.progress * 0.7)) // 20-90%
+          
+          if (task.status === 'completed' && task.outputVideoUrl) {
+            clearInterval(pollInterval)
+            setProgress(95)
+            setProcessingStage('Finalizing video...')
+            
+            // Update video URL with burned-in version
+            onVideoUrlUpdate?.(task.outputVideoUrl)
+            
+            setProgress(100)
+            setProcessingStage('Subtitles burned successfully!')
+            setSubtitlesApplied(true)
+            
+            toast.success('🎬 Video with burned-in subtitles is ready!')
+            
+            setTimeout(() => {
+              setIsApplying(false)
+              setProgress(0)
+              setProcessingStage('')
+              setBurningProgress(0)
+              setProcessingTaskId(null)
+            }, 2000)
+            
+          } else if (task.status === 'failed') {
+            clearInterval(pollInterval)
+            throw new Error(task.error || 'Subtitle burning failed')
+          }
+        }
+      } catch (error) {
+        clearInterval(pollInterval)
+        console.error('Polling error:', error)
+        toast.error('Failed to process subtitles')
+        setIsApplying(false)
+        setProgress(0)
+        setProcessingStage('')
+      }
+    }, 2000) // Poll every 2 seconds
+  }
+
   const handleApplySubtitles = async () => {
     try {
       setIsApplying(true)
@@ -141,46 +211,78 @@ export function EnhancedTranscriptEditor({
       
       await new Promise(resolve => setTimeout(resolve, 500)) // Small delay for better UX
       
-      // Generate VTT with custom styling
-      const vttContent = generateStyledVTT(editingSegments, subtitleSettings)
-      const vttBlob = new Blob([vttContent], { type: 'text/vtt' })
-      const newVttUrl = URL.createObjectURL(vttBlob)
-      setVttBlobUrl(newVttUrl)
-      
-      setProgress(30)
-      setProcessingStage('Applying subtitles to video player...')
-      
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Apply VTT subtitles to the video player with proper video URL
-      onVideoUrlUpdate?.(videoUrl, newVttUrl)
-      
-      setProgress(60)
-      setProcessingStage('Configuring subtitle display...')
-      
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      setSubtitlesApplied(true)
-      setProgress(100)
-      setProcessingStage('Subtitles applied successfully!')
-      
-      // Also try to burn subtitles using cloud service if available (background task)
-      tryCloudSubtitleBurning(newVttUrl)
-      
-      setTimeout(() => {
-        setIsApplying(false)
-        setProgress(0)
-        setProcessingStage('')
-      }, 2000)
-      
-      toast.success('✅ Subtitles applied! Your content is ready for publishing.')
+      if (burnSubtitles && ffmpegAvailable) {
+        // Burn subtitles into video
+        setProcessingStage('Starting subtitle burning process...')
+        setProgress(20)
+        
+        const response = await fetch('/api/apply-subtitles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId,
+            videoUrl,
+            segments: editingSegments,
+            settings: subtitleSettings,
+            burnSubtitles: true
+          })
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          setProcessingTaskId(result.taskId)
+          setProcessingStage('Burning subtitles into video...')
+          
+          // Poll for progress
+          pollBurningProgress(result.taskId)
+        } else {
+          throw new Error('Failed to start subtitle burning')
+        }
+      } else {
+        // Apply VTT overlay (existing functionality)
+        // Generate VTT with custom styling
+        const vttContent = generateStyledVTT(editingSegments, subtitleSettings)
+        const vttBlob = new Blob([vttContent], { type: 'text/vtt' })
+        const newVttUrl = URL.createObjectURL(vttBlob)
+        setVttBlobUrl(newVttUrl)
+        
+        setProgress(30)
+        setProcessingStage('Applying subtitles to video player...')
+        
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        // Apply VTT subtitles to the video player with proper video URL
+        onVideoUrlUpdate?.(videoUrl, newVttUrl)
+        
+        setProgress(60)
+        setProcessingStage('Configuring subtitle display...')
+        
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        setSubtitlesApplied(true)
+        setProgress(100)
+        setProcessingStage('Subtitles applied successfully!')
+        
+        // Also try to burn subtitles using cloud service if available (background task)
+        if (!burnSubtitles) {
+          tryCloudSubtitleBurning(newVttUrl)
+        }
+        
+        setTimeout(() => {
+          setIsApplying(false)
+          setProgress(0)
+          setProcessingStage('')
+        }, 2000)
+        
+        toast.success('✅ Subtitles applied! Your content is ready for publishing.')
+      }
       
     } catch (error) {
       console.error('Error applying subtitles:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to apply subtitles')
+      toast.error('Failed to apply subtitles')
+      setIsApplying(false)
       setProgress(0)
       setProcessingStage('')
-      setIsApplying(false)
     }
   }
   
@@ -221,32 +323,80 @@ export function EnhancedTranscriptEditor({
     // Add VTT styling header with enhanced settings
     vtt += 'STYLE\n'
     vtt += '::cue {\n'
-    vtt += `  font-family: ${settings.fontFamily}, sans-serif;\n`
+    vtt += `  font-family: ${settings.fontFamily}, -apple-system, BlinkMacSystemFont, sans-serif;\n`
     vtt += `  font-size: ${settings.fontSize}px;\n`
+    vtt += `  font-weight: 600;\n`
     vtt += `  color: ${settings.fontColor};\n`
     vtt += `  background-color: ${settings.backgroundColor}${Math.round(settings.backgroundOpacity * 2.55).toString(16).padStart(2, '0')};\n`
     vtt += `  text-align: ${settings.alignment};\n`
     vtt += `  line-height: ${settings.lineHeight};\n`
     vtt += `  padding: ${settings.padding}px;\n`
+    vtt += `  border-radius: 0.4em;\n`
+    vtt += `  backdrop-filter: blur(4px);\n`
+    vtt += `  -webkit-backdrop-filter: blur(4px);\n`
     
+    // Add text shadow for better readability
+    const shadows = []
     if (settings.strokeWidth > 0) {
-      vtt += `  text-shadow: ${settings.strokeColor} 0px 0px ${settings.strokeWidth}px;\n`
+      // Text stroke simulation using multiple shadows
+      const strokeColor = settings.strokeColor || '#000000'
+      for (let angle = 0; angle < 360; angle += 45) {
+        const x = Math.cos(angle * Math.PI / 180) * settings.strokeWidth
+        const y = Math.sin(angle * Math.PI / 180) * settings.strokeWidth
+        shadows.push(`${strokeColor} ${x}px ${y}px 0px`)
+      }
     }
     
+    // Add drop shadow if enabled
     if (settings.shadow) {
-      vtt += `  box-shadow: ${settings.shadowColor} 0px 2px ${settings.shadowBlur}px;\n`
+      shadows.push(`${settings.shadowColor} 0px 2px ${settings.shadowBlur}px`)
+    }
+    
+    // Always add subtle shadow for readability
+    shadows.push('rgba(0, 0, 0, 0.8) 0px 1px 2px')
+    shadows.push('rgba(0, 0, 0, 0.5) 0px 0px 4px')
+    
+    if (shadows.length > 0) {
+      vtt += `  text-shadow: ${shadows.join(', ')};\n`
+    }
+    
+    // Add animation class if specified
+    if (settings.animation && settings.animation !== 'none') {
+      vtt += `  animation: ${settings.animation === 'fade' ? 'subtitleFadeIn' : 'subtitleSlideUp'} ${settings.animationDuration || 300}ms ease-out;\n`
     }
     
     vtt += '}\n\n'
     
-    // Add subtitle entries
+    // Add specific position styling
+    if (settings.position === 'top') {
+      vtt += '::cue(.subtitle-position-top) {\n'
+      vtt += '  vertical-align: top;\n'
+      vtt += '}\n\n'
+    } else if (settings.position === 'center') {
+      vtt += '::cue(.subtitle-position-center) {\n'
+      vtt += '  vertical-align: middle;\n'
+      vtt += '}\n\n'
+    }
+    
+    // Add subtitle entries with enhanced positioning
     segments.forEach((segment, index) => {
       const start = formatVTTTime(segment.start)
       const end = formatVTTTime(segment.end)
+      
+      // Calculate position based on settings
       const position = settings.position === 'top' ? 10 : settings.position === 'center' ? 50 : 90
+      const align = settings.alignment || 'center'
+      const size = settings.maxWidth || 90
       
       vtt += `${index + 1}\n`
-      vtt += `${start} --> ${end} position:${position}% line:${position}% align:${settings.alignment} size:${settings.maxWidth}%\n`
+      vtt += `${start} --> ${end} position:${position}% line:${position}% align:${align} size:${size}%`
+      
+      // Add position class
+      if (settings.position) {
+        vtt += ` class:subtitle-position-${settings.position}`
+      }
+      
+      vtt += '\n'
       vtt += `${segment.text}\n\n`
     })
     
@@ -295,7 +445,7 @@ export function EnhancedTranscriptEditor({
 
   const downloadTranscript = (format: 'txt' | 'srt' | 'vtt') => {
     let content = ''
-    let filename = `transcript.${format}`
+    const filename = `transcript.${format}`
     
     switch (format) {
       case 'txt':
@@ -884,28 +1034,94 @@ export function EnhancedTranscriptEditor({
                   
                   <Button
                     onClick={handleApplySubtitles}
-                    disabled={isApplying || !editingSegments.length}
-                    variant={subtitlesApplied ? "outline" : "default"}
+                    disabled={isApplying || segments.length === 0}
+                    className="w-full"
                     size="lg"
                   >
                     {isApplying ? (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : subtitlesApplied ? (
-                      <>
-                        <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Reapply Subtitles
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        {processingStage || 'Processing...'}
                       </>
                     ) : (
                       <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Apply Subtitles
+                        <IconPlayerPlay className="mr-2 h-5 w-5" />
+                        {burnSubtitles ? 'Burn Subtitles into Video' : 'Apply Subtitles'}
                       </>
                     )}
                   </Button>
-                </div>
+
+                  {/* Progress bar */}
+                  {isApplying && (
+                    <div className="mt-4 space-y-2">
+                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-primary h-full transition-all duration-500 ease-out"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      {burnSubtitles && burningProgress > 0 && (
+                        <div className="text-xs text-muted-foreground text-center">
+                          {processingTaskId && (
+                            <>
+                              Burning progress: {Math.round(burningProgress)}%
+                              {burningProgress < 100 && (
+                                <span className="block mt-1">
+                                  Estimated time: {estimateProcessingTime()} minutes
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Status badge */}
+                  {subtitlesApplied && !isApplying && (
+                    <div className="mt-4">
+                      <Badge className="w-full justify-center py-2" variant="default">
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        {burnSubtitles ? 'Subtitles Burned Successfully' : 'Subtitles Applied'}
+                      </Badge>
+                      {burnSubtitles && (
+                        <p className="text-xs text-muted-foreground text-center mt-2">
+                          Your video now has permanent subtitles and is ready for YouTube upload
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  </div>
+
+                    {/* Subtitle Options */}
+                    <div className="space-y-4 p-4 border-t">
+                      <h4 className="font-medium text-sm">Subtitle Options</h4>
+                      
+                      {ffmpegAvailable && (
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="burn-subtitles"
+                            checked={burnSubtitles}
+                            onCheckedChange={setBurnSubtitles}
+                          />
+                          <Label htmlFor="burn-subtitles" className="text-sm cursor-pointer">
+                            Burn subtitles into video
+                            <span className="block text-xs text-muted-foreground mt-1">
+                              Creates a new video file with permanent subtitles (recommended for YouTube)
+                            </span>
+                          </Label>
+                        </div>
+                      )}
+                      
+                      {!ffmpegAvailable && burnSubtitles && (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription className="text-xs">
+                            Subtitle burning requires FFmpeg. Using overlay subtitles instead.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
               </div>
             </TabsContent>
             

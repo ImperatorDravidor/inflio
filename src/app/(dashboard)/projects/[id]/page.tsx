@@ -70,7 +70,7 @@ import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/empty-state"
-import { formatDuration } from "@/lib/video-utils"
+import { formatDuration, generateVideoThumbnailFromUrl } from "@/lib/video-utils"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { motion, AnimatePresence } from "framer-motion"
@@ -111,6 +111,11 @@ import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
 import type { Persona } from "@/lib/types/persona"
+import { PersonaConfigureDialog } from "@/components/persona-configure-dialog"
+import { SocialGraphicsGenerator } from "@/components/social-graphics-generator"
+import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
+import { UserGuideTooltip } from "@/components/user-guide-tooltip"
+import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 
 
 const platformIcons = {
@@ -174,6 +179,8 @@ function ProjectDetailPageContent() {
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
+  const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
+  const [usePersonaForGraphics, setUsePersonaForGraphics] = useState(true)
   
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
   
@@ -192,8 +199,25 @@ function ProjectDetailPageContent() {
   // Persona state
   const [selectedPersona, setSelectedPersona] = useState<any>(null)
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
+  const [loadingPersona, setLoadingPersona] = useState(false)
 
   // Project loading is handled by useProject hook
+  
+  // Generate default thumbnail from video if no thumbnail exists
+  useEffect(() => {
+    async function generateDefaultThumbnail() {
+      if (project?.video_url && !project.thumbnail_url && !defaultThumbnail) {
+        try {
+          const thumbnail = await generateVideoThumbnailFromUrl(project.video_url, 2)
+          setDefaultThumbnail(thumbnail)
+        } catch (error) {
+          console.error("Failed to generate default thumbnail:", error)
+        }
+      }
+    }
+    
+    generateDefaultThumbnail()
+  }, [project?.video_url, project?.thumbnail_url, defaultThumbnail])
   
   // Update actively processing state based on clips task
   useEffect(() => {
@@ -202,6 +226,32 @@ function ProjectDetailPageContent() {
       const isClipsProcessing = clipsTask && clipsTask.status === 'processing'
       setIsActivelyProcessing(isClipsProcessing || false)
     }
+  }, [project])
+  
+  // Load persona from project or local storage
+  useEffect(() => {
+    async function loadPersona() {
+      if (project && !selectedPersona) {
+        setLoadingPersona(true)
+        try {
+          // First check project metadata
+          const selectedId = (project as any).selected_persona_id || (project.metadata as any)?.currentPersona?.id
+          if (selectedId) {
+            const personas = JSON.parse(localStorage.getItem('personas') || '[]')
+            const persona = personas.find((p: any) => p.id === selectedId)
+            if (persona) {
+              setSelectedPersona(persona)
+              setSelectedPersonaId(persona.id)
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load persona:', error)
+        } finally {
+          setLoadingPersona(false)
+        }
+      }
+    }
+    loadPersona()
   }, [project])
   
 
@@ -285,12 +335,15 @@ function ProjectDetailPageContent() {
     }
   }, [activeTab, project?.folders?.clips])
 
-  // Auto-redirect if processing
+  // Auto-redirect if processing and transcription not complete
   useEffect(() => {
     if (project) {
-      const progress = ProjectService.calculateProjectProgress(project)
-      // Only redirect if actually processing (not at 100%)
-      if (project.status === 'processing' && progress < 100) {
+      const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+      const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+        (project.transcription && project.transcription.text)
+      
+      // Only redirect if transcription is not complete
+      if (project.status === 'processing' && !isTranscriptionComplete) {
         const timer = setTimeout(() => {
           router.push(`/studio/processing/${projectId}`)
         }, 1500)
@@ -684,9 +737,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             size: selectedSize,
             style: selectedStyle,
             n: 1,
-            // Include persona photos if available
-            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
-            personaName: selectedPersona?.name
+            // Include persona photos if enabled and available
+            personalPhotos: usePersonaForGraphics && selectedPersona?.photos ? 
+              selectedPersona.photos.map((photo: any) => photo.url) : [],
+            personaName: usePersonaForGraphics ? selectedPersona?.name : undefined
           })
         })
         
@@ -738,9 +792,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             projectId: project!.id,
             prompt: prompts[0], // Use first prompt as base
             quality: suggestion.recommendedQuality,
-            // Include persona photos if available
-            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
-            personaName: selectedPersona?.name,
+            // Include persona photos if enabled and available
+            personalPhotos: usePersonaForGraphics && selectedPersona?.photos ? 
+              selectedPersona.photos.map((photo: any) => photo.url) : [],
+            personaName: usePersonaForGraphics ? selectedPersona?.name : undefined,
             size: suggestion.recommendedSize,
             style: suggestion.style || 'gradient',
             n: slides,  // Generate multiple images
@@ -781,22 +836,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
 
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="max-w-md w-full mx-4 shadow-xl border-primary/20">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10 w-fit">
-              <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
-            </div>
-            <CardTitle className="text-2xl">Loading Project</CardTitle>
-            <CardDescription className="text-base">
-              Fetching your project details...
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    )
+  if (loading || loadingPersona) {
+    return <ProjectPageSkeleton />
   }
 
   if (!project) return null
@@ -831,7 +872,14 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
   const stats = ProjectService.getProjectStats(project)
   const totalImages = project.folders.images?.length || 0
   const progress = ProjectService.calculateProjectProgress(project)
-  const isProcessing = project.status === 'processing' && progress < 100
+  
+  // Check if transcription is complete
+  const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+  const isTranscriptionComplete = transcriptionTask?.status === 'completed' || 
+    (project.transcription && project.transcription.text)
+  
+  // Only show processing overlay if transcription is not complete
+  const isProcessing = project.status === 'processing' && !isTranscriptionComplete
   const searchResults = searchQuery && project.transcription
     ? TranscriptionService.searchTranscription(project.transcription.segments, searchQuery)
     : []
@@ -850,9 +898,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10 w-fit">
                 <IconLoader2 className="h-8 w-8 text-primary animate-spin" />
               </div>
-              <CardTitle className="text-2xl">Project Loading</CardTitle>
+              <CardTitle className="text-2xl">Transcription Processing</CardTitle>
               <CardDescription className="text-base">
-                Your video is being processed. Redirecting to processing view...
+                AI is analyzing your video. Redirecting to processing view...
               </CardDescription>
             </CardHeader>
           </Card>
@@ -1084,6 +1132,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Button>
                   )
                 })()}
+                
+                {/* Configure Persona Button */}
+                                    <UserGuideTooltip
+                      id="configure-persona"
+                      title="Add your persona"
+                      content="Create a professional persona to feature in all your AI-generated content"
+                      side="left"
+                      delay={2000}
+                    >
+                      <PersonaConfigureDialog
+                        onPersonaCreated={(persona) => {
+                          setSelectedPersona(persona)
+                          toast.success(`Persona "${persona.name}" created successfully!`)
+                        }}
+                      >
+                        <Button 
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-center gap-2"
+                        >
+                          <IconUsers className="h-4 w-4" />
+                          Configure Persona
+                        </Button>
+                      </PersonaConfigureDialog>
+                    </UserGuideTooltip>
               </div>
             </div>
           </div>
@@ -1444,7 +1517,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     )}
                     
                     {/* Thumbnail Display (when video is not playing) */}
-                    {project.thumbnail_url && !videoLoading && (
+                    {(project.thumbnail_url || defaultThumbnail) && !videoLoading && (
                       <div className="absolute inset-0 z-5 group cursor-pointer"
                         onClick={() => {
                           if (videoRef.current) {
@@ -1455,7 +1528,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         style={{ display: videoRef.current?.paused === false ? 'none' : 'flex' }}
                       >
                         <img 
-                          src={project.thumbnail_url} 
+                          src={project.thumbnail_url || defaultThumbnail} 
                           alt="Video thumbnail" 
                           className="w-full h-full object-cover"
                         />
@@ -1471,7 +1544,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <video
                       ref={videoRef}
                       src={project.video_url}
-                      poster={project.thumbnail_url || thumbnailUrl || undefined}
+                      poster={project.thumbnail_url || thumbnailUrl || defaultThumbnail || undefined}
                       className="w-full aspect-video bg-black"
                       controls
                       playsInline
@@ -1632,7 +1705,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20 rounded-t-lg overflow-hidden">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1686,17 +1759,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Quotes</span>
                         <span className="text-[10px] text-muted-foreground">
                           Cards
-                        </span>
-                      </TabsTrigger>
-                      
-                      <TabsTrigger 
-                        value="personas" 
-                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        <IconUsers className="h-5 w-5" />
-                        <span className="text-xs font-medium">Personas</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          AI Personas
                         </span>
                       </TabsTrigger>
                       
@@ -2675,9 +2737,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               )
                             })}
 
-                            {/* AI-Generated Images */}
-                            {project.folders.images?.map((image: any) => (
-                              <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                                                      {/* Social Graphics Display */}
+                          <div className="col-span-full">
+                            <Card>
+                              <CardHeader>
+                                <CardTitle>Social Graphics Library</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <SocialGraphicsDisplay 
+                                  projectId={project.id}
+                                  onSchedule={(graphic) => {
+                                    // TODO: Implement scheduling
+                                    toast.info("Scheduling feature coming soon!")
+                                  }}
+                                  onEdit={(graphic) => {
+                                    // TODO: Implement editing
+                                    toast.info("Edit feature coming soon!")
+                                  }}
+                                />
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          {/* AI-Generated Images */}
+                          {project.folders.images?.map((image: any) => (
+                            <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                                 <div className="aspect-square relative bg-muted">
                                   <img
                                     src={image.url}
@@ -2799,7 +2883,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         {/* Image Generation Controls */}
                         <Card>
                           <CardHeader>
-                            <CardTitle className="text-lg">Create New Image</CardTitle>
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-lg">Create New Image</CardTitle>
+                              {selectedPersona && (
+                                <div className="flex items-center gap-3">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={usePersonaForGraphics}
+                                      onChange={(e) => setUsePersonaForGraphics(e.target.checked)}
+                                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                    />
+                                    <span className="text-sm font-medium">Use Persona</span>
+                                  </label>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <div className="p-1 rounded-full bg-primary/10">
+                                      <IconUser className="h-3 w-3 text-primary" />
+                                    </div>
+                                    <span>{selectedPersona.name}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </CardHeader>
                           <CardContent className="space-y-4">
                             <div className="space-y-2">
@@ -2859,23 +2964,35 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               </div>
                             </div>
 
-                            <Button
-                              onClick={handleGenerateCustom}
-                            disabled={isGeneratingImage || !customPrompt.trim()}
-                              className="w-full"
-                            >
-                            {isGeneratingImage ? (
-                                <>
-                                  <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
-                                </>
-                              ) : (
-                                <>
-                                  <IconSparkles className="h-4 w-4 mr-2" />
-                                  Generate Image
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={handleGenerateCustom}
+                                disabled={isGeneratingImage || !customPrompt.trim()}
+                                className="flex-1"
+                              >
+                                {isGeneratingImage ? (
+                                  <>
+                                    <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
+                                  </>
+                                ) : (
+                                  <>
+                                    <IconSparkles className="h-4 w-4 mr-2" />
+                                    Generate Image
+                                  </>
+                                )}
+                              </Button>
+                              <SocialGraphicsGenerator
+                                projectId={project.id}
+                                projectTitle={project.title}
+                                contentAnalysis={project.content_analysis}
+                                selectedPersona={selectedPersona}
+                                onGraphicsGenerated={(graphics) => {
+                                  loadProject() // Reload to show new graphics
+                                  toast.success(`Generated ${graphics.length} social graphics!`)
+                                }}
+                              />
+                            </div>
                           </CardContent>
                         </Card>
 
@@ -3142,17 +3259,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           projectId={project.id}
                           hasTranscript={!!project.transcription}
                           projectTitle={project.title}
-                        />
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="personas" className="mt-0">
-                      <div className="space-y-6">
-                        <PersonaManager
-                          onPersonaSelect={(persona) => {
-                            toast.success(`Selected persona: ${persona.name}`)
-                            // Persona can be used in thumbnail creator and other AI features
-                          }}
                         />
                       </div>
                     </TabsContent>

@@ -28,79 +28,77 @@ export async function POST(
     // Update project status
     await ProjectService.updateProject(projectId, { status: 'processing' });
 
-    // Process transcription if needed (pending or stuck processing tasks)
+    // Start both processes in parallel
+    const promises = [];
+    
+    // Process transcription if needed
     const hasTranscriptionTask = project.tasks.some(
       (task: any) => task.type === 'transcription' && (task.status === 'pending' || task.status === 'processing')
     );
     
     if (hasTranscriptionTask) {
-      try {
-        console.log('[Process Route] Starting transcription processing...')
-        console.log('[Process Route] Project ID:', projectId)
-        console.log('[Process Route] Video URL:', project.video_url)
-        
-        // Import the transcription processor
-        const { processTranscription } = await import('@/lib/transcription-processor');
-        
-        // Process transcription directly (await completion since it only takes 30 seconds)
-        const result = await processTranscription({
-          projectId: project.id,
-          videoUrl: project.video_url,
-          language: 'en',
-          userId: userId!
-        });
-        
-        console.log('[Process Route] Transcription completed successfully:', {
-          success: result.success,
-          mock: result.mock
-        })
-      } catch (error) {
-        console.error('[Process Route] Transcription failed:', error);
-        console.error('[Process Route] Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
-        // Don't throw - allow clips to continue even if transcription fails
-      }
+      promises.push(
+        (async () => {
+          try {
+            console.log('[Process Route] Starting transcription processing...')
+            const { processTranscription } = await import('@/lib/transcription-processor');
+            
+            // Process transcription
+            const result = await processTranscription({
+              projectId: project.id,
+              videoUrl: project.video_url,
+              language: 'en',
+              userId: userId!
+            });
+            
+            console.log('[Process Route] Transcription completed successfully')
+            return { type: 'transcription', success: true, result };
+          } catch (error) {
+            console.error('[Process Route] Transcription failed:', error);
+            await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+            return { type: 'transcription', success: false, error };
+          }
+        })()
+      );
     }
 
-    // Process clips if needed (pending or stuck processing tasks)
+    // Process clips if needed
     const hasClipsTask = project.tasks.some(
       (task: any) => task.type === 'clips' && (task.status === 'pending' || task.status === 'processing')
     );
     
     if (hasClipsTask) {
-      // Queue Klap processing via Inngest
-      try {
-        console.log('[Process Route] Queueing Klap job with Inngest...')
-        console.log('[Process Route] Project ID:', projectId)
-        console.log('[Process Route] Video URL:', project.video_url)
-        
-        // Send event to Inngest
-        await inngest.send({
-          name: 'klap/video.process',
-          data: {
-            projectId,
-            videoUrl: project.video_url,
-            userId
+      promises.push(
+        (async () => {
+          try {
+            console.log('[Process Route] Queueing Klap job with Inngest...')
+            
+            // Send event to Inngest
+            await inngest.send({
+              name: 'klap/video.process',
+              data: {
+                projectId,
+                videoUrl: project.video_url,
+                userId
+              }
+            });
+            
+            console.log('[Process Route] Klap job queued successfully')
+            
+            // Update task progress to show it's queued
+            await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+            return { type: 'clips', success: true };
+          } catch (error) {
+            console.error('[Process Route] Failed to queue Klap processing:', error);
+            return { type: 'clips', success: false, error };
           }
-        });
-        
-        console.log('[Process Route] Klap job queued successfully with Inngest')
-        
-        // Update task progress to show it's queued
-        await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
-        console.log('[Process Route] Updated clips task to processing status')
-      } catch (error) {
-        console.error('[Process Route] Failed to queue Klap processing:', error);
-        console.error('[Process Route] Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        // Don't throw - allow transcription to continue even if clips fail
-      }
+        })()
+      );
     }
+    
+    // Wait for all processes to complete
+    const results = await Promise.allSettled(promises);
+    console.log('[Process Route] All processes initiated:', results.length)
 
     return NextResponse.json({ 
       message: "Processing started",

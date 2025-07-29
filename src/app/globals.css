@@ -595,57 +595,117 @@ video {
   display: block;
 }
 
-/* Style the subtitle track */
+/* BEGIN: Video Player Subtitle Styles - MUST BE AT THE END OF FILE */
+
+/* Modern YouTube-style subtitle display */
 video::cue {
-  font-family: 'Inter', 'Arial', sans-serif;
-  font-size: 1.1em;
-  line-height: 1.4;
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 0.3em 0.6em;
-  border-radius: 0.3em;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  /* Typography */
+  font-family: 'YouTube Sans', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.15em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  
+  /* Colors and Background */
+  color: #ffffff;
+  background-color: rgba(8, 8, 8, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  
+  /* Padding and Spacing */
+  padding: 0.35em 0.7em;
+  margin: 0 auto;
+  
+  /* Border and Shape */
+  border-radius: 0.4em;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  
+  /* Text Effects */
+  text-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.8),
+    0 0 4px rgba(0, 0, 0, 0.5);
+  
+  /* Ensure readability */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Webkit-specific subtitle styles */
+/* Webkit-specific subtitle container styling */
 video::-webkit-media-text-track-container {
   position: absolute;
-  bottom: 10%;
+  bottom: 0;
   width: 100%;
   text-align: center;
-}
-
-video::-webkit-media-text-track-background {
-  background-color: transparent !important;
+  padding-bottom: 2%;
 }
 
 video::-webkit-media-text-track-display {
-  background-color: rgba(0, 0, 0, 0.8) !important;
-  padding: 0.3em 0.6em !important;
-  border-radius: 0.3em !important;
+  /* Remove default background */
+  background: none !important;
+  
+  /* Container styling */
+  display: inline-block !important;
   margin: 0 auto !important;
   max-width: 90% !important;
+  
+  /* Ensure subtitles stay above video controls */
+  position: relative !important;
+  bottom: 5% !important;
+}
+
+/* Individual cue styling for Webkit */
+video::-webkit-media-text-track-display-backdrop {
+  background-color: transparent !important;
 }
 
 /* Firefox-specific subtitle styles */
 video::cue(:not(:empty)) {
-  background-color: rgba(0, 0, 0, 0.8);
-  padding: 0.3em 0.6em;
-  border-radius: 0.3em;
+  background-color: rgba(8, 8, 8, 0.75);
+  padding: 0.35em 0.7em;
+  border-radius: 0.4em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 /* Ensure subtitles are visible on fullscreen */
 video:fullscreen::cue {
-  font-size: 1.5em;
+  font-size: 1.8em;
+  padding: 0.4em 0.8em;
+  border-radius: 0.5em;
+  max-width: 80%;
+}
+
+video:fullscreen::-webkit-media-text-track-display {
+  bottom: 8% !important;
+  max-width: 80% !important;
+}
+
+/* Subtitle positioning based on settings */
+video::cue(.subtitle-position-top) {
+  vertical-align: top;
+  position: absolute;
+  top: 5%;
+}
+
+video::cue(.subtitle-position-center) {
+  vertical-align: middle;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+video::cue(.subtitle-position-bottom) {
+  vertical-align: bottom;
+  position: absolute;
+  bottom: 10%;
 }
 
 /* Custom subtitle animation classes */
 .subtitle-fade-in {
-  animation: subtitleFadeIn 0.3s ease-in-out;
+  animation: subtitleFadeIn 0.3s ease-out;
 }
 
 .subtitle-slide-up {
-  animation: subtitleSlideUp 0.3s ease-in-out;
+  animation: subtitleSlideUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes subtitleFadeIn {
@@ -659,13 +719,21 @@ video:fullscreen::cue {
 
 @keyframes subtitleSlideUp {
   from {
-    transform: translateY(10px);
+    transform: translateY(15px);
     opacity: 0;
   }
   to {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* Highlight effect for current word (karaoke style) */
+video::cue(.highlight) {
+  color: #ffd700;
+  text-shadow: 
+    0 0 10px rgba(255, 215, 0, 0.8),
+    0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
 /* Custom scrollbar for subtitle settings */
@@ -681,6 +749,7 @@ video:fullscreen::cue {
 .subtitle-settings-scroll::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.3);
   border-radius: 3px;
+  transition: background 0.2s;
 }
 
 .subtitle-settings-scroll::-webkit-scrollbar-thumb:hover {
@@ -701,21 +770,30 @@ video:fullscreen::cue {
   object-fit: contain;
 }
 
-/* Remove aspect-video override - use Tailwind's built-in aspect-video class instead */
-
-/* Subtitle styling for when they're applied */
-video::cue {
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  font-size: 1.1em;
-  line-height: 1.4;
-  padding: 0.3em 0.5em;
-  border-radius: 0.3em;
-  font-weight: 500;
+/* Ensure subtitle track is properly positioned */
+video track {
+  z-index: 10;
 }
 
-video::-webkit-media-text-track-display {
-  margin-bottom: 60px !important; /* Keep subtitles above controls */
+/* Mobile-specific subtitle adjustments */
+@media (max-width: 768px) {
+  video::cue {
+    font-size: 0.9em;
+    padding: 0.25em 0.5em;
+  }
+  
+  video:fullscreen::cue {
+    font-size: 1.4em;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  video::cue {
+    background-color: rgba(0, 0, 0, 0.9);
+    border: 2px solid white;
+    text-shadow: none;
+  }
 }
 
 /* END: Video Player Subtitle Styles */

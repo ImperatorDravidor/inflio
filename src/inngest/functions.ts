@@ -31,7 +31,7 @@ export const processKlapVideo = inngest.createFunction(
       })
       
       // Update task progress
-      await ProjectService.updateTaskProgress(projectId, 'clips', 15, 'processing')
+      await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
       
       return klapTask
     })
@@ -68,8 +68,8 @@ export const processKlapVideo = inngest.createFunction(
             return status
           }
           
-          // Update progress
-          const progress = Math.min(15 + Math.floor((attempts / maxAttempts) * 60), 75)
+          // Update progress smoothly
+          const progress = Math.min(10 + Math.floor((attempts / maxAttempts) * 80), 90)
           await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
           
           // Wait before next attempt (10 seconds)

@@ -174,7 +174,7 @@ export async function processTranscription(params: {
 
   try {
     // Update task status to processing right at the start
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 10, 'processing')
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing')
 
     // Get project from database
     const { data: project, error: projectError } = await supabaseAdmin
@@ -195,9 +195,9 @@ export async function processTranscription(params: {
     // Generate mock transcription
     const mockTranscription = generateMockTranscription(videoUrl, language)
 
-    // Update progress to 30% before starting transcription
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 30, 'processing')
-    console.log('[TranscriptionProcessor] Updated progress to 30%, starting AssemblyAI transcription...')
+    // Update progress to 15% before starting transcription
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 15, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 15%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
       try {
@@ -264,9 +264,9 @@ export async function processTranscription(params: {
           }
         }
 
-        // Update progress to 60% after successful transcription
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 60, 'processing')
-        console.log('[TranscriptionProcessor] Updated progress to 60%')
+        // Update progress to 50% after successful transcription
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 50, 'processing')
+        console.log('[TranscriptionProcessor] Updated progress to 50%')
 
         // Convert AssemblyAI format to our internal format
         // Group words into proper segments for subtitles
@@ -298,9 +298,9 @@ export async function processTranscription(params: {
 
     // --- Step 2: AI Content Analysis ---
     
-    // Update progress to 80% before content analysis
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 80, 'processing')
-    console.log('[TranscriptionProcessor] Updated progress to 80%, starting AI content analysis...')
+    // Update progress to 70% before content analysis
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 70, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 70%, starting AI content analysis...')
     
     let contentAnalysis = mockContentAnalysis
     let analysisError: string | null = null
@@ -343,9 +343,9 @@ export async function processTranscription(params: {
 
     // --- Step 3: Update Project ---
     
-    // Update progress to 90% before final save
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 90, 'processing')
-    console.log('[TranscriptionProcessor] Updated progress to 90%, saving to database...')
+    // Update progress to 85% before final save
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 85, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 85%, saving to database...')
     
     try {
       console.log('[TranscriptionProcessor] Updating project with transcription and content analysis...')

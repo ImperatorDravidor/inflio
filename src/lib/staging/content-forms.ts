@@ -81,8 +81,8 @@ export const contentFormDefinitions: ContentFormDefinition[] = [
         name: 'coverImage',
         label: 'Cover Image',
         type: 'file',
-        required: true,
-        helpText: 'Select thumbnail from video'
+        required: false,
+        helpText: 'Select thumbnail from video (optional for now)'
       }
     ],
     characterLimits: { caption: 2200 },
