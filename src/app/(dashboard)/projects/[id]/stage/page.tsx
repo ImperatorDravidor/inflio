@@ -329,20 +329,45 @@ export default function ProjectStagePage() {
               mediaUrls = [item.thumbnail]
           }
           
+          // Map content type to expected values
+          const mappedType = (() => {
+            switch (item.type) {
+              case 'video':
+              case 'clip':
+                return 'clip'
+              case 'longform':
+                return 'clip' // Long form videos are also clips for staging
+              case 'social':
+                return 'blog' // Social posts are text-based like blogs
+              case 'blog':
+                return 'blog'
+              case 'image':
+                return 'image'
+              case 'carousel':
+                return 'carousel'
+              default:
+                console.warn(`Unknown content type: ${item.type}, defaulting to clip`)
+                return 'clip' // Default to clip for unknown types
+            }
+          })()
+          
           return {
             id: item.id || Math.random().toString(36).substr(2, 9),
-              type: item.type,
+              type: mappedType,
               title: item.title || item.name || 'Untitled',
               description: item.description || item.content || '',
               originalData: {
                 ...item,
+                ...item.metadata, // Include all metadata
                 projectId: projectId,
                 projectContext: projectData.content_analysis || projectData.description,
-                score: item.score,
-                viralityExplanation: item.viralityExplanation,
-                transcript: item.transcript,
-                tags: item.tags,
-                publicationCaptions: item.publicationCaptions
+                score: item.score || item.metadata?.score,
+                viralityExplanation: item.viralityExplanation || item.metadata?.viralityExplanation,
+                transcript: item.transcript || item.metadata?.transcript,
+                tags: item.tags || item.metadata?.tags,
+                publicationCaptions: item.publicationCaptions || item.metadata?.publicationCaptions,
+                url: item.exportUrl || item.metadata?.url || item.preview,
+                thumbnail: item.thumbnail || item.metadata?.thumbnail
               },
               platforms,
             platformContent,

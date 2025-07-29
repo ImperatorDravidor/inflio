@@ -43,12 +43,12 @@ export async function POST(req: NextRequest) {
         Professional setting appropriate for business use.`
 
         const response = await openai.images.generate({
-          model: "dall-e-3",
+          model: "gpt-image-1", // Using OpenAI's latest and most advanced image generation model
           prompt,
           n: 1,
           size: "1024x1024",
-          quality: "hd",
-          style: "natural"
+          quality: "high",
+          background: "auto"
         })
 
         const imageUrl = response.data?.[0]?.url

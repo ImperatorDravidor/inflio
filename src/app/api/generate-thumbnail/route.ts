@@ -167,27 +167,27 @@ export async function POST(req: NextRequest) {
         
         imageUrl = result.data?.images?.[0]?.url || ''
       } catch (falError) {
-        console.error('FAL AI error, falling back to OpenAI:', falError)
-        // Fallback to OpenAI
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: thumbnailPrompt,
-          n: 1,
-          size: "1792x1024",
-          quality: quality === 'hd' ? 'hd' : 'standard',
-          style: style === 'vibrant' ? 'vivid' : 'natural'
-        })
-        imageUrl = response.data?.[0]?.url || ''
+                  console.error('FAL AI error, falling back to OpenAI:', falError)
+          // Fallback to OpenAI gpt-image-1
+          const response = await openai.images.generate({
+            model: "gpt-image-1",
+            prompt: thumbnailPrompt,
+            n: 1,
+            size: "1536x1024",
+            quality: quality === 'hd' ? 'high' : 'medium',
+            background: "auto"
+          })
+          imageUrl = response.data?.[0]?.url || ''
       }
     } else {
-      // Use DALL-E 3 for highest quality when no video snippets
+      // Use gpt-image-1 for highest quality and best instruction following
       const response = await openai.images.generate({
-        model: "dall-e-3",
+        model: "gpt-image-1",
         prompt: thumbnailPrompt,
         n: 1,
-        size: "1792x1024",
-        quality: quality === 'hd' ? 'hd' : 'standard',
-        style: style === 'vibrant' ? 'vivid' : 'natural'
+        size: "1536x1024", // landscape format for YouTube thumbnails
+        quality: quality === 'hd' ? 'high' : quality === 'standard' ? 'medium' : 'low',
+        background: "auto"
       })
       
       imageUrl = response.data?.[0]?.url || ''

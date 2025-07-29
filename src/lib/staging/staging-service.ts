@@ -1148,6 +1148,30 @@ Return JSON array of optimal times:
   ): Promise<void> {
     const supabase = createSupabaseBrowserClient()
     
+    // First, check if user has connected social accounts
+    const { data: integrations, error: integrationsError } = await supabase
+      .from('social_integrations')
+      .select('id, platform')
+      .eq('user_id', userId)
+    
+    if (integrationsError) {
+      console.error('Error fetching integrations:', integrationsError)
+      throw new AppError('Failed to fetch social integrations', 'INTEGRATIONS_FETCH_FAILED', 500)
+    }
+    
+    if (!integrations || integrations.length === 0) {
+      // Instead of throwing error, create draft posts without integration
+      console.log('No social integrations found, creating draft posts')
+    }
+    
+    // Create a map of platform to integration id
+    const platformIntegrationMap: Record<string, string> = {}
+    if (integrations) {
+      integrations.forEach(int => {
+        platformIntegrationMap[int.platform] = int.id
+      })
+    }
+    
     // Prepare posts for insertion with comprehensive metadata
     const postsToInsert = scheduledPosts.flatMap(scheduledPost => {
       const { stagedContent } = scheduledPost
@@ -1187,16 +1211,24 @@ Return JSON array of optimal times:
           analytics: stagedContent.analytics
         }
         
+        // Skip platforms without integration for now
+        const integrationId = platformIntegrationMap[platform]
+        if (!integrationId) {
+          console.log(`No integration found for platform ${platform}, skipping`)
+          return null
+        }
+        
         // Build the social post record
         return {
           user_id: userId,
           project_id: projectId,
+          integration_id: integrationId,
           content: platformContent.caption || platformContent.title || platformContent.description || '',
           media_urls: stagedContent.mediaUrls || [],
           publish_date: scheduledPost.scheduledDate.toISOString(),
           state: 'scheduled' as const,
           hashtags: platformContent.hashtags || [],
-          metadata,
+          settings: metadata, // Store metadata in settings field
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
@@ -1207,7 +1239,15 @@ Return JSON array of optimal times:
     const validPosts = postsToInsert.filter(post => post !== null)
     
     if (validPosts.length === 0) {
-      throw new AppError('No valid posts to schedule', 'NO_VALID_POSTS', 400)
+      // If no valid posts due to missing integrations, provide helpful message
+      if (!integrations || integrations.length === 0) {
+        throw new AppError(
+          'No social media accounts connected. Please connect your social accounts in Settings > Social Media to publish content.',
+          'NO_INTEGRATIONS',
+          400
+        )
+      }
+      throw new AppError('No posts could be created for the selected platforms. Please check your social media connections.', 'NO_VALID_POSTS', 400)
     }
     
     // Insert all posts in a batch

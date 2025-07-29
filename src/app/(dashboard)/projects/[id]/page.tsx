@@ -176,6 +176,7 @@ function ProjectDetailPageContent() {
   const [hasSubtitles, setHasSubtitles] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
   const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
+  const [usePersonaForGraphics, setUsePersonaForGraphics] = useState(true)
   
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
   
@@ -705,9 +706,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             size: selectedSize,
             style: selectedStyle,
             n: 1,
-            // Include persona photos if available
-            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
-            personaName: selectedPersona?.name
+            // Include persona photos if enabled and available
+            personalPhotos: usePersonaForGraphics && selectedPersona?.photos ? 
+              selectedPersona.photos.map((photo: any) => photo.url) : [],
+            personaName: usePersonaForGraphics ? selectedPersona?.name : undefined
           })
         })
         
@@ -759,9 +761,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
             projectId: project!.id,
             prompt: prompts[0], // Use first prompt as base
             quality: suggestion.recommendedQuality,
-            // Include persona photos if available
-            personalPhotos: selectedPersona?.photos?.map((photo: any) => photo.url) || [],
-            personaName: selectedPersona?.name,
+            // Include persona photos if enabled and available
+            personalPhotos: usePersonaForGraphics && selectedPersona?.photos ? 
+              selectedPersona.photos.map((photo: any) => photo.url) : [],
+            personaName: usePersonaForGraphics ? selectedPersona?.name : undefined,
             size: suggestion.recommendedSize,
             style: suggestion.style || 'gradient',
             n: slides,  // Generate multiple images
@@ -2833,7 +2836,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         {/* Image Generation Controls */}
                         <Card>
                           <CardHeader>
-                            <CardTitle className="text-lg">Create New Image</CardTitle>
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-lg">Create New Image</CardTitle>
+                              {selectedPersona && (
+                                <div className="flex items-center gap-3">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={usePersonaForGraphics}
+                                      onChange={(e) => setUsePersonaForGraphics(e.target.checked)}
+                                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                    />
+                                    <span className="text-sm font-medium">Use Persona</span>
+                                  </label>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <div className="p-1 rounded-full bg-primary/10">
+                                      <IconUser className="h-3 w-3 text-primary" />
+                                    </div>
+                                    <span>{selectedPersona.name}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </CardHeader>
                           <CardContent className="space-y-4">
                             <div className="space-y-2">

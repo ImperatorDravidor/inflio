@@ -65,6 +65,14 @@ export function PersonaConfigureDialog({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
+  // Stop camera
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+  }
+
   // Reset state when dialog closes
   const handleClose = () => {
     setOpen(false)
@@ -78,10 +86,7 @@ export function PersonaConfigureDialog({
     setProgress(0)
     
     // Stop camera if active
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
+    stopCamera()
   }
 
   // Start camera capture
@@ -148,8 +153,15 @@ export function PersonaConfigureDialog({
     const reader = new FileReader()
     reader.onload = (e) => {
       setCapturedImage(e.target?.result as string)
+      // Reset capture method since we have the image
+      setCaptureMethod(null)
     }
     reader.readAsDataURL(file)
+    
+    // Reset file input for future use
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   // Generate professional images using AI
@@ -236,10 +248,37 @@ export function PersonaConfigureDialog({
         created_at: new Date().toISOString()
       }
 
-      // Save to local storage for now (you can implement Supabase storage later)
+      // Save to local storage
       const existingPersonas = JSON.parse(localStorage.getItem('personas') || '[]')
       existingPersonas.push(persona)
       localStorage.setItem('personas', JSON.stringify(existingPersonas))
+
+      // Also save the current persona ID to the project if we have a projectId
+      const projectId = window.location.pathname.match(/projects\/([^\/]+)/)?.[1]
+      if (projectId) {
+        // Get current project data first
+        const { data: project } = await supabase
+          .from('projects')
+          .select('metadata')
+          .eq('id', projectId)
+          .single()
+        
+        const { error } = await supabase
+          .from('projects')
+          .update({ 
+            selected_persona_id: persona.id,
+            metadata: {
+              ...project?.metadata,
+              personas: existingPersonas,
+              currentPersona: persona
+            }
+          })
+          .eq('id', projectId)
+          
+        if (error) {
+          console.error('Failed to update project with persona:', error)
+        }
+      }
 
       toast.success("Persona created successfully!")
       
@@ -280,6 +319,18 @@ export function PersonaConfigureDialog({
 
   const handleBack = () => {
     if (currentStep > 1) {
+      // Reset states when going back from photo capture
+      if (currentStep === 2) {
+        setCapturedImage("")
+        setCaptureMethod(null)
+        stopCamera()
+      }
+      // Reset states when going back from generation
+      if (currentStep === 3) {
+        setGeneratedImages([])
+        setIsGenerating(false)
+        setProgress(0)
+      }
       setCurrentStep((currentStep - 1) as Step)
     }
   }

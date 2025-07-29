@@ -152,25 +152,60 @@ export async function POST(req: NextRequest) {
     const images = []
     
     for (let i = 0; i < count; i++) {
+      // Determine if we need transparency
+      const needsTransparency = finalPrompt.toLowerCase().includes('overlay') || 
+                              finalPrompt.toLowerCase().includes('transparent') ||
+                              finalPrompt.toLowerCase().includes('sticker') ||
+                              style === 'quote-overlay'
+      
+      // Generate image using gpt-image-1
       const response = await openai.images.generate({
         model: "gpt-image-1",
         prompt: AIImageService.enhancePromptWithStyle(finalPrompt, style || 'modern', 'high'),
         n: 1,
         size: imageType === 'story' ? '1024x1792' : '1024x1024',
         quality: 'standard',
-        style: 'natural'
+        style: 'natural',
+        background: needsTransparency ? 'transparent' : 'auto',
+        response_format: 'b64_json' // Get base64 to handle transparency properly
       })
       
-      if (response.data && response.data[0]?.url) {
-        images.push({
-          id: crypto.randomUUID(),
-          url: response.data[0].url,
-          prompt: finalPrompt,
-          type: imageType,
-          platform: platforms[0],
-          style,
-          createdAt: new Date().toISOString()
-        })
+      if (response.data && response.data[0]?.b64_json) {
+        // Convert base64 to blob
+        const imageData = Buffer.from(response.data[0].b64_json, 'base64')
+        
+        const fileName = `social-${crypto.randomUUID()}.${needsTransparency ? 'webp' : 'png'}`
+        const filePath = `${projectId}/social-graphics/${fileName}`
+        
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('images')
+          .upload(filePath, imageData, {
+            contentType: `image/${needsTransparency ? 'webp' : 'png'}`,
+            upsert: false
+          })
+        
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabaseAdmin.storage
+            .from('images')
+            .getPublicUrl(filePath)
+          
+          images.push({
+            id: crypto.randomUUID(),
+            url: publicUrl,
+            prompt: finalPrompt,
+            type: imageType,
+            platform: platforms[0],
+            style,
+            createdAt: new Date().toISOString(),
+            hasTransparency: needsTransparency,
+            metadata: {
+              quality: 'standard',
+              hasPersona: personaPhotos.length > 0,
+              personaName: personaId ? 'User Persona' : undefined,
+              generatedWith: 'gpt-image-1'
+            }
+          })
+        }
       }
     }
 

@@ -680,20 +680,20 @@ video:fullscreen::-webkit-media-text-track-display {
 }
 
 /* Subtitle positioning based on settings */
-video::cue.subtitle-position-top {
+video::cue(.subtitle-position-top) {
   vertical-align: top;
   position: absolute;
   top: 5%;
 }
 
-video::cue.subtitle-position-center {
+video::cue(.subtitle-position-center) {
   vertical-align: middle;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
 }
 
-video::cue.subtitle-position-bottom {
+video::cue(.subtitle-position-bottom) {
   vertical-align: bottom;
   position: absolute;
   bottom: 10%;
