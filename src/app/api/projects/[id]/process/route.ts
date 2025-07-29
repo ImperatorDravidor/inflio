@@ -34,35 +34,34 @@ export async function POST(
     );
     
     if (hasTranscriptionTask) {
-      // Queue transcription processing via Inngest
       try {
-        console.log('[Process Route] Queueing transcription job with Inngest...')
+        console.log('[Process Route] Starting transcription processing...')
         console.log('[Process Route] Project ID:', projectId)
         console.log('[Process Route] Video URL:', project.video_url)
         
-        // Send event to Inngest
-        await inngest.send({
-          name: 'transcription/video.process',
-          data: {
-            projectId,
-            videoUrl: project.video_url,
-            userId,
-            language: 'en'
-          }
+        // Import the transcription processor
+        const { processTranscription } = await import('@/lib/transcription-processor');
+        
+        // Process transcription directly (await completion since it only takes 30 seconds)
+        const result = await processTranscription({
+          projectId: project.id,
+          videoUrl: project.video_url,
+          language: 'en',
+          userId: userId!
         });
         
-        console.log('[Process Route] Transcription job queued successfully with Inngest')
-        
-        // Update task progress to show it's queued
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing');
-        console.log('[Process Route] Updated transcription task to processing status')
+        console.log('[Process Route] Transcription completed successfully:', {
+          success: result.success,
+          mock: result.mock
+        })
       } catch (error) {
-        console.error('[Process Route] Failed to queue transcription processing:', error);
+        console.error('[Process Route] Transcription failed:', error);
         console.error('[Process Route] Error details:', {
           message: error instanceof Error ? error.message : 'Unknown error',
           stack: error instanceof Error ? error.stack : undefined
         });
-        // Don't throw - allow clips to continue even if transcription queue fails
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        // Don't throw - allow clips to continue even if transcription fails
       }
     }
 
