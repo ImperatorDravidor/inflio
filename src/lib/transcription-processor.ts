@@ -200,10 +200,12 @@ export async function processTranscription(params: {
     console.log('[TranscriptionProcessor] Updated progress to 30%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
-      try {
-        console.log('[TranscriptionProcessor] Creating AssemblyAI client...')
-        // Use AssemblyAI for transcription
-        const assembly = getAssemblyAI()
+      // Wrap the entire AssemblyAI process in a timeout promise
+      const transcriptionPromise = (async () => {
+        try {
+          console.log('[TranscriptionProcessor] Creating AssemblyAI client...')
+          // Use AssemblyAI for transcription
+          const assembly = getAssemblyAI()
         
         console.log('[TranscriptionProcessor] Submitting transcription request to AssemblyAI...')
         
@@ -224,6 +226,11 @@ export async function processTranscription(params: {
         const params: TranscribeParams = { audio: signedUrlData.signedUrl }
         
         console.log('[TranscriptionProcessor] Submitting transcription job to AssemblyAI...')
+        console.log('[TranscriptionProcessor] Assembly client:', {
+          hasTranscripts: !!assembly.transcripts,
+          hasSubmit: !!assembly.transcripts?.submit,
+          submitType: typeof assembly.transcripts?.submit
+        })
         
         // Submit the transcription job (non-blocking)
         const transcript = await withRetry(
@@ -258,6 +265,10 @@ export async function processTranscription(params: {
           throw new Error('Invalid transcript object from AssemblyAI submit')
         }
         
+        // Add a small delay to ensure the job is registered
+        console.log('[TranscriptionProcessor] Waiting 2 seconds before starting polling...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
         // Poll for completion with Vercel-friendly timeouts
         const maxPollingTime = 240000 // 4 minutes (leaving 1 minute buffer for 5 min timeout)
         const pollInterval = 5000 // 5 seconds
@@ -267,7 +278,8 @@ export async function processTranscription(params: {
         
         console.log('[TranscriptionProcessor] Starting polling loop for transcript:', transcript.id)
         
-        while (completedTranscript.status !== 'completed' && completedTranscript.status !== 'error') {
+        try {
+          while (completedTranscript.status !== 'completed' && completedTranscript.status !== 'error') {
           pollCount++
           
           // Check if we're approaching Vercel timeout
@@ -315,6 +327,14 @@ export async function processTranscription(params: {
         }
         
         console.log('[TranscriptionProcessor] Polling completed after', pollCount, 'attempts')
+        } catch (pollingError) {
+          console.error('[TranscriptionProcessor] Polling loop error:', {
+            error: pollingError instanceof Error ? pollingError.message : 'Unknown error',
+            pollCount,
+            elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
+          })
+          throw pollingError
+        }
         
         // Use the completed transcript
         const finalTranscript = completedTranscript
@@ -346,22 +366,39 @@ export async function processTranscription(params: {
         // Group words into proper segments for subtitles
         const segments = groupWordsIntoSegments(finalTranscript.words || [])
         
-        transcription = {
+        return {
           text: finalTranscript.text || '',
           segments: segments,
           language: finalTranscript.language_code || 'en',
           duration: finalTranscript.audio_duration || 0
         }
-      } catch (assemblyError) {
-        console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
-          error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
-          stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
-          type: typeof assemblyError,
-          projectId,
-          videoUrl
-        })
+        } catch (assemblyError) {
+          console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
+            error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
+            stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
+            type: typeof assemblyError,
+            projectId,
+            videoUrl
+          })
+          throw assemblyError
+        }
+      })()
+
+      // Create a timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('AssemblyAI transcription timeout after 4 minutes'))
+        }, 240000) // 4 minutes
+      })
+
+      try {
+        // Race between transcription and timeout
+        transcription = await Promise.race([transcriptionPromise, timeoutPromise])
+        isMock = false
+      } catch (error) {
+        console.error('[TranscriptionProcessor] AssemblyAI process failed or timed out:', error)
         console.log('[TranscriptionProcessor] Falling back to mock transcription')
-        transcription = mockTranscription // Fallback
+        transcription = mockTranscription
         isMock = true
       }
     } else {
