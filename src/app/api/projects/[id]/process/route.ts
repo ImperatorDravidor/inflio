@@ -34,34 +34,35 @@ export async function POST(
     );
     
     if (hasTranscriptionTask) {
-      // Import and call transcription directly to avoid CloudProxy issues
-      console.log('[Process Route] Starting transcription directly...');
-      console.log('[Process Route] Project ID:', projectId);
-      console.log('[Process Route] Video URL:', project.video_url);
-      
+      // Queue transcription processing via Inngest
       try {
-        // Import the transcription processor
-        const { processTranscription } = await import('@/lib/transcription-processor');
+        console.log('[Process Route] Queueing transcription job with Inngest...')
+        console.log('[Process Route] Project ID:', projectId)
+        console.log('[Process Route] Video URL:', project.video_url)
         
-        // Start transcription in the background (don't await completion)
-        processTranscription({
-          projectId: project.id,
-          videoUrl: project.video_url,
-          language: 'en',
-          userId: userId!
-        }).then(() => {
-          console.log('[Process Route] Transcription completed successfully');
-        }).catch(error => {
-          console.error('[Process Route] Transcription failed:', error);
-          ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        // Send event to Inngest
+        await inngest.send({
+          name: 'transcription/video.process',
+          data: {
+            projectId,
+            videoUrl: project.video_url,
+            userId,
+            language: 'en'
+          }
         });
         
-        // Wait a bit to ensure the transcription has started
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('[Process Route] Transcription job queued successfully with Inngest')
         
+        // Update task progress to show it's queued
+        await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing');
+        console.log('[Process Route] Updated transcription task to processing status')
       } catch (error) {
-        console.error('[Process Route] Failed to start transcription:', error);
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+        console.error('[Process Route] Failed to queue transcription processing:', error);
+        console.error('[Process Route] Error details:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        // Don't throw - allow clips to continue even if transcription queue fails
       }
     }
 

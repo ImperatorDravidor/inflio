@@ -200,12 +200,10 @@ export async function processTranscription(params: {
     console.log('[TranscriptionProcessor] Updated progress to 30%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
-      // Wrap the entire AssemblyAI process in a timeout promise
-      const transcriptionPromise = (async () => {
-        try {
-          console.log('[TranscriptionProcessor] Creating AssemblyAI client...')
-          // Use AssemblyAI for transcription
-          const assembly = getAssemblyAI()
+      try {
+        console.log('[TranscriptionProcessor] Creating AssemblyAI client...')
+        // Use AssemblyAI for transcription
+        const assembly = getAssemblyAI()
         
         console.log('[TranscriptionProcessor] Submitting transcription request to AssemblyAI...')
         
@@ -225,16 +223,11 @@ export async function processTranscription(params: {
         console.log('[TranscriptionProcessor] Signed URL created for AssemblyAI')
         const params: TranscribeParams = { audio: signedUrlData.signedUrl }
         
-        console.log('[TranscriptionProcessor] Submitting transcription job to AssemblyAI...')
-        console.log('[TranscriptionProcessor] Assembly client:', {
-          hasTranscripts: !!assembly.transcripts,
-          hasSubmit: !!assembly.transcripts?.submit,
-          submitType: typeof assembly.transcripts?.submit
-        })
+        console.log('[TranscriptionProcessor] Calling assembly.transcripts.transcribe()...')
         
-        // Submit the transcription job (non-blocking)
+        // Use the transcribe method (blocking, but Inngest handles the timeout)
         const transcript = await withRetry(
-          () => assembly.transcripts.submit(params),
+          () => assembly.transcripts.transcribe(params),
           {
             maxAttempts: 3,
             initialDelay: 5000,
@@ -252,109 +245,22 @@ export async function processTranscription(params: {
           }
         )
         
-        console.log('[TranscriptionProcessor] Transcription job submitted:', {
-          id: transcript.id,
-          status: transcript.status,
-          type: typeof transcript,
-          keys: transcript ? Object.keys(transcript) : []
-        })
-        
-        // Ensure we have a valid transcript object
-        if (!transcript || !transcript.id) {
-          console.error('[TranscriptionProcessor] Invalid transcript object received from submit:', transcript)
-          throw new Error('Invalid transcript object from AssemblyAI submit')
-        }
-        
-        // Add a small delay to ensure the job is registered
-        console.log('[TranscriptionProcessor] Waiting 2 seconds before starting polling...')
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // Poll for completion with Vercel-friendly timeouts
-        const maxPollingTime = 240000 // 4 minutes (leaving 1 minute buffer for 5 min timeout)
-        const pollInterval = 5000 // 5 seconds
-        const startTime = Date.now()
-        let completedTranscript = transcript
-        let pollCount = 0
-        
-        console.log('[TranscriptionProcessor] Starting polling loop for transcript:', transcript.id)
-        
-        try {
-          while (completedTranscript.status !== 'completed' && completedTranscript.status !== 'error') {
-          pollCount++
-          
-          // Check if we're approaching Vercel timeout
-          if (Date.now() - startTime > maxPollingTime) {
-            console.error('[TranscriptionProcessor] Polling timeout reached after', pollCount, 'attempts, falling back to mock')
-            throw new Error('Transcription polling timeout on Vercel')
-          }
-          
-          console.log(`[TranscriptionProcessor] Waiting ${pollInterval}ms before poll attempt ${pollCount}...`)
-          
-          // Wait before polling
-          await new Promise(resolve => setTimeout(resolve, pollInterval))
-          
-          console.log(`[TranscriptionProcessor] Poll attempt ${pollCount} - fetching transcript status...`)
-          
-          try {
-            // Get updated transcript status
-            completedTranscript = await assembly.transcripts.get(transcript.id)
-            
-            console.log(`[TranscriptionProcessor] Poll attempt ${pollCount} response:`, {
-              id: completedTranscript.id,
-              status: completedTranscript.status,
-              hasText: !!completedTranscript.text,
-              hasWords: !!completedTranscript.words,
-              elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
-            })
-            
-            // Update progress based on AssemblyAI status
-            if (completedTranscript.status === 'processing' || completedTranscript.status === 'queued') {
-              const elapsed = Date.now() - startTime
-              const progress = Math.min(50, 30 + Math.floor((elapsed / maxPollingTime) * 20))
-              await ProjectService.updateTaskProgress(projectId, 'transcription', progress, 'processing')
-              console.log(`[TranscriptionProcessor] Updated progress to ${progress}%`)
-            }
-          } catch (pollError) {
-            console.error(`[TranscriptionProcessor] Poll attempt ${pollCount} failed:`, {
-              error: pollError instanceof Error ? pollError.message : 'Unknown error',
-              transcriptId: transcript.id
-            })
-            // Continue polling unless it's a critical error
-            if (pollError instanceof Error && pollError.message.includes('not found')) {
-              throw pollError
-            }
-          }
-        }
-        
-        console.log('[TranscriptionProcessor] Polling completed after', pollCount, 'attempts')
-        } catch (pollingError) {
-          console.error('[TranscriptionProcessor] Polling loop error:', {
-            error: pollingError instanceof Error ? pollingError.message : 'Unknown error',
-            pollCount,
-            elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
-          })
-          throw pollingError
-        }
-        
-        // Use the completed transcript
-        const finalTranscript = completedTranscript
-        
         console.log('[TranscriptionProcessor] AssemblyAI response received:', {
-          status: finalTranscript.status,
-          id: finalTranscript.id,
-          hasText: !!finalTranscript.text,
-          textLength: finalTranscript.text?.length || 0,
-          hasWords: !!finalTranscript.words,
-          wordsCount: finalTranscript.words?.length || 0
+          status: transcript.status,
+          id: transcript.id,
+          hasText: !!transcript.text,
+          textLength: transcript.text?.length || 0,
+          hasWords: !!transcript.words,
+          wordsCount: transcript.words?.length || 0
         })
 
         // Check if transcription is actually completed
-        if (finalTranscript.status !== 'completed') {
-          console.error('[TranscriptionProcessor] AssemblyAI returned non-completed status:', finalTranscript.status)
-          if (finalTranscript.status === 'error') {
-            throw new Error(`AssemblyAI Error: ${finalTranscript.error}`)
+        if (transcript.status !== 'completed') {
+          console.error('[TranscriptionProcessor] AssemblyAI returned non-completed status:', transcript.status)
+          if (transcript.status === 'error') {
+            throw new Error(`AssemblyAI Error: ${transcript.error}`)
           } else {
-            throw new Error(`AssemblyAI transcription not completed. Status: ${finalTranscript.status}`)
+            throw new Error(`AssemblyAI transcription not completed. Status: ${transcript.status}`)
           }
         }
 
@@ -364,41 +270,24 @@ export async function processTranscription(params: {
 
         // Convert AssemblyAI format to our internal format
         // Group words into proper segments for subtitles
-        const segments = groupWordsIntoSegments(finalTranscript.words || [])
+        const segments = groupWordsIntoSegments(transcript.words || [])
         
-        return {
-          text: finalTranscript.text || '',
+        transcription = {
+          text: transcript.text || '',
           segments: segments,
-          language: finalTranscript.language_code || 'en',
-          duration: finalTranscript.audio_duration || 0
+          language: transcript.language_code || 'en',
+          duration: transcript.audio_duration || 0
         }
-        } catch (assemblyError) {
-          console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
-            error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
-            stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
-            type: typeof assemblyError,
-            projectId,
-            videoUrl
-          })
-          throw assemblyError
-        }
-      })()
-
-      // Create a timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('AssemblyAI transcription timeout after 4 minutes'))
-        }, 240000) // 4 minutes
-      })
-
-      try {
-        // Race between transcription and timeout
-        transcription = await Promise.race([transcriptionPromise, timeoutPromise])
-        isMock = false
-      } catch (error) {
-        console.error('[TranscriptionProcessor] AssemblyAI process failed or timed out:', error)
+      } catch (assemblyError) {
+        console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
+          error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
+          stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
+          type: typeof assemblyError,
+          projectId,
+          videoUrl
+        })
         console.log('[TranscriptionProcessor] Falling back to mock transcription')
-        transcription = mockTranscription
+        transcription = mockTranscription // Fallback
         isMock = true
       }
     } else {
