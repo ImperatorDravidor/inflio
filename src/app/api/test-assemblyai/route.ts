@@ -1,7 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { AssemblyAI } from 'assemblyai'
+import { requireDevelopmentOrAdmin } from '../middleware-auth'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Check authorization
+  const authError = await requireDevelopmentOrAdmin(req)
+  if (authError) return authError
+
   try {
     const apiKey = process.env.ASSEMBLYAI_API_KEY
     
