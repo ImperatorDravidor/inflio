@@ -10,7 +10,7 @@ const mockContentAnalysis = {
   keywords: ['introduction', 'key points', 'innovation', 'implementation', 'best practices'],
   topics: ['Content Creation', 'Innovation', 'Best Practices'],
   summary: 'This video provides an introduction to the topic, discusses key points including innovation and creativity.',
-  sentiment: 'positive' as const,
+  sentiment: 'positive' as 'positive' | 'neutral' | 'negative',
   keyMoments: [
     { timestamp: 0, description: 'Introduction' },
     { timestamp: 15, description: 'Innovation discussion' },
