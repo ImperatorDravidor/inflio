@@ -2,7 +2,6 @@ import { inngest } from './client'
 import { KlapAPIService } from '@/lib/klap-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { processTranscription } from '@/lib/transcription-processor'
 
 /**
  * Process Klap video clips with proper async handling
@@ -198,60 +197,6 @@ export const processKlapVideo = inngest.createFunction(
   }
 )
 
-/**
- * Process video transcription using AssemblyAI
- */
-export const processVideoTranscription = inngest.createFunction(
-  {
-    id: 'process-video-transcription',
-    name: 'Process Video Transcription',
-    throttle: {
-      limit: 5,
-      period: '1m',
-      key: 'event.data.userId'
-    }
-  },
-  { event: 'transcription/video.process' },
-  async ({ event, step }) => {
-    const { projectId, videoUrl, userId, language = 'en' } = event.data
-
-    console.log('[Inngest] Starting transcription for project:', projectId)
-
-    // Step 1: Process transcription (this runs the entire transcription process)
-    const result = await step.run('process-transcription', async () => {
-      try {
-        // Call the transcription processor
-        const transcriptionResult = await processTranscription({
-          projectId,
-          videoUrl,
-          language,
-          userId
-        })
-        
-        console.log('[Inngest] Transcription completed:', {
-          projectId,
-          success: transcriptionResult.success,
-          mock: transcriptionResult.mock
-        })
-        
-        return transcriptionResult
-      } catch (error) {
-        console.error('[Inngest] Transcription failed:', error)
-        // Update task as failed
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
-        throw error
-      }
-    })
-
-    // Step 2: Send notification (optional)
-    await step.run('send-transcription-notification', async () => {
-      console.log(`[Inngest] Transcription ready for user ${userId}, project ${projectId}`)
-      // TODO: Implement email/push notification if needed
-    })
-
-    return result
-  }
-)
 
 /**
  * Check Klap processing status (for manual polling)
