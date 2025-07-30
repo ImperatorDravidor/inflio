@@ -302,13 +302,19 @@ export function EnhancedPublishingWorkflow({
     
     setIsNavigating(true)
     
-    // Store selected content IDs
-    sessionStorage.setItem('selectedContentIds', JSON.stringify(Array.from(selectedIds)))
-    
-    // Navigate to staging page
-    setTimeout(() => {
-      router.push(`/projects/${project.id}/stage`)
-    }, 500)
+    // If onPublish callback is provided, use it
+    if (onPublish) {
+      // Call the callback with selected IDs
+      onPublish(Array.from(selectedIds))
+      setIsNavigating(false)
+    } else {
+      // Otherwise, navigate directly
+      sessionStorage.setItem('selectedContentIds', JSON.stringify(Array.from(selectedIds)))
+      
+      setTimeout(() => {
+        router.push(`/projects/${project.id}/stage`)
+      }, 500)
+    }
   }
 
   // Keyboard shortcuts
