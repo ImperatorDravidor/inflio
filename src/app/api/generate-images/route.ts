@@ -165,8 +165,6 @@ export async function POST(req: NextRequest) {
         n: 1,
         size: imageType === 'story' ? '1024x1792' : '1024x1024',
         quality: 'standard',
-        style: 'natural',
-        background: needsTransparency ? 'transparent' : 'auto',
         response_format: 'b64_json' // Get base64 to handle transparency properly
       })
       

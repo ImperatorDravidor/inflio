@@ -135,8 +135,15 @@ Create a blog post that:
 7. Is optimized for SEO while remaining reader-friendly
 8. Maintains the video's tone (${contentAnalysis.sentiment})
 
-Format the response as clean HTML that can be rendered directly, using appropriate tags like <h2>, <p>, <ul>, <strong>, etc.
-Include timestamp references in the format [0:23] when mentioning specific video moments.`
+Create well-structured content with:
+- Clear HTML formatting using semantic tags (<h1>, <h2>, <h3>, <p>, <ul>, <ol>, <blockquote>, <strong>, <em>)
+- Proper paragraph breaks and spacing
+- Include relevant images placeholders where appropriate using <img> tags
+- Add code blocks with <pre><code> for any technical content
+- Use <mark> tags for highlighting important points
+- Include timestamp references as clickable links: <a href="#t=23">[0:23]</a>
+
+The content should be ready for modern blog platforms and email newsletters.`
     
     const completion = await openai.chat.completions.create({
       model: 'gpt-4-turbo-preview',
