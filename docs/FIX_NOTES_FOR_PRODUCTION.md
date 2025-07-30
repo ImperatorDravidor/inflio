@@ -31,9 +31,10 @@
 - Consolidated advanced options
 - Better image gallery display
 
-**Note**: The graphics tab in the main project page needs manual updating due to its complexity. To implement:
-1. Import SimplifiedSocialGraphics component
-2. Replace the entire graphics TabsContent with:
+**Note**: The graphics tab in `src/app/(dashboard)/projects/[id]/page.tsx` needs manual updating due to its complexity (3800+ lines). To implement:
+1. Import SimplifiedSocialGraphics component (already added at the top)
+2. Find the graphics TabsContent around line 2866
+3. Replace the entire graphics TabsContent with:
 ```tsx
 <TabsContent value="graphics" className="mt-0">
   <SimplifiedSocialGraphics
