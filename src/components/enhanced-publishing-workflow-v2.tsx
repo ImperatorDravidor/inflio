@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -23,6 +25,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -66,11 +76,22 @@ import {
   IconBulb,
   IconTrendingUp,
   IconLanguage,
-  IconBolt
+  IconBolt,
+  IconDots,
+  IconCopy,
+  IconTrash,
+  IconEdit,
+  IconChartBar,
+  IconCommand,
+  IconLoader2,
+  IconAlertCircle,
+  IconCheckbox,
+  IconSquareOff
 } from '@tabler/icons-react'
 import React from 'react'
-import type { Project, ClipData, BlogPost } from '@/lib/project-types'
+import type { Project, ClipData, BlogPost, SocialPost, GeneratedImage } from '@/lib/project-types'
 import ReactMarkdown from 'react-markdown'
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 
 interface ContentItem {
   id: string
@@ -312,108 +333,152 @@ export function EnhancedPublishingWorkflowV2({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [bulkAction, setBulkAction] = useState<string | null>(null)
+  
+  // Load saved selections from sessionStorage
+  useEffect(() => {
+    const savedSelections = sessionStorage.getItem(`project-${project.id}-selections`)
+    if (savedSelections) {
+      try {
+        const parsed = JSON.parse(savedSelections)
+        setSelectedIds(new Set(parsed))
+      } catch (e) {
+        console.error('Failed to load saved selections:', e)
+      }
+    }
+  }, [project.id])
+  
+  // Save selections when they change
+  useEffect(() => {
+    if (selectedIds.size > 0) {
+      sessionStorage.setItem(
+        `project-${project.id}-selections`, 
+        JSON.stringify(Array.from(selectedIds))
+      )
+    } else {
+      sessionStorage.removeItem(`project-${project.id}-selections`)
+    }
+  }, [selectedIds, project.id])
+  
+  // Keyboard shortcuts
+  const shortcuts = [
+    {
+      key: 'a',
+      ctrlKey: true,
+      description: 'Select all items',
+      action: () => selectAll()
+    },
+    {
+      key: 'a',
+      ctrlKey: true,
+      shiftKey: true,
+      description: 'Deselect all items',
+      action: () => deselectAll()
+    },
+    {
+      key: '/',
+      ctrlKey: true,
+      description: 'Focus search',
+      action: () => {
+        const searchInput = document.querySelector('input[placeholder="Search content..."]') as HTMLInputElement
+        searchInput?.focus()
+      }
+    },
+    {
+      key: 'g',
+      description: 'Grid view',
+      action: () => setViewMode('grid')
+    },
+    {
+      key: 'l',
+      description: 'List view',
+      action: () => setViewMode('list')
+    },
+    {
+      key: 'Escape',
+      description: 'Close preview',
+      action: () => {
+        setShowPreview(false)
+        setPreviewItem(null)
+      }
+    }
+  ]
+  
+  useKeyboardShortcuts({ shortcuts, enabled: true })
 
   // Convert project content to ContentItem format
   const contentItems = useMemo(() => {
     const items: ContentItem[] = []
     
     // Add clips
-    if (project.clips?.length) {
-      project.clips.forEach((clip: ClipData) => {
+    if (project.folders?.clips?.length) {
+      project.folders.clips.forEach((clip: ClipData) => {
         items.push({
           id: `clip-${clip.id}`,
           type: 'clip',
           title: clip.title || `Clip ${clip.id}`,
           description: clip.description,
-          thumbnail: clip.thumbnail_url,
+          thumbnail: clip.thumbnail,
           duration: clip.duration,
           tags: clip.tags,
-          createdAt: clip.created_at || new Date().toISOString(),
-          ready: !!clip.video_url,
-          viralityScore: clip.virality_score,
-          videoUrl: clip.video_url
+          createdAt: clip.createdAt || new Date().toISOString(),
+          ready: !!clip.exportUrl,
+          viralityScore: clip.score,
+          videoUrl: clip.previewUrl || clip.exportUrl
         })
       })
     }
     
     // Add blog posts
-    if (project.blog_posts?.length) {
-      project.blog_posts.forEach((blog: BlogPost) => {
+    if (project.folders?.blog?.length) {
+      project.folders.blog.forEach((blog: BlogPost) => {
         items.push({
           id: `blog-${blog.id}`,
           type: 'blog',
           title: blog.title,
-          description: blog.meta_description,
+          description: blog.seoDescription,
           content: blog.content,
           wordCount: blog.content?.split(' ').length,
           tags: blog.tags,
-          createdAt: blog.created_at || new Date().toISOString(),
+          createdAt: blog.createdAt || new Date().toISOString(),
           ready: true,
-          platforms: blog.platforms
+          platforms: []
         })
       })
     }
     
-    // Add social graphics
-    if (project.social_graphics?.length) {
-      project.social_graphics.forEach((graphic: any) => {
+    // Add social posts
+    if (project.folders?.social?.length) {
+      project.folders.social.forEach((social: SocialPost) => {
         items.push({
-          id: `image-${graphic.id}`,
+          id: `social-${social.id}`,
+          type: 'social',
+          title: `${social.platform} Post`,
+          description: social.content,
+          content: social.content,
+          platforms: [social.platform],
+          tags: social.hashtags,
+          createdAt: social.createdAt || new Date().toISOString(),
+          ready: social.status === 'published' || social.status === 'scheduled',
+          metadata: social
+        })
+      })
+    }
+    
+    // Add generated images
+    if (project.folders?.images?.length) {
+      project.folders.images.forEach((image: GeneratedImage) => {
+        items.push({
+          id: `image-${image.id}`,
           type: 'image',
-          title: graphic.alt_text || 'Social Graphic',
-          description: graphic.prompt,
-          imageUrl: graphic.image_url,
-          thumbnail: graphic.image_url,
-          createdAt: graphic.created_at || new Date().toISOString(),
+          title: image.prompt?.slice(0, 50) + '...' || 'Generated Image',
+          description: image.prompt,
+          imageUrl: image.url || image.imageData,
+          thumbnail: image.url || image.imageData,
+          createdAt: image.createdAt || new Date().toISOString(),
           ready: true,
-          platforms: graphic.platforms
-        })
-      })
-    }
-    
-    // Add captions
-    if (project.optimized_captions?.length) {
-      project.optimized_captions.forEach((caption: any, idx: number) => {
-        items.push({
-          id: `caption-${idx}`,
-          type: 'caption',
-          title: `${caption.platform} Caption`,
-          description: caption.caption,
-          content: caption.caption,
-          platforms: [caption.platform],
-          createdAt: new Date().toISOString(),
-          ready: true,
-          tags: caption.hashtags
-        })
-      })
-    }
-    
-    // Add thread
-    if (project.thread?.length) {
-      items.push({
-        id: 'thread-1',
-        type: 'thread',
-        title: 'Twitter/X Thread',
-        description: project.thread[0],
-        thread: project.thread,
-        platforms: ['twitter'],
-        createdAt: new Date().toISOString(),
-        ready: true
-      })
-    }
-    
-    // Add quote cards
-    if (project.quote_cards?.length) {
-      project.quote_cards.forEach((quote: any, idx: number) => {
-        items.push({
-          id: `quote-${idx}`,
-          type: 'quote',
-          title: 'Quote Card',
-          quoteText: quote.text,
-          quoteAuthor: quote.author,
-          imageUrl: quote.image_url,
-          createdAt: new Date().toISOString(),
-          ready: true
+          metadata: image
         })
       })
     }
@@ -483,11 +548,54 @@ export function EnhancedPublishingWorkflowV2({
 
   const selectAll = () => {
     setSelectedIds(new Set(filteredContent.map(item => item.id)))
+    toast.success(`Selected all ${filteredContent.length} items`)
   }
 
   const deselectAll = () => {
     setSelectedIds(new Set())
+    toast.info('Deselected all items')
   }
+  
+  const selectByType = (type: string) => {
+    const typeItems = filteredContent.filter(item => item.type === type)
+    const newSelection = new Set(selectedIds)
+    typeItems.forEach(item => newSelection.add(item.id))
+    setSelectedIds(newSelection)
+    toast.success(`Selected ${typeItems.length} ${type} items`)
+  }
+  
+  const invertSelection = () => {
+    const newSelection = new Set<string>()
+    filteredContent.forEach(item => {
+      if (!selectedIds.has(item.id)) {
+        newSelection.add(item.id)
+      }
+    })
+    setSelectedIds(newSelection)
+    toast.success('Inverted selection')
+  }
+  
+  // Content statistics
+  const stats = useMemo(() => {
+    const selected = contentItems.filter(item => selectedIds.has(item.id))
+    const totalDuration = selected
+      .filter(item => item.type === 'clip')
+      .reduce((sum, item) => sum + (item.duration || 0), 0)
+    const totalWords = selected
+      .filter(item => item.type === 'blog')
+      .reduce((sum, item) => sum + (item.wordCount || 0), 0)
+    const avgScore = selected
+      .filter(item => item.viralityScore)
+      .reduce((sum, item, _, arr) => sum + (item.viralityScore || 0) / arr.length, 0)
+      
+    return {
+      totalDuration,
+      totalWords,
+      avgScore: Math.round(avgScore),
+      readyCount: selected.filter(item => item.ready).length,
+      processingCount: selected.filter(item => !item.ready).length
+    }
+  }, [contentItems, selectedIds])
 
   const handleContinue = () => {
     if (selectedIds.size === 0) {
@@ -536,36 +644,94 @@ export function EnhancedPublishingWorkflowV2({
   return (
     <div className={cn("space-y-6", className)}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Select Content to Publish</h2>
-          <p className="text-muted-foreground mt-1">
-            Choose the content you want to stage for publishing across platforms
-          </p>
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              Select Content to Publish
+              {isLoading && <IconLoader2 className="h-5 w-5 animate-spin" />}
+            </h2>
+            <p className="text-muted-foreground mt-1">
+              Choose the content you want to stage for publishing across platforms
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  >
+                    {viewMode === 'grid' ? <IconList className="h-4 w-4" /> : <IconLayoutGrid className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Switch to {viewMode === 'grid' ? 'list' : 'grid'} view</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <IconCommand className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="space-y-1 text-xs">
+                    <p className="font-semibold">Keyboard Shortcuts</p>
+                    <p>Ctrl+A: Select all</p>
+                    <p>Ctrl+/: Search</p>
+                    <p>G: Grid view</p>
+                    <p>L: List view</p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <Badge variant="secondary" className="gap-1">
+              <IconChecks className="h-3 w-3" />
+              {selectedIds.size} / {contentItems.length} selected
+            </Badge>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                >
-                  {viewMode === 'grid' ? <IconList className="h-4 w-4" /> : <IconLayoutGrid className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Switch to {viewMode === 'grid' ? 'list' : 'grid'} view</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          <Badge variant="secondary" className="gap-1">
-            <IconChecks className="h-3 w-3" />
-            {selectedIds.size} / {contentItems.length} selected
-          </Badge>
-        </div>
+        
+        {/* Statistics Bar */}
+        {selectedIds.size > 0 && (
+          <Card className="bg-muted/30">
+            <CardContent className="py-3 px-4">
+              <div className="flex flex-wrap items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <IconVideo className="h-4 w-4 text-purple-600" />
+                  <span>{Math.floor(stats.totalDuration / 60)} min video</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <IconFileText className="h-4 w-4 text-blue-600" />
+                  <span>{stats.totalWords.toLocaleString()} words</span>
+                </div>
+                {stats.avgScore > 0 && (
+                  <div className="flex items-center gap-2">
+                    <IconTrendingUp className="h-4 w-4 text-green-600" />
+                    <span>{stats.avgScore}% avg score</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <IconCheck className="h-4 w-4 text-green-600" />
+                  <span>{stats.readyCount} ready</span>
+                </div>
+                {stats.processingCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <IconClock className="h-4 w-4 text-orange-600" />
+                    <span>{stats.processingCount} processing</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Filters and Search */}
@@ -630,14 +796,47 @@ export function EnhancedPublishingWorkflowV2({
             </Button>
 
             {/* Select Actions */}
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={selectAll}>
-                Select All
-              </Button>
-              <Button variant="outline" size="sm" onClick={deselectAll}>
-                Deselect All
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <IconCheckbox className="h-4 w-4" />
+                  Select
+                  <IconChevronRight className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Selection Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={selectAll}>
+                  <IconChecks className="h-4 w-4 mr-2" />
+                  Select All
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={deselectAll}>
+                  <IconSquareOff className="h-4 w-4 mr-2" />
+                  Deselect All
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={invertSelection}>
+                  <IconAdjustments className="h-4 w-4 mr-2" />
+                  Invert Selection
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Select by Type</DropdownMenuLabel>
+                {Object.entries(contentTypeConfig).map(([type, config]) => {
+                  const count = contentTypeCounts[type] || 0
+                  if (count === 0) return null
+                  
+                  return (
+                    <DropdownMenuItem 
+                      key={type}
+                      onClick={() => selectByType(type)}
+                    >
+                      <config.icon className={cn("h-4 w-4 mr-2", config.color)} />
+                      {config.label} ({count})
+                    </DropdownMenuItem>
+                  )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
@@ -645,11 +844,76 @@ export function EnhancedPublishingWorkflowV2({
       {/* Content Grid/List */}
       <ScrollArea className="h-[600px] pr-4">
         <AnimatePresence mode="wait">
-          {filteredContent.length === 0 ? (
+          {isLoading ? (
+            <div className={cn(
+              viewMode === 'grid' 
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" 
+                : "space-y-4"
+            )}>
+              {[...Array(6)].map((_, i) => (
+                <Card key={i} className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <div className="flex-1">
+                        <Skeleton className="h-5 w-3/4 mb-2" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-32 w-full rounded-lg" />
+                    <div className="flex justify-between">
+                      <Skeleton className="h-6 w-16" />
+                      <Skeleton className="h-8 w-8" />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : filteredContent.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
-                <IconInfoCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No content found matching your filters</p>
+              <CardContent className="py-16 text-center">
+                <div className="mx-auto max-w-sm space-y-4">
+                  {searchQuery || filterType !== 'all' ? (
+                    <>
+                      <IconSearch className="h-12 w-12 text-muted-foreground mx-auto" />
+                      <div>
+                        <h3 className="font-semibold text-lg mb-1">No results found</h3>
+                        <p className="text-muted-foreground">
+                          Try adjusting your search or filters to find content
+                        </p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setSearchQuery('')
+                          setFilterType('all')
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    </>
+                  ) : contentItems.length === 0 ? (
+                    <>
+                      <IconSparkles className="h-12 w-12 text-muted-foreground mx-auto" />
+                      <div>
+                        <h3 className="font-semibold text-lg mb-1">No content generated yet</h3>
+                        <p className="text-muted-foreground">
+                          Generate some content from your video to get started
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <IconAlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+                      <div>
+                        <h3 className="font-semibold text-lg mb-1">Something went wrong</h3>
+                        <p className="text-muted-foreground">
+                          Unable to load content. Please try refreshing the page
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -730,17 +994,81 @@ export function EnhancedPublishingWorkflowV2({
                               </Badge>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setPreviewItem(item)
-                              setShowPreview(true)
-                            }}
-                          >
-                            <IconMaximize className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setPreviewItem(item)
+                                      setShowPreview(true)
+                                    }}
+                                  >
+                                    <IconMaximize className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Preview</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <IconDots className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleSelection(item.id)
+                                  }}
+                                >
+                                  {isSelected ? (
+                                    <>
+                                      <IconSquareOff className="h-4 w-4 mr-2" />
+                                      Deselect
+                                    </>
+                                  ) : (
+                                    <>
+                                      <IconSquareCheck className="h-4 w-4 mr-2" />
+                                      Select
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigator.clipboard.writeText(item.content || item.description || item.title)
+                                    toast.success('Copied to clipboard')
+                                  }}
+                                >
+                                  <IconCopy className="h-4 w-4 mr-2" />
+                                  Copy content
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setPreviewItem(item)
+                                    setShowPreview(true)
+                                  }}
+                                >
+                                  <IconEye className="h-4 w-4 mr-2" />
+                                  View details
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -753,33 +1081,65 @@ export function EnhancedPublishingWorkflowV2({
       </ScrollArea>
 
       {/* Actions */}
-      <Card>
+      <Card className="relative overflow-hidden">
+        {isNavigating && (
+          <div className="absolute top-0 left-0 right-0 h-1">
+            <Progress className="h-1" value={75} />
+          </div>
+        )}
         <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {selectedIds.size > 0 ? (
-                <>Selected {selectedIds.size} items to stage for publishing</>
-              ) : (
-                <>Select content to continue</>
-              )}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium">
+                {selectedIds.size > 0 ? (
+                  <>
+                    {selectedIds.size} {selectedIds.size === 1 ? 'item' : 'items'} selected
+                  </>
+                ) : (
+                  <>No items selected</>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {selectedIds.size > 0 ? (
+                  <>Ready to stage for publishing across platforms</>
+                ) : (
+                  <>Select at least one content item to continue</>
+                )}
+              </div>
             </div>
-            <Button
-              onClick={handleContinue}
-              disabled={selectedIds.size === 0 || isNavigating}
-              className="gap-2"
-            >
-              {isNavigating ? (
-                <>
-                  <IconBolt className="h-4 w-4 animate-pulse" />
-                  Preparing...
-                </>
-              ) : (
-                <>
-                  Continue to Staging
-                  <IconArrowRight className="h-4 w-4" />
-                </>
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && !isNavigating && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={deselectAll}
+                  className="text-muted-foreground"
+                >
+                  Clear selection
+                </Button>
               )}
-            </Button>
+              <Button
+                onClick={handleContinue}
+                disabled={selectedIds.size === 0 || isNavigating}
+                size="default"
+                className={cn(
+                  "gap-2 min-w-[160px]",
+                  isNavigating && "animate-pulse"
+                )}
+              >
+                {isNavigating ? (
+                  <>
+                    <IconLoader2 className="h-4 w-4 animate-spin" />
+                    Preparing...
+                  </>
+                ) : (
+                  <>
+                    Continue to Staging
+                    <IconArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
