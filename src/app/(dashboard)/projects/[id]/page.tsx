@@ -81,6 +81,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PublishingWorkflow } from "@/components/publishing-workflow"
 import { EnhancedPublishingWorkflow } from "@/components/enhanced-publishing-workflow"
+import { EnhancedPublishingWorkflowV2 } from "@/components/enhanced-publishing-workflow-v2"
 import { useProject } from "@/hooks/use-project"
 import { VideoErrorState } from "@/components/video-error-state"
 import { TranscriptModal } from "@/components/transcript-modal"
@@ -3806,8 +3807,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
       {/* Enhanced Content Selection Dialog */}
       <Dialog open={showContentSelectionDialog} onOpenChange={setShowContentSelectionDialog}>
         <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
-          <div className="h-full overflow-auto">
-            <EnhancedPublishingWorkflow 
+          <div className="h-full overflow-auto p-6">
+            <EnhancedPublishingWorkflowV2 
               project={project}
               onPublish={(selectedIds) => {
                 setShowContentSelectionDialog(false)
