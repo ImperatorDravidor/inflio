@@ -678,6 +678,7 @@ export function EnhancedPublishingWorkflowV3({
   const [isNavigating, setIsNavigating] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isLoading, setIsLoading] = useState(false)
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
 
   // Convert project content to ContentItem format
   const contentItems = useMemo(() => {
@@ -881,21 +882,174 @@ export function EnhancedPublishingWorkflowV3({
     return grouped
   }, [filteredContent])
 
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const selected = contentItems.filter(item => selectedIds.has(item.id))
+    const selectedByType: Record<string, number> = {}
+    
+    selected.forEach(item => {
+      selectedByType[item.type] = (selectedByType[item.type] || 0) + 1
+    })
+    
+    const totalDuration = selected
+      .filter(item => item.type === 'clip')
+      .reduce((sum, item) => sum + (item.duration || 0), 0)
+      
+    const totalWords = selected
+      .filter(item => item.type === 'blog')
+      .reduce((sum, item) => sum + (item.wordCount || 0), 0)
+    
+    return {
+      selectedByType,
+      totalDuration,
+      totalWords,
+      totalSelected: selected.length
+    }
+  }, [contentItems, selectedIds])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 'a',
+        ctrlKey: true,
+        description: 'Select all items',
+        action: selectAll
+      },
+      {
+        key: 'd',
+        ctrlKey: true,
+        description: 'Deselect all items',
+        action: deselectAll
+      },
+      {
+        key: '/',
+        ctrlKey: true,
+        description: 'Focus search',
+        action: () => {
+          const searchInput = document.querySelector('input[placeholder="Search content..."]') as HTMLInputElement
+          searchInput?.focus()
+        }
+      },
+      {
+        key: 'Enter',
+        ctrlKey: true,
+        description: 'Continue to staging',
+        action: () => {
+          if (selectedIds.size > 0) {
+            handleContinue()
+          }
+        }
+      }
+    ],
+    enabled: true
+  })
+
   return (
     <div className={cn("space-y-6", className)}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Select Content to Publish</h2>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            Select Content to Publish
+            {isLoading && <IconLoader2 className="h-5 w-5 animate-spin" />}
+          </h2>
           <p className="text-muted-foreground mt-1">
-            Choose the content you want to stage for publishing
+            Choose the content you want to stage for publishing across platforms
           </p>
         </div>
-        <Badge variant="secondary" className="gap-1">
-          <IconChecks className="h-3 w-3" />
-          {selectedIds.size} / {contentItems.length} selected
-        </Badge>
+        <div className="flex items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowKeyboardShortcuts(!showKeyboardShortcuts)}
+                >
+                  <IconCommand className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Keyboard shortcuts</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          <Badge variant="secondary" className="gap-1">
+            <IconChecks className="h-3 w-3" />
+            {selectedIds.size} / {contentItems.length}
+          </Badge>
+        </div>
       </div>
+
+      {/* Keyboard shortcuts help */}
+      {showKeyboardShortcuts && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl+A</kbd>
+                <span className="text-muted-foreground">Select all</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl+D</kbd>
+                <span className="text-muted-foreground">Deselect all</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl+/</kbd>
+                <span className="text-muted-foreground">Search</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl+Enter</kbd>
+                <span className="text-muted-foreground">Continue</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Selection Statistics */}
+      {selectedIds.size > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <IconChecks className="h-4 w-4 text-primary" />
+                <span className="font-medium">{stats.totalSelected} items selected</span>
+              </div>
+              
+              {stats.totalDuration > 0 && (
+                <div className="flex items-center gap-2">
+                  <IconVideo className="h-4 w-4 text-purple-600" />
+                  <span>{Math.floor(stats.totalDuration / 60)}m {stats.totalDuration % 60}s of video</span>
+                </div>
+              )}
+              
+              {stats.totalWords > 0 && (
+                <div className="flex items-center gap-2">
+                  <IconFileText className="h-4 w-4 text-blue-600" />
+                  <span>{stats.totalWords.toLocaleString()} words</span>
+                </div>
+              )}
+              
+              <div className="flex items-center gap-3 ml-auto">
+                {Object.entries(stats.selectedByType).map(([type, count]) => {
+                  const config = contentTypeConfig[type as keyof typeof contentTypeConfig]
+                  if (!config) return null
+                  
+                  return (
+                    <div key={type} className="flex items-center gap-1">
+                      <config.icon className={cn("h-4 w-4", config.color)} />
+                      <span>{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -956,9 +1110,68 @@ export function EnhancedPublishingWorkflowV3({
           </div>
         ) : filteredContent.length === 0 ? (
           <Card>
-            <CardContent className="py-16 text-center">
-              <IconInfoCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No content found</p>
+            <CardContent className="py-20 text-center">
+              <div className="max-w-md mx-auto space-y-4">
+                {searchQuery || filterType !== 'all' ? (
+                  <>
+                    <IconSearch className="h-12 w-12 text-muted-foreground mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-semibold mb-1">No results found</h3>
+                      <p className="text-muted-foreground">
+                        Try adjusting your search or filters to find content
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSearchQuery('')
+                        setFilterType('all')
+                      }}
+                      className="gap-2"
+                    >
+                      <IconX className="h-4 w-4" />
+                      Clear filters
+                    </Button>
+                  </>
+                ) : contentItems.length === 0 ? (
+                  <>
+                    <div className="relative">
+                      <IconSparkles className="h-12 w-12 text-muted-foreground mx-auto" />
+                      <div className="absolute -top-2 -right-2 h-6 w-6 bg-yellow-500 rounded-full animate-pulse" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold mb-1">No content generated yet</h3>
+                      <p className="text-muted-foreground">
+                        Start by generating clips, blog posts, or social content from your video
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <IconVideo className="h-4 w-4" />
+                        Generate Clips
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <IconFileText className="h-4 w-4" />
+                        Create Blog
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <IconPhoto className="h-4 w-4" />
+                        Generate Images
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <IconAlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-semibold mb-1">Something went wrong</h3>
+                      <p className="text-muted-foreground">
+                        Unable to load content. Please refresh the page
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : filterType === 'all' ? (
