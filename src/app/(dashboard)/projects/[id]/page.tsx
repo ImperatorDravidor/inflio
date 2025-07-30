@@ -82,6 +82,7 @@ import remarkGfm from 'remark-gfm'
 import { PublishingWorkflow } from "@/components/publishing-workflow"
 import { EnhancedPublishingWorkflow } from "@/components/enhanced-publishing-workflow"
 import { EnhancedPublishingWorkflowV2 } from "@/components/enhanced-publishing-workflow-v2"
+import { EnhancedPublishingWorkflowV3 } from "@/components/enhanced-publishing-workflow-v3"
 import { useProject } from "@/hooks/use-project"
 import { VideoErrorState } from "@/components/video-error-state"
 import { TranscriptModal } from "@/components/transcript-modal"
@@ -469,9 +470,9 @@ function ProjectDetailPageContent() {
   }
 
   const handlePublishContent = (selectedContent: any[]) => {
-    // Save selected content to session storage to pass to staging page
-    sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
-    router.push(`/projects/${projectId}/stage`)
+    // This function is called when the Continue to Stage button is clicked
+    // Don't navigate immediately - let the PublishingWorkflow component handle it
+    console.log('Selected content for publishing:', selectedContent)
   }
 
   const handleEditBlog = (blogId: string) => {
@@ -3268,7 +3269,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <TabsContent value="publish" className="mt-0">
                       <PublishingWorkflow
                         project={project}
-                        onPublish={handlePublishContent}
                         className="border-0 shadow-none"
                       />
                     </TabsContent>
@@ -3807,8 +3807,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
       {/* Enhanced Content Selection Dialog */}
       <Dialog open={showContentSelectionDialog} onOpenChange={setShowContentSelectionDialog}>
         <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Select Content to Publish</DialogTitle>
+          </DialogHeader>
           <div className="h-full overflow-auto p-6">
-            <EnhancedPublishingWorkflowV2 
+            <EnhancedPublishingWorkflowV3 
               project={project}
               onPublish={(selectedIds) => {
                 setShowContentSelectionDialog(false)

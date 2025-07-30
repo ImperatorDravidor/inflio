@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 import { getStatusClasses, getPlatformClasses, getFieldClasses, getTaskClasses } from "@/lib/design-tokens"
+import { PlatformContentPreview } from "./platform-content-preview"
 
 interface EnhancedContentStagerProps {
   content: StagedContent[]
@@ -104,6 +105,7 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [showErrors, setShowErrors] = useState(false)
   const [isGenerating, setIsGenerating] = useState<Record<string, boolean>>({})
+  const [showPreview, setShowPreview] = useState(true)
 
   const currentItem = editedContent.find(item => item.id === selectedContent)
 
@@ -119,6 +121,84 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
     }
     return mapping[type] || 'video'
   }
+
+  // Map platform-specific caption field names
+  const getCaptionFieldName = (platform: Platform): string => {
+    const captionFieldMap: Record<Platform, string> = {
+      'instagram': 'caption',
+      'tiktok': 'caption',
+      'linkedin': 'caption',
+      'facebook': 'caption',
+      'youtube': 'description',
+      'x': 'tweet',
+      'threads': 'text'
+    }
+    return captionFieldMap[platform] || 'caption'
+  }
+
+  // Initialize platform content with existing captions from clips
+  useEffect(() => {
+    if (content && content.length > 0) {
+      const initializedContent = content.map(item => {
+        // If it's a clip and has original data with publication captions
+        if (item.type === 'clip' && item.originalData?.publicationCaptions) {
+          const updatedPlatformContent = { ...item.platformContent }
+          
+          // Map publication captions to platform content
+          Object.entries(item.originalData.publicationCaptions).forEach(([platform, caption]) => {
+            if (caption && typeof caption === 'string') {
+              const mappedPlatform = platform === 'twitter' ? 'x' : platform as Platform
+              
+              // Skip if platform is not in the item's platforms list
+              if (!item.platforms.includes(mappedPlatform)) return
+              
+              // Get the correct field name for this platform
+              const captionField = getCaptionFieldName(mappedPlatform)
+              
+              // Extract hashtags from caption
+              const hashtagRegex = /#\w+/g
+              const hashtags = (caption.match(hashtagRegex) || []).map(tag => tag.slice(1))
+              const captionWithoutTags = caption.replace(hashtagRegex, '').trim()
+              
+              // If platform content doesn't exist or caption field is empty, populate it
+              const existingPlatformContent = updatedPlatformContent[mappedPlatform] || {}
+              const existingCaptionValue = existingPlatformContent[captionField as keyof typeof existingPlatformContent]
+              
+              if (!existingCaptionValue) {
+                // Properly access hashtags with type safety
+                const existingHashtags: string[] = (existingPlatformContent as any).hashtags || []
+                
+                updatedPlatformContent[mappedPlatform] = {
+                  caption: '',  // Ensure required fields have default values
+                  hashtags: hashtags.length > 0 ? hashtags : existingHashtags,
+                  ...existingPlatformContent,
+                  [captionField]: caption, // Use full caption including hashtags
+                  characterCount: caption.length,
+                  isValid: true
+                }
+                
+                // For YouTube, also set the title if not present
+                if (mappedPlatform === 'youtube' && !updatedPlatformContent[mappedPlatform]?.title) {
+                  updatedPlatformContent[mappedPlatform] = {
+                    ...updatedPlatformContent[mappedPlatform]!,
+                    title: item.title || 'Video Clip'
+                  }
+                }
+              }
+            }
+          })
+          
+          return {
+            ...item,
+            platformContent: updatedPlatformContent
+          }
+        }
+        return item
+      })
+      
+      setEditedContent(initializedContent)
+    }
+  }, [content])
 
   // Generate tasks for current content and platform
   useEffect(() => {
@@ -741,105 +821,140 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
           </Card>
         </div>
 
-        {/* Right Panel - Form Fields */}
-        <div className="lg:col-span-2">
-          {currentPlatform && formDef ? (
-          <Card>
-              <CardHeader>
-              <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "p-2 rounded-lg text-white bg-gradient-to-br",
-                      platformColors[currentPlatform]
-                    )}>
-                      {platformIcons[currentPlatform] && (
-                        <>{React.createElement(platformIcons[currentPlatform], { className: "h-5 w-5" })}</>
-                      )}
-                </div>
-                    <div>
-                      <CardTitle>{platformNames[currentPlatform]} Content</CardTitle>
-                      <CardDescription>
-                        {contentType.charAt(0).toUpperCase() + contentType.slice(1)} requirements
-                      </CardDescription>
-                      </div>
+        {/* Right Panel - Form Fields and Preview */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Toggle Preview Button */}
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPreview(!showPreview)}
+            >
+              <IconEye className={cn("h-4 w-4 mr-2", showPreview && "text-primary")} />
+              {showPreview ? 'Hide' : 'Show'} Preview
+            </Button>
+          </div>
+
+          <div className={cn(
+            "grid gap-6",
+            showPreview ? "lg:grid-cols-2" : "lg:grid-cols-1"
+          )}>
+            {/* Form Section */}
+            <div>
+              {currentPlatform && formDef ? (
+              <Card>
+                  <CardHeader>
+                  <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "p-2 rounded-lg text-white bg-gradient-to-br",
+                          platformColors[currentPlatform]
+                        )}>
+                          {platformIcons[currentPlatform] && (
+                            <>{React.createElement(platformIcons[currentPlatform], { className: "h-5 w-5" })}</>
+                          )}
                     </div>
-                                  <Button
-                                    variant="outline"
-                                  size="sm"
-                    onClick={generateAIContent}
-                    disabled={isGenerating[currentPlatform]}
-                  >
-                    <IconSparkles className={cn(
-                      "h-4 w-4 mr-2",
-                      isGenerating[currentPlatform] && "animate-spin"
-                    )} />
-                    AI Generate
-                                </Button>
-                              </div>
-              </CardHeader>
-              <CardContent>
-                <motion.div
-                  key={`${currentItem.id}-${currentPlatform}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
-                >
-                  {/* Media Requirements Alert */}
-                  {formDef.mediaRequirements && (
-                    <Alert>
-                      <IconInfoCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Media Requirements:</strong>
-                        <ul className="mt-2 space-y-1 text-sm">
-                          {formDef.mediaRequirements.minDuration && (
-                            <li>• Min duration: {formDef.mediaRequirements.minDuration}s</li>
-                          )}
-                          {formDef.mediaRequirements.maxDuration && (
-                            <li>• Max duration: {formDef.mediaRequirements.maxDuration}s</li>
-                          )}
-                          {formDef.mediaRequirements.aspectRatio && (
-                            <li>• Aspect ratios: {formDef.mediaRequirements.aspectRatio.join(', ')}</li>
-                          )}
-                          {formDef.mediaRequirements.formats && (
-                            <li>• Formats: {formDef.mediaRequirements.formats.join(', ')}</li>
-                          )}
-                        </ul>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Form Fields */}
-                  {formDef.fields.map(field => (
-                    <div key={field.name}>
-                      {renderField(field)}
+                        <div>
+                          <CardTitle>{platformNames[currentPlatform]} Content</CardTitle>
+                          <CardDescription>
+                            {contentType.charAt(0).toUpperCase() + contentType.slice(1)} requirements
+                          </CardDescription>
                           </div>
-                        ))}
+                        </div>
+                                      <Button
+                                        variant="outline"
+                                      size="sm"
+                        onClick={generateAIContent}
+                        disabled={isGenerating[currentPlatform]}
+                      >
+                        <IconSparkles className={cn(
+                          "h-4 w-4 mr-2",
+                          isGenerating[currentPlatform] && "animate-spin"
+                        )} />
+                        AI Generate
+                                    </Button>
+                                  </div>
+                  </CardHeader>
+                  <CardContent>
+                    <motion.div
+                      key={`${currentItem.id}-${currentPlatform}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-6"
+                    >
+                      {/* Media Requirements Alert */}
+                      {formDef.mediaRequirements && (
+                        <Alert>
+                          <IconInfoCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            <strong>Media Requirements:</strong>
+                            <ul className="mt-2 space-y-1 text-sm">
+                              {formDef.mediaRequirements.minDuration && (
+                                <li>• Min duration: {formDef.mediaRequirements.minDuration}s</li>
+                              )}
+                              {formDef.mediaRequirements.maxDuration && (
+                                <li>• Max duration: {formDef.mediaRequirements.maxDuration}s</li>
+                              )}
+                              {formDef.mediaRequirements.aspectRatio && (
+                                <li>• Aspect ratios: {formDef.mediaRequirements.aspectRatio.join(', ')}</li>
+                              )}
+                              {formDef.mediaRequirements.formats && (
+                                <li>• Formats: {formDef.mediaRequirements.formats.join(', ')}</li>
+                              )}
+                            </ul>
+                          </AlertDescription>
+                        </Alert>
+                      )}
 
-                  {/* Platform Tips */}
-                  <Alert className="bg-primary/5 border-primary/20">
-                    <IconBrandInstagram className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Pro Tips for {platformNames[currentPlatform]}:</strong>
-                      <ul className="mt-2 space-y-1 text-sm">
-                        {getPlatformTips(currentPlatform, contentType).map((tip, idx) => (
-                          <li key={idx}>• {tip}</li>
-                        ))}
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                </motion.div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">
-                  Select a platform to start preparing content
-                </p>
-              </CardContent>
-            </Card>
-          )}
+                      {/* Form Fields */}
+                      {formDef.fields.map(field => (
+                        <div key={field.name}>
+                          {renderField(field)}
+                              </div>
+                            ))}
+
+                      {/* Platform Tips */}
+                      <Alert className="bg-primary/5 border-primary/20">
+                        <IconBrandInstagram className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Pro Tips for {platformNames[currentPlatform]}:</strong>
+                          <ul className="mt-2 space-y-1 text-sm">
+                            {getPlatformTips(currentPlatform, contentType).map((tip, idx) => (
+                              <li key={idx}>• {tip}</li>
+                            ))}
+                          </ul>
+                        </AlertDescription>
+                      </Alert>
+                    </motion.div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="py-16 text-center">
+                    <IconAlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground">
+                      Select a platform to start preparing content
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Preview Section */}
+            {showPreview && currentPlatform && currentItem && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+              >
+                <PlatformContentPreview
+                  content={currentItem}
+                  platform={currentPlatform}
+                />
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
         </div>

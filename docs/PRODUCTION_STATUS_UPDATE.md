@@ -28,6 +28,22 @@
 - Kept gpt-image-1 model name as requested
 - Image generation now works without 400 errors
 
+### 6. Publishing Dialog Accessibility - FIXED ✅
+- Added missing DialogTitle for screen reader accessibility
+- Title is visually hidden with sr-only class
+- Dialog now complies with accessibility standards
+
+### 7. Content Type Display Improvements - FIXED ✅
+- Created EnhancedPublishingWorkflowV3 with proper content-specific layouts
+- Video clips now display in portrait format (9:16) with preview on hover
+- Each content type has optimized grid layouts:
+  - **Clips**: 5-column grid for compact vertical display
+  - **Blogs**: 2-column grid with larger previews and word counts
+  - **Images**: 4-column gallery with zoom on hover
+  - **Social/Other**: 3-column balanced layout
+- Added section headers with counts and bulk selection
+- Improved visual hierarchy and organization
+
 ## 🚀 Enhanced Publishing Workflow Features
 
 The new publishing workflow is now production-ready with:
