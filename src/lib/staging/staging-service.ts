@@ -223,6 +223,17 @@ export class StagingService {
     // Check if clip already has publication captions from Klap
     const platformContent: StagedContent['platformContent'] = {}
     
+    // Map of platform-specific caption field names
+    const captionFieldMap: Record<string, string> = {
+      'instagram': 'caption',
+      'tiktok': 'caption',
+      'linkedin': 'caption',
+      'facebook': 'caption',
+      'youtube': 'description',
+      'x': 'tweet',
+      'threads': 'text'
+    }
+    
     if (clip.publicationCaptions) {
       // Use existing captions from Klap and format them for our system
       const captionPlatformMap: Record<string, Platform> = {
@@ -241,11 +252,18 @@ export class StagingService {
           const hashtags = (caption.match(hashtagRegex) || []).map(tag => tag.slice(1))
           const captionWithoutTags = caption.replace(hashtagRegex, '').trim()
           
+          // Get the correct field name for this platform
+          const captionField = captionFieldMap[platform] || 'caption'
+          
           platformContent[platform] = {
-            caption: captionWithoutTags,
+            caption: captionField === 'caption' ? caption : captionWithoutTags,
             hashtags,
             characterCount: caption.length,
-            isValid: true
+            isValid: true,
+            // Add platform-specific fields
+            ...(captionField !== 'caption' ? { [captionField]: caption } : {}),
+            // For YouTube, also add title
+            ...(platform === 'youtube' ? { title: clip.title || 'Video Clip' } : {})
           }
         }
       }
@@ -268,7 +286,16 @@ export class StagingService {
       // Merge generated content for missing platforms
       for (const platform of missingPlatforms) {
         if (generatedContent[platform]) {
-          platformContent[platform] = generatedContent[platform]
+          const captionField = captionFieldMap[platform] || 'caption'
+          const generatedCaption = generatedContent[platform].caption || ''
+          
+          platformContent[platform] = {
+            ...generatedContent[platform],
+            // Ensure platform-specific field is set
+            ...(captionField !== 'caption' ? { [captionField]: generatedCaption } : {}),
+            // For YouTube, ensure title is set
+            ...(platform === 'youtube' && !generatedContent[platform].title ? { title: clip.title || 'Video Clip' } : {})
+          }
         }
       }
     }

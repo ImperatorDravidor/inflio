@@ -470,9 +470,9 @@ function ProjectDetailPageContent() {
   }
 
   const handlePublishContent = (selectedContent: any[]) => {
-    // Save selected content to session storage to pass to staging page
-    sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
-    router.push(`/projects/${projectId}/stage`)
+    // This function is called when the Continue to Stage button is clicked
+    // Don't navigate immediately - let the PublishingWorkflow component handle it
+    console.log('Selected content for publishing:', selectedContent)
   }
 
   const handleEditBlog = (blogId: string) => {
@@ -3269,7 +3269,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <TabsContent value="publish" className="mt-0">
                       <PublishingWorkflow
                         project={project}
-                        onPublish={handlePublishContent}
                         className="border-0 shadow-none"
                       />
                     </TabsContent>

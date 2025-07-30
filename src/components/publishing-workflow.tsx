@@ -18,6 +18,9 @@ import {
   IconLayoutGrid,
   IconFilter,
   IconSearch,
+  IconChecklist,
+  IconX,
+  IconClipboardList,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { EmptyState } from "@/components/empty-state"
@@ -66,7 +69,7 @@ interface ContentGroup {
 
 interface PublishingWorkflowProps {
   project: any
-  onPublish: (selectedContent: ContentItem[]) => void
+  onPublish?: (selectedContent: ContentItem[]) => void
   className?: string
 }
 
@@ -482,6 +485,13 @@ export function PublishingWorkflow({
     setSelectedContent({})
   }
 
+  const toggleContentSelection = (contentId: string) => {
+    setSelectedContent(prev => ({
+      ...prev,
+      [contentId]: !prev[contentId]
+    }))
+  }
+
   const getSelectedItems = () => {
     return contentItems.filter(item => selectedContent[item.id])
   }
@@ -642,21 +652,27 @@ export function PublishingWorkflow({
     return acc
   }, {} as Record<string, ContentItem[]>)
 
+  // Debug logging
+  useEffect(() => {
+    console.log('PublishingWorkflow render - selectedCount:', selectedCount)
+    console.log('PublishingWorkflow render - isNavigating:', isNavigating)
+  }, [selectedCount, isNavigating])
+
   return (
-    <Card 
-      className={cn(
-        "border-0 transition-all duration-500",
-        isHighlighted && "ring-2 ring-primary ring-offset-2",
-        className
-      )} 
-      id="publish-content-selection"
-    >
-      <CardHeader className={cn(
-        "pb-4",
-        isHighlighted && "animate-pulse"
-      )}>
-        <div className="flex items-center justify-between">
-        <div>
+    <div className="w-full">
+      <Card 
+        className={cn(
+          "border-0 transition-all duration-500",
+          isHighlighted && "ring-2 ring-primary ring-offset-2",
+          className
+        )} 
+        id="publish-content-selection"
+      >
+        <CardHeader className={cn(
+          "pb-4",
+          isHighlighted && "animate-pulse"
+        )}>
+          <div>
             <CardTitle className="flex items-center gap-2 text-xl">
               <IconSparkles className="h-5 w-5" />
               Select Content to Publish
@@ -664,235 +680,272 @@ export function PublishingWorkflow({
             <CardDescription className="mt-1">
               Choose the content you want to publish and continue to the staging tool
             </CardDescription>
-        </div>
-          <div className="flex items-center gap-3">
-            {selectedCount > 0 && (
-              <Badge variant="secondary" className="text-sm px-3 py-1">
-                {selectedCount} selected
-              </Badge>
-            )}
-            <Button 
-              onClick={handleContinue}
-              disabled={selectedCount === 0 || isNavigating}
-              className={cn(
-                "bg-gradient-to-r from-blue-600 to-purple-600",
-                "hover:from-blue-700 hover:to-purple-700",
-                (selectedCount === 0 || isNavigating) && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {isNavigating ? (
-                <>
-                  <IconSparkles className="h-4 w-4 mr-2 animate-spin" />
-                  Preparing...
-                </>
-      ) : (
-        <>
-                  <IconSparkles className="h-4 w-4 mr-2" />
-                  Continue to Stage
-                  <IconArrowRight className="h-4 w-4 ml-1" />
-                </>
-              )}
-            </Button>
+          </div>
+        </CardHeader>
+        
+        <CardContent>
+          {contentItems.length === 0 ? (
+            <EmptyState 
+              title="No Content Available" 
+              description="Generate some content first (clips, blog posts, or images) to get started with publishing." 
+              icon={<IconScissors className="h-16 w-16 text-primary/50" />} 
+            />
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left side - Content Selection (2/3 width) */}
+              <div className="lg:col-span-2">
+                {/* Quick Actions */}
+                {contentItems.length > 1 && (
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b">
+                    <div className="text-sm text-muted-foreground">
+                      {selectedCount === 0 ? 
+                        "Select content to publish by clicking the cards below" : 
+                        `${selectedCount} of ${contentItems.length} items selected`
+                      }
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSelectAll}
+                        disabled={selectedCount === contentItems.filter(item => item.ready).length}
+                      >
+                        Select All
+                      </Button>
+                      {selectedCount > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleClearAll}
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <ScrollArea className="h-[600px] pr-4">
+                  <div className="space-y-6">
+                    {/* Long Form Video */}
+                    {groupedContent.longform && (
+                      <div className="space-y-3">
+                        <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                          <IconVideo className="h-4 w-4" />
+                          Long Form Video
+                        </h3>
+                        <div className="space-y-3">
+                          {groupedContent.longform.map(item => (
+                            <ContentCard
+                              key={item.id}
+                              item={item}
+                              isSelected={selectedContent[item.id] || false}
+                              onToggle={handleContentToggle}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-      </CardHeader>
-      
-      <CardContent>
-        {contentItems.length === 0 ? (
-          <EmptyState 
-            title="No Content Available" 
-            description="Generate some content first (clips, blog posts, or images) to get started with publishing." 
-            icon={<IconScissors className="h-16 w-16 text-primary/50" />} 
-          />
-        ) : (
-          <>
-          {/* Quick Actions */}
-            {contentItems.length > 1 && (
-              <div className="flex items-center justify-between mb-6 pb-4 border-b">
-                <div className="text-sm text-muted-foreground">
-                  {selectedCount === 0 ? 
-                    "Select content to publish by clicking the cards below" : 
-                    `${selectedCount} of ${contentItems.length} items selected`
-                  }
-                </div>
-                <div className="flex gap-2">
-            <Button
-              size="sm"
-                    variant="outline"
-              onClick={handleSelectAll}
-                    disabled={selectedCount === contentItems.filter(item => item.ready).length}
-            >
-                    Select All
-            </Button>
-                  {selectedCount > 0 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleClearAll}
-                    >
-                      Clear
-                    </Button>
-                  )}
-          </div>
+                    )}
+
+                    {/* Video Clips */}
+                    {groupedContent.clip && groupedContent.clip.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                          <IconScissors className="h-4 w-4" />
+                          Video Clips ({groupedContent.clip.length})
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {groupedContent.clip.map(item => (
+                            <ContentCard
+                              key={item.id}
+                              item={item}
+                              isSelected={selectedContent[item.id] || false}
+                              onToggle={handleContentToggle}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Blog Posts */}
+                    {groupedContent.blog && groupedContent.blog.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                          <IconArticle className="h-4 w-4" />
+                          Blog Posts ({groupedContent.blog.length})
+                        </h3>
+                        <div className="space-y-3">
+                          {groupedContent.blog.map(item => (
+                            <ContentCard
+                              key={item.id}
+                              item={item}
+                              isSelected={selectedContent[item.id] || false}
+                              onToggle={handleContentToggle}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AI Images */}
+                    {groupedContent.image && groupedContent.image.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                          <IconPhoto className="h-4 w-4" />
+                          AI Generated Images ({groupedContent.image.length})
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {groupedContent.image.map(item => (
+                            <ContentCard
+                              key={item.id}
+                              item={item}
+                              isSelected={selectedContent[item.id] || false}
+                              onToggle={handleContentToggle}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Social Posts */}
+                    {groupedContent.social && groupedContent.social.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
+                          <IconSparkles className="h-4 w-4" />
+                          Social Posts ({groupedContent.social.length})
+                        </h3>
+                        <div className="space-y-3">
+                          {groupedContent.social.map(item => (
+                            <ContentCard
+                              key={item.id}
+                              item={item}
+                              isSelected={selectedContent[item.id] || false}
+                              onToggle={handleContentToggle}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </div>
-            )}
-            
-            <ScrollArea className="h-[600px] pr-4">
-              <div className="space-y-6">
-                {/* Long Form Video */}
-                {groupedContent.longform && (
-                  <div className="space-y-3">
-                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
-                      <IconVideo className="h-4 w-4" />
-                      Long Form Video
-                    </h3>
-                    <div className="space-y-3">
-                      {groupedContent.longform.map(item => (
-                        <ContentCard
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedContent[item.id] || false}
-                          onToggle={handleContentToggle}
-                        />
-                      ))}
-                </div>
-                  </div>
-                )}
 
-                {/* Video Clips */}
-                {groupedContent.clip && groupedContent.clip.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
-                      <IconScissors className="h-4 w-4" />
-                      Video Clips ({groupedContent.clip.length})
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {groupedContent.clip.map(item => (
-                        <ContentCard
-                      key={item.id}
-                      item={item}
-                      isSelected={selectedContent[item.id] || false}
-                      onToggle={handleContentToggle}
-                    />
-                  ))}
+              {/* Right side - Selection Summary (1/3 width) */}
+              <div className="lg:col-span-1">
+                <div className="sticky top-4">
+                  <Card className="border-primary/20 bg-primary/5">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <IconChecklist className="h-5 w-5 text-primary" />
+                        Selected Content
+                      </CardTitle>
+                      <CardDescription>
+                        {selectedCount === 0 ? 'No content selected yet' : `${selectedCount} items ready to stage`}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Selection Stats */}
+                      <div className="space-y-2 pb-4 border-b">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Total Available:</span>
+                          <Badge variant="outline">{contentItems.length}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Selected:</span>
+                          <Badge variant={selectedCount > 0 ? "default" : "outline"}>{selectedCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Ready to Publish:</span>
+                          <Badge variant="outline">{contentItems.filter(item => item.ready).length}</Badge>
+                        </div>
+                      </div>
+
+                      {/* Selected Items List */}
+                      {selectedCount > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Selected Items</p>
+                          <ScrollArea className="h-[300px] pr-2">
+                            <div className="space-y-2">
+                              {getSelectedItems().map((item) => {
+                                const Icon = getContentIcon(item.type)
+                                return (
+                                  <div 
+                                    key={item.id}
+                                    className="flex items-start gap-2 p-2 rounded-lg bg-background/60 border"
+                                  >
+                                    <div className={cn(
+                                      "p-1.5 rounded",
+                                      "bg-primary/10 text-primary"
+                                    )}>
+                                      <Icon className="h-3.5 w-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">{item.title}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {item.type === 'clip' && item.duration ? formatDuration(item.duration) : item.type}
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => toggleContentSelection(item.id)}
+                                      className="text-muted-foreground hover:text-destructive transition-colors"
+                                    >
+                                      <IconX className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <IconClipboardList className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                          <p className="text-sm text-muted-foreground">
+                            Select content from the left to begin staging
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Continue Button */}
+                      <Button
+                        onClick={handleContinue}
+                        disabled={selectedCount === 0 || isNavigating}
+                        className={cn(
+                          "w-full bg-gradient-to-r from-blue-600 to-purple-600",
+                          "hover:from-blue-700 hover:to-purple-700",
+                          (selectedCount === 0 || isNavigating) && "opacity-50 cursor-not-allowed"
+                        )}
+                        size="lg"
+                      >
+                        {isNavigating ? (
+                          <>
+                            <IconSparkles className="h-4 w-4 mr-2 animate-spin" />
+                            Preparing Staging...
+                          </>
+                        ) : (
+                          <>
+                            <IconSparkles className="h-4 w-4 mr-2" />
+                            Continue to Stage
+                            <IconArrowRight className="h-4 w-4 ml-1" />
+                          </>
+                        )}
+                      </Button>
+
+                      {/* Help Text */}
+                      {selectedCount > 0 && (
+                        <p className="text-xs text-center text-muted-foreground">
+                          You'll be able to customize captions and schedule posts in the next step
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
-            )}
-
-                {/* Blog Posts */}
-                {groupedContent.blog && groupedContent.blog.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
-                      <IconArticle className="h-4 w-4" />
-                      Blog Posts ({groupedContent.blog.length})
-                    </h3>
-                    <div className="space-y-3">
-                      {groupedContent.blog.map(item => (
-                        <ContentCard
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedContent[item.id] || false}
-                          onToggle={handleContentToggle}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* AI Images */}
-                {groupedContent.image && groupedContent.image.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
-                      <IconPhoto className="h-4 w-4" />
-                      AI Generated Images ({groupedContent.image.length})
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {groupedContent.image.map(item => (
-                        <ContentCard
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedContent[item.id] || false}
-                          onToggle={handleContentToggle}
-                        />
-                      ))}
-                  </div>
-                  </div>
-                )}
-
-                {/* Social Posts */}
-                {groupedContent.social && groupedContent.social.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground tracking-wide">
-                      <IconSparkles className="h-4 w-4" />
-                      Social Posts ({groupedContent.social.length})
-                    </h3>
-                    <div className="space-y-3">
-                      {groupedContent.social.map(item => (
-                      <ContentCard
-                        key={item.id}
-                        item={item}
-                        isSelected={selectedContent[item.id] || false}
-                        onToggle={handleContentToggle}
-                      />
-                    ))}
-                  </div>
-                </div>
-                )}
-          </div>
-            </ScrollArea>
-
-            {/* Bottom Action Bar */}
-                {selectedCount > 0 && (
-              <div className="mt-6 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-muted-foreground">Selected content:</span>
-                    <div className="flex items-center gap-2">
-                    {Object.entries(
-                      getSelectedItems().reduce((acc, item) => {
-                        acc[item.type] = (acc[item.type] || 0) + 1
-                        return acc
-                      }, {} as Record<string, number>)
-                    ).map(([type, count]) => {
-                        const Icon = getContentIcon(type)
-                      return (
-                          <Badge key={type} variant="secondary" className="gap-1">
-                          <Icon className="h-3 w-3" />
-                            {count} {type}{count > 1 ? 's' : ''}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-              </div>
-              <Button
-                onClick={handleContinue}
-                    disabled={isNavigating}
-                className={cn(
-                      "bg-gradient-to-r from-blue-600 to-purple-600",
-                      "hover:from-blue-700 hover:to-purple-700",
-                      isNavigating && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                {isNavigating ? (
-                  <>
-                        <IconSparkles className="h-4 w-4 mr-2 animate-spin" />
-                        Preparing...
-                  </>
-                ) : (
-                  <>
-                    <IconSparkles className="h-4 w-4 mr-2" />
-                        Continue with {selectedCount} items
-                    <IconArrowRight className="h-4 w-4 ml-1" />
-                  </>
-                )}
-              </Button>
             </div>
-          </div>
-            )}
-        </>
-      )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
