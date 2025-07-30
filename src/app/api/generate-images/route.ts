@@ -158,9 +158,9 @@ export async function POST(req: NextRequest) {
                               finalPrompt.toLowerCase().includes('sticker') ||
                               style === 'quote-overlay'
       
-      // Generate image using DALL-E 3
+      // Generate image using gpt-image-1
       const response = await openai.images.generate({
-        model: "dall-e-3",
+        model: "gpt-image-1",
         prompt: AIImageService.enhancePromptWithStyle(finalPrompt, style || 'modern', 'high'),
         n: 1,
         size: imageType === 'story' ? '1024x1792' : '1024x1024',
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
               quality: 'standard',
               hasPersona: personaPhotos.length > 0,
               personaName: personaId ? 'User Persona' : undefined,
-              generatedWith: 'dall-e-3'
+              generatedWith: 'gpt-image-1'
             }
           })
         }
@@ -301,7 +301,7 @@ export async function GET(request: NextRequest) {
           // Generate the final image
           const fullPrompt = style ? `${prompt}. Style: ${style}` : prompt
           const response = await openai.images.generate({
-            model: 'dall-e-3',
+            model: 'gpt-image-1',
             prompt: fullPrompt,
             n: 1,
             size: '1024x1024',
