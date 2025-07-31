@@ -50,7 +50,7 @@ Key Moments: ${keyMoments.slice(0, 3).map((m: any) => m.description).join('; ')}
     const openai = getOpenAI()
     
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-2025-04-14',
+      model: 'gpt-4.1',
       messages: [
         {
           role: 'system',
@@ -137,7 +137,7 @@ Output as JSON with "suggestions" array. Each suggestion must make someone STOP 
       metadata: {
         projectTitle: project.title,
         generatedAt: new Date().toISOString(),
-        model: 'gpt-4.1-2025-04-14'
+        model: 'gpt-4.1'
       }
     })
 

@@ -113,7 +113,7 @@ For each suggestion include:
 Return as JSON array of suggestions with all details.`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }

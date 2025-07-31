@@ -295,10 +295,12 @@ export default function ProjectStagePage() {
       
       // Check if we have selected content from PublishingWorkflow
       const selectedContentData = sessionStorage.getItem('selectedContent')
+      console.log('Staging page - selectedContentData from sessionStorage:', selectedContentData)
       
       if (selectedContentData) {
         try {
           const parsedContent = JSON.parse(selectedContentData)
+          console.log('Staging page - parsed content:', parsedContent)
         
           // Initialize staged content from selected items
           const content = parsedContent.map((item: any) => {

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     - hypothesis: what we're testing with this variant`
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-4.1',
       messages: [
         { 
           role: 'system', 

@@ -465,7 +465,7 @@ Return JSON with this structure:
 }`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: 'You are an expert social media strategist who creates viral, engaging content.' },
           { role: 'user', content: prompt }
@@ -541,7 +541,7 @@ Return JSON with this structure:
       Content context: ${projectContext || 'General content'}`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: systemPrompt },
           { 
@@ -950,7 +950,7 @@ Return JSON array of optimal times:
 ]`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: 'You are a social media analytics expert.' },
           { role: 'user', content: prompt }

@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import { 
   IconFileText, 
@@ -323,14 +325,49 @@ export function ProcessingResults({ results, videoTitle }: ProcessingResultsProp
               </div>
             </div>
             <Separator />
-            <ScrollArea className="h-96 w-full rounded border p-4">
-              <div 
-                className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ 
-                  __html: result.data.blog.content.replace(/\n/g, '<br>') 
-                }}
-              />
-            </ScrollArea>
+                          <ScrollArea className="h-96 w-full rounded border p-4">
+                <article className="prose prose-sm max-w-none dark:prose-invert">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }: any) => <h1 className="text-2xl font-bold mb-4">{children}</h1>,
+                      h2: ({ children }: any) => <h2 className="text-xl font-semibold mb-3 mt-6">{children}</h2>,
+                      h3: ({ children }: any) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
+                      p: ({ children }: any) => <p className="mb-4">{children}</p>,
+                      ul: ({ children }: any) => <ul className="list-disc list-inside mb-4 space-y-1">{children}</ul>,
+                      ol: ({ children }: any) => <ol className="list-decimal list-inside mb-4 space-y-1">{children}</ol>,
+                      li: ({ children }: any) => <li className="ml-2">{children}</li>,
+                      blockquote: ({ children }: any) => (
+                        <blockquote className="border-l-4 border-primary bg-muted/50 p-4 my-4 italic">
+                          {children}
+                        </blockquote>
+                      ),
+                      code: ({ children, className }: any) => {
+                        const isInline = !className
+                        return isInline ? (
+                          <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">
+                            {children}
+                          </code>
+                        ) : (
+                          <pre className="bg-muted p-4 rounded-lg overflow-x-auto my-4">
+                            <code className="text-sm font-mono">{children}</code>
+                          </pre>
+                        )
+                      },
+                      a: ({ children, href }: any) => (
+                        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      ),
+                      strong: ({ children }: any) => <strong className="font-semibold">{children}</strong>,
+                      em: ({ children }: any) => <em className="italic">{children}</em>,
+                      hr: () => <hr className="my-6 border-t" />
+                    }}
+                  >
+                    {result.data.blog.content}
+                  </ReactMarkdown>
+                </article>
+              </ScrollArea>
           </div>
         </CardContent>
       </Card>
