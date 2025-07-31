@@ -250,7 +250,7 @@ Return JSON in this format:
         let completion
         try {
           completion = await openai.chat.completions.create({
-            model: 'gpt-4o-2024-08-06', // Using the standard GPT-4o model
+            model: 'gpt-4.1', // Using the standard GPT-4.1 model
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt }

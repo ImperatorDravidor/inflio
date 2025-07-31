@@ -119,6 +119,7 @@ import { SocialGraphicsGenerator } from "@/components/social-graphics-generator"
 import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
 import { UserGuideTooltip } from "@/components/user-guide-tooltip"
 import { ProjectPageSkeleton } from "@/components/loading-skeleton"
+import { UnifiedContentGenerator } from "@/components/unified-content-generator"
 
 
 const platformIcons = {
@@ -155,6 +156,7 @@ function ProjectDetailPageContent() {
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
   const [showBlogDialog, setShowBlogDialog] = useState(false)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
+  const [showUnifiedContentDialog, setShowUnifiedContentDialog] = useState(false)
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isExportingClips, setIsExportingClips] = useState(false)
@@ -1671,6 +1673,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           {project.folders.blog.length > 0 ? "New Blog" : "Generate Blog"}
                         </>
                       )}
+                    </Button>
+                    
+                    <Button
+                      size="sm"
+                      onClick={() => setShowUnifiedContentDialog(true)}
+                      disabled={!project.transcription || !project.content_analysis}
+                      variant="default"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    >
+                      <IconLayoutGridAdd className="mr-2 h-4 w-4" />
+                      Content Package
                     </Button>
                     
                     <DropdownMenu>
@@ -3854,6 +3867,31 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </div>
         </div>
       )}
+
+      {/* Unified Content Generator */}
+      <Dialog open={showUnifiedContentDialog} onOpenChange={setShowUnifiedContentDialog}>
+        <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+          <DialogHeader className="p-6 pb-0">
+            <DialogTitle className="text-2xl font-bold">AI Content Package Generator</DialogTitle>
+            <DialogDescription>
+              Generate thumbnails, social graphics, and blog content all in one place
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-6 overflow-auto max-h-[calc(95vh-120px)]">
+            <UnifiedContentGenerator
+              projectId={project.id}
+              projectTitle={project.title}
+              projectVideoUrl={project.video_url}
+              contentAnalysis={project.content_analysis}
+              onContentGenerated={(content) => {
+                toast.success('Content generated successfully!')
+                setShowUnifiedContentDialog(false)
+                loadProject() // Reload to show new content
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

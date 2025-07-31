@@ -134,7 +134,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
     }
 
     const response = await getOpenAI().chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
@@ -189,7 +189,7 @@ ${recentHistory?.map(h => `- ${h.content_type}: ${h.user_feedback?.action || 'vi
    */
   private async analyzeEdit(original: Record<string, unknown>, edited: Record<string, unknown>): Promise<string> {
     const response = await getOpenAI().chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",

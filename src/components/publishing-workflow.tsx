@@ -614,26 +614,38 @@ export function PublishingWorkflow({
         return
       }
       
-      // Save and navigate
-      const result = await StagingSessionsService.saveStagingSession(
+      console.log('Selected items for staging:', selectedItems)
+      
+      // Save selected content to sessionStorage
+      sessionStorage.setItem('selectedContent', JSON.stringify(selectedItems))
+      
+      // Verify it was saved
+      const savedContent = sessionStorage.getItem('selectedContent')
+      console.log('Saved to sessionStorage:', savedContent)
+      
+      // Try to save to database (optional - don't block navigation if it fails)
+      StagingSessionsService.saveStagingSession(
         user.id,
         project.id,
         {
           ids: selectedItems.map(item => item.id),
           items: selectedItems
         }
-      )
+      ).catch(error => {
+        console.warn('Failed to save staging session to database:', error)
+        // Continue anyway - sessionStorage is our fallback
+      })
       
-      if (!result.success) {
-        toast.error(result.error || 'Failed to save staging data')
-        return
-      }
-      
-      sessionStorage.setItem('selectedContent', JSON.stringify(selectedItems))
-      router.push(`/projects/${project.id}/stage`)
+      // Small delay to ensure sessionStorage is written
+      setTimeout(() => {
+        // Navigate to staging page
+        const stagingUrl = `/projects/${project.id}/stage`
+        console.log('Navigating to staging page:', stagingUrl)
+        router.push(stagingUrl)
+      }, 100)
     } catch (error) {
+      console.error('Error during navigation:', error)
       toast.error('Something went wrong. Please try again.')
-    } finally {
       setIsNavigating(false)
     }
   }

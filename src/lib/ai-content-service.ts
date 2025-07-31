@@ -64,7 +64,7 @@ Return the analysis in this exact JSON format:
 
       const completion = await openai.chat.completions.create({
         // Using the latest GPT-4.1 model
-        model: 'gpt-4.1-2025-04-14',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -157,7 +157,7 @@ Return in JSON format:
 }`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4.1-2025-04-14',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -221,7 +221,7 @@ Return JSON:
 }`
 
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4.1-2025-04-14',
+          model: 'gpt-4.1',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
