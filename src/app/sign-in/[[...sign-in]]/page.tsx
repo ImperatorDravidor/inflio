@@ -5,66 +5,15 @@ import { useAuth } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   Layers,
   ArrowRight,
   CheckCircle,
-  Star,
-  Users,
+  Sparkles,
   Video,
   Clock,
-  Sparkles,
-  TrendingUp,
-  Shield,
-  Globe,
-  Quote,
+  Users,
 } from "lucide-react";
-import {
-  IconBrandYoutube,
-  IconBrandInstagram,
-  IconBrandTiktok,
-  IconBrandX,
-  IconBrandLinkedin,
-  IconBrandFacebook,
-  IconSparkles,
-  IconRocket,
-} from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
-
-const stats = [
-  { label: "Active Creators", value: "15K+", icon: Users },
-  { label: "Videos Processed", value: "2.5M+", icon: Video },
-  { label: "Time Saved", value: "95%", icon: Clock },
-  { label: "User Rating", value: "4.9/5", icon: Star },
-];
-
-const benefits = [
-  "Extract viral clips with AI",
-  "Perfect transcriptions in 50+ languages",
-  "SEO-optimized blog posts",
-  "Schedule to all social platforms",
-  "Analytics & insights",
-  "Custom branding",
-];
-
-const testimonial = {
-  content: "Inflio transformed my content workflow. What took 8 hours now takes 30 minutes. The AI is incredibly accurate!",
-  author: "Sarah Chen",
-  role: "YouTube Creator",
-  subscribers: "2.3M subscribers",
-  avatar: "SC",
-};
-
-const platforms = [
-  { icon: IconBrandYoutube, color: "text-red-600" },
-  { icon: IconBrandInstagram, color: "text-pink-600" },
-  { icon: IconBrandTiktok, color: "text-black dark:text-white" },
-  { icon: IconBrandX, color: "text-black dark:text-white" },
-  { icon: IconBrandLinkedin, color: "text-blue-600" },
-  { icon: IconBrandFacebook, color: "text-blue-700" },
-];
 
 export default function SignInPage() {
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -72,21 +21,24 @@ export default function SignInPage() {
   // If already signed in, redirect
   if (isLoaded && isSignedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/20">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-black">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
           className="text-center"
         >
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <CheckCircle className="h-8 w-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
+            <CheckCircle className="h-10 w-10 text-green-600 dark:text-green-400" />
           </div>
-          <h1 className="text-2xl font-bold mb-2">You're already signed in!</h1>
-          <p className="text-muted-foreground mb-6">Welcome back, {userId}</p>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+            You're already signed in!
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">Welcome back</p>
           <Link href="/dashboard">
-            <Button className="group">
+            <Button className="rounded-full">
               Go to Dashboard
-              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
         </motion.div>
@@ -95,53 +47,40 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Navigation */}
-      <nav className="border-b bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <Link href="/" className="flex items-center space-x-2 group">
-              <div className="relative">
-                <Layers className="h-6 w-6 text-primary transition-transform group-hover:scale-110" />
-                <div className="absolute inset-0 bg-primary/20 blur-xl group-hover:bg-primary/30 transition-all" />
-              </div>
-              <span className="text-xl font-bold">Inflio</span>
-            </Link>
-            <Link href="/sign-up">
-              <Button variant="ghost" size="sm">
-                Don't have an account? Sign up
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-black flex flex-col">
+      {/* Simple Navigation */}
+      <nav className="p-6">
+        <Link href="/" className="flex items-center space-x-2 w-fit">
+          <Layers className="h-6 w-6 text-primary" />
+          <span className="text-xl font-semibold text-gray-900 dark:text-white">Inflio</span>
+        </Link>
       </nav>
 
-      <div className="flex min-h-[calc(100vh-4rem)]">
-        {/* Left side - Sign in form */}
-        <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+      {/* Main Content - Centered */}
+      <div className="flex-1 flex items-center justify-center px-6 pb-12">
+        <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-12 items-center">
+          {/* Left side - Sign in form */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-md"
+            transition={{ duration: 0.4 }}
+            className="w-full max-w-md mx-auto lg:mx-0"
           >
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
-              <p className="text-muted-foreground">
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                Welcome back
+              </h1>
+              <p className="text-lg text-gray-600 dark:text-gray-400">
                 Sign in to continue creating amazing content
               </p>
             </div>
 
             {!isLoaded ? (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 animate-pulse mb-4">
-                  <Sparkles className="h-6 w-6 text-primary" />
-                </div>
-                <p className="text-muted-foreground">Loading...</p>
+              <div className="flex items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-gray-300 dark:border-gray-700 rounded-full animate-spin border-t-primary" />
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
                 <SignIn 
                   appearance={{
                     elements: {
@@ -149,18 +88,18 @@ export default function SignInPage() {
                       card: "shadow-none border-0 bg-transparent p-0",
                       headerTitle: "hidden",
                       headerSubtitle: "hidden",
-                      socialButtonsBlockButton: "border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-8 rounded-md font-medium transition-colors",
-                      socialButtonsBlockButtonText: "font-normal",
+                      socialButtonsBlockButton: "bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white h-11 px-4 rounded-xl font-medium transition-colors",
+                      socialButtonsBlockButtonText: "font-medium",
                       dividerRow: "hidden",
-                      formFieldLabel: "text-sm font-medium text-foreground",
-                      formFieldInput: "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                      formButtonPrimary: "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-11 px-8 w-full",
-                      footerActionLink: "text-primary hover:text-primary/80 font-medium",
-                      identityPreviewText: "text-sm text-muted-foreground",
-                      identityPreviewEditButton: "text-primary hover:text-primary/80 text-sm font-medium",
-                      formFieldInputShowPasswordButton: "text-muted-foreground hover:text-foreground",
-                      otpCodeFieldInput: "flex h-11 w-11 rounded-md border border-input bg-background px-3 py-2 text-center text-sm",
-                      formResendCodeLink: "text-primary hover:text-primary/80 text-sm font-medium",
+                      formFieldLabel: "text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5",
+                      formFieldInput: "h-11 w-full rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
+                      formButtonPrimary: "h-11 w-full rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors",
+                      footerActionLink: "text-primary hover:text-primary/80 font-medium transition-colors",
+                      identityPreviewText: "text-sm text-gray-600 dark:text-gray-400",
+                      identityPreviewEditButton: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
+                      formFieldInputShowPasswordButton: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors",
+                      otpCodeFieldInput: "h-11 w-11 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
+                      formResendCodeLink: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
                     },
                     layout: {
                       socialButtonsPlacement: "top",
@@ -170,118 +109,110 @@ export default function SignInPage() {
                   redirectUrl="/dashboard"
                 />
                 
-                {/* Terms */}
-                <p className="text-xs text-center text-muted-foreground">
-                  By signing in, you agree to our{" "}
-                  <Link href="/terms" className="text-primary hover:underline">
-                    Terms of Service
-                  </Link>{" "}
-                  and{" "}
-                  <Link href="/privacy" className="text-primary hover:underline">
-                    Privacy Policy
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+                  <p className="text-center text-gray-600 dark:text-gray-400 mb-3">
+                    Don't have an account?
+                  </p>
+                  <Link href="/sign-up" className="block">
+                    <Button 
+                      variant="outline" 
+                      className="w-full h-11 rounded-xl"
+                    >
+                      Create an account
+                    </Button>
                   </Link>
-                </p>
+                </div>
               </div>
             )}
           </motion.div>
-        </div>
 
-        {/* Right side - Marketing content */}
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary/5 via-purple-600/5 to-pink-600/5 p-12 items-center justify-center relative overflow-hidden">
-          {/* Background decoration */}
-          <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(ellipse_at_center,white,transparent)]" />
-          <div className="absolute top-0 right-0 -mt-40 -mr-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 -mb-40 -ml-40 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl" />
-          
+          {/* Right side - Value props */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="relative z-10 max-w-md"
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="hidden lg:block"
           >
-            {/* Logo and tagline */}
-            <div className="mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 mb-4">
-                <IconSparkles className="h-8 w-8 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">
-                Transform Your Content with AI
-              </h2>
-              <p className="text-muted-foreground">
-                Join 15,000+ creators using Inflio to create viral content in minutes
-              </p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              {stats.map((stat) => (
-                <div key={stat.label} className="bg-background/50 backdrop-blur-sm rounded-lg p-4 border border-primary/10">
-                  <stat.icon className="h-5 w-5 text-primary mb-2" />
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                  <div className="text-sm text-muted-foreground">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Testimonial */}
-            <Card className="mb-8 border-primary/10 bg-background/50 backdrop-blur-sm">
-              <div className="p-6">
-                <Quote className="h-8 w-8 text-primary/20 mb-4" />
-                <p className="text-sm mb-4 italic">"{testimonial.content}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-sm font-semibold">
-                    {testimonial.avatar}
+            <div className="space-y-8">
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
+                    <Video className="h-6 w-6 text-primary" />
                   </div>
-                  <div>
-                    <div className="font-semibold text-sm">{testimonial.author}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {testimonial.role} • {testimonial.subscribers}
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">2.5M+</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Videos Processed</div>
+                </div>
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">15K+</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Active Creators</div>
+                </div>
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
+                    <Clock className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">10min</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Avg. Processing</div>
+                </div>
+              </div>
+
+              {/* Feature list */}
+              <div className="bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-6">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
+                  Everything you need to grow:
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">AI-Powered Clips</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Extract viral moments automatically from long videos
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Perfect Transcriptions</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        99% accuracy in 50+ languages with speaker detection
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Multi-Platform Publishing</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Schedule to YouTube, TikTok, Instagram & more
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
-            </Card>
 
-            {/* Benefits */}
-            <div className="space-y-3 mb-8">
-              <h3 className="font-semibold mb-2">Everything you need:</h3>
-              {benefits.map((benefit) => (
-                <div key={benefit} className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                  <span>{benefit}</span>
+              {/* Testimonial */}
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                <div className="flex items-center gap-1 mb-3">
+                  {[...Array(5)].map((_, i) => (
+                    <Sparkles key={i} className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {/* Platform icons */}
-            <div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Publish to all platforms:
-              </p>
-              <div className="flex gap-3">
-                {platforms.map((platform, index) => (
-                  <platform.icon
-                    key={index}
-                    className={cn("h-5 w-5 transition-colors", platform.color)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Trust badges */}
-            <div className="mt-8 pt-8 border-t border-primary/10">
-              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Shield className="h-3 w-3" />
-                  SOC 2 Compliant
-                </div>
-                <div className="flex items-center gap-1">
-                  <Globe className="h-3 w-3" />
-                  GDPR Ready
-                </div>
-                <div className="flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  99.9% Uptime
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  "Inflio cut my editing time from 8 hours to 30 minutes. The AI clips are spot-on!"
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
+                    SC
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Sarah Chen</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">2.3M YouTube subscribers</p>
+                  </div>
                 </div>
               </div>
             </div>

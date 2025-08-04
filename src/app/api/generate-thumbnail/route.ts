@@ -4,6 +4,7 @@ import { fal } from "@fal-ai/client"
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createFluxThumbnailService } from '@/lib/services/thumbnail-service'
 
 // Configure FAL AI client
 fal.config({
@@ -132,64 +133,82 @@ export async function POST(req: NextRequest) {
     
     let imageUrl: string
     
-    // If we have video snippets or reference images, use FAL's image generation with controlnet
-    if (videoSnippets.length > 0 || referenceImageUrl) {
-      try {
-        // Use Flux for better quality and control
-        const input: any = {
-          prompt: thumbnailPrompt,
-          image_size: {
-            width: 1920,
-            height: 1080
-          },
-          num_inference_steps: quality === 'hd' ? 50 : 35,
-          guidance_scale: 8.0,
-          output_format: 'png',
-          enable_safety_checker: true
-        }
-        
-        // Add reference image if editing/iterating
-        if (referenceImageUrl) {
-          input.image = referenceImageUrl
-          input.strength = 0.6 // Allow significant changes while keeping composition
-        }
-        
-        // If we have video snippets, use the first one as base
-        if (videoSnippets.length > 0 && !referenceImageUrl) {
-          input.image = videoSnippets[0].thumbnailUrl
-          input.strength = 0.7
-        }
-        
-        const result = await fal.subscribe("fal-ai/flux-general", {
-          input,
-          logs: true
-        })
-        
-        imageUrl = result.data?.images?.[0]?.url || ''
-      } catch (falError) {
-                  console.error('FAL AI error, falling back to OpenAI:', falError)
-          // Fallback to OpenAI gpt-image-1
-          const response = await openai.images.generate({
-            model: "gpt-image-1",
+    // Initialize Flux thumbnail service
+    const thumbnailService = createFluxThumbnailService()
+    
+    // Determine quality level based on request
+    const fluxQuality = quality === 'hd' ? 'high' : quality === 'standard' ? 'balanced' : 'fast'
+    
+    // Determine style based on input
+    const fluxStyle = style === 'modern' || style === 'professional' ? 'realistic' : 
+                      style === 'vibrant' || style === 'dramatic' ? 'illustration' : 'realistic'
+    
+    try {
+      // If we have specific requirements for YouTube thumbnails
+      if (!videoSnippets.length && !referenceImageUrl) {
+        // Use optimized YouTube thumbnail generation
+        const result = await thumbnailService.generateYouTubeThumbnail(
+          project.title || 'Video',
+          thumbnailPrompt,
+          fluxStyle as 'realistic' | 'illustration'
+        )
+        imageUrl = result.url
+      } else {
+        // Use standard generation with video/reference integration
+        if (videoSnippets.length > 0 || referenceImageUrl) {
+          // Use FAL's Flux with image-to-image capabilities
+          const input: any = {
             prompt: thumbnailPrompt,
-            n: 1,
-            size: "1536x1024",
-            quality: quality === 'hd' ? 'high' : 'medium',
-            background: "auto"
+            image_size: {
+              width: 1920,
+              height: 1080
+            },
+            num_inference_steps: quality === 'hd' ? 50 : 35,
+            guidance_scale: 8.0,
+            output_format: 'png',
+            enable_safety_checker: true
+          }
+          
+          // Add reference image if editing/iterating
+          if (referenceImageUrl) {
+            input.image = referenceImageUrl
+            input.strength = 0.6 // Allow significant changes while keeping composition
+          }
+          
+          // If we have video snippets, use the first one as base
+          if (videoSnippets.length > 0 && !referenceImageUrl) {
+            input.image = videoSnippets[0].thumbnailUrl
+            input.strength = 0.7
+          }
+          
+          const result = await fal.subscribe("fal-ai/flux/dev", {
+            input,
+            logs: true
           })
-          imageUrl = response.data?.[0]?.url || ''
+          
+          imageUrl = result.data?.images?.[0]?.url || ''
+        } else {
+          // Use our optimized Flux service
+          const result = await thumbnailService.generateThumbnail({
+            prompt: thumbnailPrompt,
+            style: fluxStyle,
+            aspectRatio: 'landscape_16_9',
+            quality: fluxQuality
+          })
+          imageUrl = result.url
+        }
       }
-    } else {
-      // Use gpt-image-1 for highest quality and best instruction following
+    } catch (error) {
+      console.error('Flux generation error, falling back to OpenAI:', error)
+      // Fallback to OpenAI gpt-image-1
       const response = await openai.images.generate({
         model: "gpt-image-1",
         prompt: thumbnailPrompt,
         n: 1,
-        size: "1536x1024", // landscape format for YouTube thumbnails
-        quality: quality === 'hd' ? 'high' : quality === 'standard' ? 'medium' : 'low',
+        size: "1536x1024",
+        quality: quality === 'hd' ? 'high' : 'medium',
         background: "auto"
       })
-      
       imageUrl = response.data?.[0]?.url || ''
     }
     
