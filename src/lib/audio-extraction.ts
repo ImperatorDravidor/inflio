@@ -68,50 +68,6 @@ export class AudioExtractor {
   }
 }
 
-// Example implementation with FFmpeg.wasm (for future reference)
-export async function extractAudioWithFFmpeg(videoBlob: Blob): Promise<Blob> {
-  // Installation: npm install @ffmpeg/ffmpeg @ffmpeg/util
-  /*
-  import { FFmpeg } from '@ffmpeg/ffmpeg'
-  import { fetchFile } from '@ffmpeg/util'
-  
-  const ffmpeg = new FFmpeg()
-  await ffmpeg.load()
-  
-  // Write video to FFmpeg filesystem
-  const videoData = await fetchFile(videoBlob)
-  await ffmpeg.writeFile('input.mp4', videoData)
-  
-  // Extract audio as MP3 (smaller than WAV)
-  await ffmpeg.exec([
-    '-i', 'input.mp4',
-    '-vn', // No video
-    '-acodec', 'mp3',
-    '-ab', '128k', // Bitrate
-    '-ar', '16000', // Sample rate (Whisper works well with 16kHz)
-    'output.mp3'
-  ])
-  
-  // Read the output
-  const audioData = await ffmpeg.readFile('output.mp3')
-  return new Blob([audioData], { type: 'audio/mp3' })
-  */
-  
-  throw new Error('FFmpeg audio extraction not implemented. Install @ffmpeg/ffmpeg to enable.')
-}
-
-// Server-side audio extraction endpoint (for future reference)
-export async function createAudioExtractionEndpoint() {
-  /*
-  // In /api/extract-audio/route.ts
-  export async function POST(request: NextRequest) {
-    const { videoUrl } = await request.json()
-    
-    // Use server-side FFmpeg
-    const command = `ffmpeg -i "${videoUrl}" -vn -acodec mp3 -ab 128k -ar 16000 -f mp3 -`
-    
-    // Execute and return audio stream
-    // This would use child_process or a cloud service
-  }
-  */
-} 
+// FFmpeg audio extraction - placeholder for future implementation
+// To implement: install @ffmpeg/ffmpeg and uncomment the implementation
+// Currently using browser-based audio extraction instead 
