@@ -26,16 +26,12 @@ import {
   IconBrandTiktok,
   IconTarget,
   IconFlame,
-  IconMedal,
   IconCalendar,
   IconBrandLinkedin,
   IconBrandX,
   IconBrandFacebook,
   IconPlus,
-  IconCheck,
   IconDots,
-  IconArrowUp,
-  IconGift,
   IconRocket,
   IconEdit,
   IconLoader2
@@ -49,27 +45,19 @@ import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from "next/image"
 import { 
-  AnimatedStatCard,
   AchievementBadge,
   CelebrationOverlay
 } from "@/components/dashboard-enhancements"
 import { format, startOfWeek, addDays, isToday, isSameDay } from "date-fns"
 import { cn } from "@/lib/utils"
 import { 
-  LineChart, 
-  Line, 
   AreaChart, 
   Area, 
   ResponsiveContainer, 
   Tooltip, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid
+  XAxis
 } from 'recharts'
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-
-const MotionCard = motion(Card)
 
 interface DashboardStats {
   totalProjects: number
@@ -139,7 +127,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
-  const [viewMode, setViewMode] = useState<'overview' | 'calendar' | 'analytics'>('overview')
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
 
@@ -332,6 +319,7 @@ export default function DashboardPage() {
     }
 
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
   const getPostsForDate = (date: Date) => {
@@ -671,12 +659,12 @@ export default function DashboardPage() {
 
         {/* Right Sidebar */}
         <div className="space-y-4 sm:space-y-6">
-          {/* Today's Focus */}
+          {/* Today&apos;s Focus */}
           <Card>
             <CardHeader className="pb-3 sm:pb-4">
               <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                 <IconTarget className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                Today's Schedule
+                Today&apos;s Schedule
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 sm:space-y-3">
@@ -731,7 +719,7 @@ export default function DashboardPage() {
           {/* Performance Mini Chart */}
           <Card className="hidden sm:block">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm sm:text-base">This Week's Performance</CardTitle>
+              <CardTitle className="text-sm sm:text-base">This Week&apos;s Performance</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-24 sm:h-32">
@@ -866,10 +854,11 @@ export default function DashboardPage() {
                       <div className="relative h-12 w-20 sm:h-16 sm:w-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                         {project.thumbnail_url ? (
                           project.thumbnail_url.startsWith('http') ? (
-                            <img
+                            <Image
                               src={project.thumbnail_url}
                               alt={project.title}
-                              className="h-full w-full object-cover"
+                              fill
+                              className="object-cover"
                             />
                           ) : (
                             <Image

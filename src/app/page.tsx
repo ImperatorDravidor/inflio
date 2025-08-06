@@ -5,7 +5,8 @@ import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { AnalyticsService } from "@/lib/analytics-service"
 import { 
   Video, 
   FileText, 
@@ -129,12 +130,12 @@ const platforms = [
   { name: "Facebook", icon: IconBrandFacebook, color: "hover:text-blue-700" },
 ]
 
-// Updated stats with real metrics
-const stats = [
-  { value: "2.5M+", label: "Videos Processed", icon: <Video className="h-5 w-5" /> },
-  { value: "15K+", label: "Active Creators", icon: <Users className="h-5 w-5" /> },
-  { value: "10min", label: "Average Processing", icon: <Clock className="h-5 w-5" /> },
-  { value: "4.9/5", label: "Creator Rating", icon: <Star className="h-5 w-5 fill-current" /> },
+// Default stats - will be replaced with real data
+const defaultStats = [
+  { value: "--", label: "Videos Processed", icon: <Video className="h-5 w-5" />, key: 'videos' },
+  { value: "--", label: "Active Creators", icon: <Users className="h-5 w-5" />, key: 'users' },
+  { value: "--", label: "Average Processing", icon: <Clock className="h-5 w-5" />, key: 'time' },
+  { value: "4.8/5", label: "Creator Rating", icon: <Star className="h-5 w-5 fill-current" />, key: 'rating' },
 ]
 
 // Testimonials with more detail
@@ -254,6 +255,50 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeFeature, setActiveFeature] = useState(0)
   const { isSignedIn } = useUser()
+  const [stats, setStats] = useState(defaultStats)
+  const [statsLoading, setStatsLoading] = useState(true)
+  
+  // Load real stats on mount
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const platformStats = await AnalyticsService.getPlatformStats()
+        
+        setStats([
+          { 
+            value: AnalyticsService.formatNumber(platformStats.totalVideos), 
+            label: "Videos Processed", 
+            icon: <Video className="h-5 w-5" />,
+            key: 'videos'
+          },
+          { 
+            value: AnalyticsService.formatNumber(platformStats.totalUsers), 
+            label: "Active Creators", 
+            icon: <Users className="h-5 w-5" />,
+            key: 'users'
+          },
+          { 
+            value: `${platformStats.avgProcessingTime}min`, 
+            label: "Average Processing", 
+            icon: <Clock className="h-5 w-5" />,
+            key: 'time'
+          },
+          { 
+            value: `${platformStats.userRating}/5`, 
+            label: "Creator Rating", 
+            icon: <Star className="h-5 w-5 fill-current" />,
+            key: 'rating'
+          },
+        ])
+      } catch (error) {
+        console.error('Failed to load platform stats:', error)
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+    
+    loadStats()
+  }, [])
   const targetRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({
     target: targetRef,

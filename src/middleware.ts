@@ -1,6 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isDevRoute } from '@/app/api/middleware-protect-dev-routes'
 
 // Define public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
@@ -13,7 +14,6 @@ const isPublicRoute = createRouteMatcher([
   '/api/cron(.*)',  // Allow cron jobs
   '/api/worker(.*)', // Allow worker endpoints
   '/api/inngest(.*)', // Allow Inngest endpoint
-  '/api/debug-production', // Debug endpoint (protected by auth internally)
   '/examples/transcription-demo'
 ])
 
@@ -25,6 +25,24 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth()
 
   const onboardingUrl = new URL('/onboarding', req.url)
+  
+  // Check if this is a development/test route in production
+  if (process.env.NODE_ENV === 'production' && isDevRoute(req.url)) {
+    // In production, only allow admin access to dev routes
+    if (!userId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    
+    // Check if user is admin (via environment variable)
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',') || []
+    const { sessionClaims } = await auth()
+    const userEmail = sessionClaims?.email as string
+    
+    if (!adminEmails.includes(userEmail)) {
+      console.warn(`[Security] Non-admin access attempt to ${req.url} by ${userEmail}`)
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
 
   // For public routes, allow access without a user
   if (isPublicRoute(req)) {

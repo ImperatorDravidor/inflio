@@ -1,3 +1,9 @@
+/**
+ * ⚠️ PROTECTED ROUTE - This endpoint is protected in production
+ * Only accessible in development or by admin users
+ * Protection handled by middleware-protect-dev-routes.ts
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { PLATFORM_CONFIGS, validatePlatformConfig } from '@/lib/social/oauth-config'

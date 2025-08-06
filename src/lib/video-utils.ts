@@ -137,19 +137,25 @@ export const generateMultipleThumbnails = async (
   return thumbnails
 }
 
-// Store thumbnail in localStorage with compression
+// Store thumbnail in memory cache (temporary storage)
+// In production, thumbnails are stored in Supabase Storage
+const thumbnailCache = new Map<string, string>()
+
 export const storeThumbnail = (videoId: string, thumbnail: string): void => {
   try {
-    localStorage.setItem(`thumbnail_${videoId}`, thumbnail)
+    // Use in-memory cache instead of localStorage
+    // This is temporary storage - actual thumbnails are saved to Supabase
+    thumbnailCache.set(`thumbnail_${videoId}`, thumbnail)
   } catch (error) {
     console.warn('Failed to store thumbnail:', error)
   }
 }
 
-// Retrieve thumbnail from localStorage
+// Retrieve thumbnail from memory cache
 export const retrieveThumbnail = (videoId: string): string | null => {
   try {
-    return localStorage.getItem(`thumbnail_${videoId}`)
+    // Check memory cache first
+    return thumbnailCache.get(`thumbnail_${videoId}`) || null
   } catch (error) {
     console.warn('Failed to retrieve thumbnail:', error)
     return null
