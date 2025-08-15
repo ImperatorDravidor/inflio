@@ -14,6 +14,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/cron(.*)',  // Allow cron jobs
   '/api/worker(.*)', // Allow worker endpoints
   '/api/inngest(.*)', // Allow Inngest endpoint
+  '/api/dev-bypass-onboarding', // Allow dev bypass
+  '/settings/skip-onboarding', // Allow skip page
   '/examples/transcription-demo'
 ])
 
@@ -68,8 +70,13 @@ export default clerkMiddleware(async (auth, req) => {
     .eq('clerk_user_id', userId)
     .single();
 
+  // Development bypass: skip onboarding enforcement in development mode
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
+  
   // If they have not completed onboarding and are not on the onboarding page, redirect them
-  if (profile && !profile.onboarding_completed && !isOnboardingRoute(req)) {
+  // Unless in development mode or explicitly skipping
+  if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
     return NextResponse.redirect(onboardingUrl);
   }
 

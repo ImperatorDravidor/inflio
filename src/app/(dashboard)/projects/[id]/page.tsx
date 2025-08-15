@@ -98,6 +98,7 @@ import { predefinedStyles, type ImageSuggestion } from "@/lib/ai-image-service"
 import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/blog-generation-dialog"
 import { ImageCarousel } from "@/components/image-carousel"
 import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
+import { EnhancedPostsGenerator } from "@/components/posts/enhanced-posts-generator"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
@@ -1721,7 +1722,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20 rounded-t-lg overflow-hidden">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1753,6 +1754,17 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                         <span className="text-xs font-medium">Blog</span>
                         <span className="text-[10px] text-muted-foreground">
                           {stats.totalBlogs} posts
+                        </span>
+                      </TabsTrigger>
+                      
+                      <TabsTrigger 
+                        value="posts" 
+                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                      >
+                        <IconLayoutGrid className="h-5 w-5" />
+                        <span className="text-xs font-medium">Posts</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          AI Posts
                         </span>
                       </TabsTrigger>
                       
@@ -2873,6 +2885,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                           </Card>
                         )}
                       </div>
+                    </TabsContent>
+
+                    <TabsContent value="posts" className="mt-0">
+                      <EnhancedPostsGenerator
+                        projectId={project.id}
+                        projectTitle={project.title}
+                        contentAnalysis={project.content_analysis}
+                        transcript={project.transcription?.text}
+                        personaId={selectedPersona?.id}
+                      />
                     </TabsContent>
 
                     <TabsContent value="graphics" className="mt-0">

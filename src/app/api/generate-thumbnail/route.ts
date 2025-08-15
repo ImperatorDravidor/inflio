@@ -242,6 +242,39 @@ export async function POST(req: NextRequest) {
       .from('images')
       .getPublicUrl(filePath)
 
+    // Save to thumbnail history
+    const { data: thumbnailHistory, error: historyError } = await supabaseAdmin
+      .from('thumbnail_history')
+      .insert({
+        project_id: projectId,
+        user_id: userId,
+        type: 'generate',
+        prompt: prompt,
+        base_prompt: thumbnailPrompt,
+        params: {
+          style,
+          quality,
+          mergeVideoWithPersona,
+          hasVideoSnippets: videoSnippets.length > 0,
+          hasPersonalPhotos: personalPhotos.length > 0,
+          dimensions: { width: 1920, height: 1080 }
+        },
+        model: videoSnippets.length > 0 || referenceImageUrl ? 'flux' : 'dall-e-3',
+        lora_ref: personaName ? personaName : null,
+        output_url: publicUrl,
+        file_size: imageBlob.size,
+        width: 1920,
+        height: 1080,
+        status: 'completed',
+        created_by: userId
+      })
+      .select()
+      .single()
+
+    if (historyError) {
+      console.error('Failed to save thumbnail history:', historyError)
+    }
+
     // Update project with new thumbnail
     const { error: updateError } = await supabaseAdmin
       .from('projects')
@@ -253,7 +286,8 @@ export async function POST(req: NextRequest) {
           thumbnailStyle: style,
           thumbnailPrompt: thumbnailPrompt,
           hasVideoSnippets: videoSnippets.length > 0,
-          hasPersona: personalPhotos.length > 0
+          hasPersona: personalPhotos.length > 0,
+          lastThumbnailId: thumbnailHistory?.id
         }
       })
       .eq('id', projectId)
@@ -344,21 +378,67 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const supabase = createSupabaseBrowserClient()
-
     const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
+    const limit = parseInt(searchParams.get('limit') || '20')
 
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID required' }, { status: 400 })
     }
 
-    // For now, return empty history since thumbnail history is not implemented
-    // TODO: Implement proper thumbnail history storage in the database
+    // Fetch thumbnail history with feedback
+    const { data: thumbnails, error } = await supabaseAdmin
+      .from('thumbnail_history')
+      .select(`
+        *,
+        thumbnail_feedback (
+          rating,
+          feedback_text,
+          created_at
+        )
+      `)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      console.error('Database error:', error)
+      return NextResponse.json({ 
+        error: 'Failed to fetch thumbnail history' 
+      }, { status: 500 })
+    }
+
+    // Build iteration tree structure
+    const thumbnailMap = new Map()
+    const roots: any[] = []
+
+    // First pass: create map of all thumbnails
+    thumbnails?.forEach(thumb => {
+      thumbnailMap.set(thumb.id, { 
+        ...thumb, 
+        children: [],
+        averageRating: thumb.thumbnail_feedback?.length > 0 
+          ? thumb.thumbnail_feedback.reduce((acc: number, f: any) => acc + f.rating, 0) / thumb.thumbnail_feedback.length
+          : null
+      })
+    })
+
+    // Second pass: build parent-child relationships
+    thumbnails?.forEach(thumb => {
+      if (thumb.parent_id) {
+        const parent = thumbnailMap.get(thumb.parent_id)
+        if (parent) {
+          parent.children.push(thumbnailMap.get(thumb.id))
+        }
+      } else {
+        roots.push(thumbnailMap.get(thumb.id))
+      }
+    })
     
     return NextResponse.json({
-      history: [],
-      count: 0
+      history: roots,
+      count: thumbnails?.length || 0,
+      hasMore: thumbnails?.length === limit
     })
 
   } catch (error) {
