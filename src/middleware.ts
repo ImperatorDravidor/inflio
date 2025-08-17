@@ -19,12 +19,22 @@ const isPublicRoute = createRouteMatcher([
   '/examples/transcription-demo'
 ])
 
+// Define protected routes that require authentication
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/projects(.*)',
+  '/studio(.*)',
+  '/personas(.*)',
+  '/social(.*)',
+  '/onboarding(.*)'
+])
+
 const isOnboardingRoute = createRouteMatcher([
   '/onboarding(.*)'
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth()
+  const { userId, sessionClaims } = await auth()
 
   const onboardingUrl = new URL('/onboarding', req.url)
   
@@ -37,7 +47,6 @@ export default clerkMiddleware(async (auth, req) => {
     
     // Check if user is admin (via environment variable)
     const adminEmails = process.env.ADMIN_EMAILS?.split(',') || []
-    const { sessionClaims } = await auth()
     const userEmail = sessionClaims?.email as string
     
     if (!adminEmails.includes(userEmail)) {
@@ -51,38 +60,41 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next()
   }
 
-  // If the user is not logged in and tries to access a protected route, redirect to sign-in
+  // For any non-public route, require authentication
   if (!userId) {
     const signInUrl = new URL('/sign-in', req.url)
     signInUrl.searchParams.set('redirect_url', req.url)
     return NextResponse.redirect(signInUrl)
   }
   
-  // If the user is logged in, check if their onboarding is complete
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  // If we have a userId, check onboarding status
+  if (userId) {
+    // If the user is logged in, check if their onboarding is complete
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('onboarding_completed')
-    .eq('clerk_user_id', userId)
-    .single();
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('onboarding_completed')
+      .eq('clerk_user_id', userId)
+      .single();
 
-  // Development bypass: skip onboarding enforcement in development mode
-  const isDevelopment = process.env.NODE_ENV === 'development'
-  const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
-  
-  // If they have not completed onboarding and are not on the onboarding page, redirect them
-  // Unless in development mode or explicitly skipping
-  if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
-    return NextResponse.redirect(onboardingUrl);
-  }
+    // Development bypass: skip onboarding enforcement in development mode
+    const isDevelopment = process.env.NODE_ENV === 'development'
+    const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
+    
+    // If they have not completed onboarding and are not on the onboarding page, redirect them
+    // Unless in development mode or explicitly skipping
+    if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
+      return NextResponse.redirect(onboardingUrl);
+    }
 
-  // If onboarding is complete and they somehow land on the onboarding page, redirect to dashboard
-  if (profile && profile.onboarding_completed && isOnboardingRoute(req)) {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+    // If onboarding is complete and they somehow land on the onboarding page, redirect to dashboard
+    if (profile && profile.onboarding_completed && isOnboardingRoute(req)) {
+      return NextResponse.redirect(new URL('/dashboard', req.url));
+    }
   }
 
   // Otherwise, allow the request to proceed

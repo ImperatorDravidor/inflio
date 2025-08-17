@@ -21,31 +21,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createSupabaseServerClient()
     
-    // Get suggestions with related data
+    // Get suggestions - simplified query without joins
     const { data: suggestions, error } = await supabase
       .from('post_suggestions')
-      .select(`
-        *,
-        post_images (
-          id,
-          url,
-          position,
-          platform,
-          dimensions
-        ),
-        post_copy (
-          platform,
-          caption,
-          hashtags,
-          cta,
-          title,
-          description,
-          is_edited,
-          edited_caption,
-          edited_hashtags,
-          edited_cta
-        )
-      `)
+      .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
 
@@ -57,28 +36,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Transform the data to match the expected format
-    const transformedSuggestions = suggestions?.map(suggestion => {
-      // Build copy variants object from post_copy array
-      const copyVariants: Record<string, any> = {}
-      suggestion.post_copy?.forEach((copy: any) => {
-        copyVariants[copy.platform] = {
-          caption: copy.is_edited ? copy.edited_caption : copy.caption,
-          hashtags: copy.is_edited ? copy.edited_hashtags : copy.hashtags,
-          cta: copy.is_edited ? copy.edited_cta : copy.cta,
-          title: copy.title,
-          description: copy.description
-        }
-      })
-
-      return {
-        ...suggestion,
-        images: suggestion.post_images || [],
-        copy_variants: copyVariants
-      }
-    })
-
-    return NextResponse.json({ suggestions: transformedSuggestions || [] })
+    // Return suggestions directly - data structure is already in the table
+    // The post_suggestions table should contain all necessary data
+    return NextResponse.json({ suggestions: suggestions || [] })
   } catch (error) {
     console.error('Error fetching suggestions:', error)
     return NextResponse.json(

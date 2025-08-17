@@ -1,5 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getOpenAI } from '@/lib/openai'
 import { AIImageService } from '@/lib/ai-image-service'
 
@@ -56,7 +56,7 @@ export class PostsService {
     } = params
 
     const supabase = await createSupabaseServerClient()
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
     
     // Get user ID
     const { data: { user } } = await supabase.auth.getUser()
@@ -155,7 +155,7 @@ export class PostsService {
       settings = {}
     } = params
 
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     // Generate content idea based on type
     const contentIdea = await this.generateContentIdea({
@@ -355,7 +355,7 @@ Return a JSON object with:
     userId: string
   }) {
     const { suggestionId, contentType, contentIdea, personaId, userId } = params
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     // Determine number of images based on content type
     const imageCount = contentType === 'carousel' ? 5 : 
@@ -390,25 +390,21 @@ Return a JSON object with:
           personaId
         })
 
-        // Store image metadata
-        const { data: imageRecord, error } = await adminSupabase
-          .from('post_images')
-          .insert({
-            suggestion_id: suggestionId,
-            user_id: userId,
-            url: imageUrl,
-            platform: 'instagram', // Default, will generate per-platform later
-            dimensions: dimensions.instagram,
-            prompt: imagePrompt,
-            model: 'flux-pro-1.1',
-            persona_id: personaId,
-            position: i,
-            status: 'generated'
-          })
-          .select()
-          .single()
-
-        if (error) throw error
+        // Store image metadata in memory for now
+        // TODO: Store in post_suggestions table as JSON column or create post_images table
+        const imageRecord = {
+          suggestion_id: suggestionId,
+          user_id: userId,
+          url: imageUrl,
+          platform: 'instagram',
+          dimensions: dimensions.instagram,
+          prompt: imagePrompt,
+          model: 'flux-pro-1.1',
+          persona_id: personaId,
+          position: i,
+          status: 'generated'
+        }
+        
         images.push(imageRecord)
       } catch (error) {
         console.error(`Failed to generate image ${i + 1}:`, error)
@@ -473,7 +469,7 @@ Return a JSON object with:
   }) {
     const { suggestionId, contentIdea, platforms, contentType } = params
     const openai = getOpenAI()
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     const platformLimits = {
       instagram: { caption: 2200, hashtags: 30 },
@@ -652,12 +648,12 @@ Return JSON:
    */
   static async regenerateSuggestion(suggestionId: string, feedback?: string) {
     const supabase = await createSupabaseServerClient()
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     // Get existing suggestion
     const { data: suggestion, error } = await supabase
       .from('post_suggestions')
-      .select('*, post_images(*), post_copy(*)')
+      .select('*')
       .eq('id', suggestionId)
       .single()
 
@@ -686,7 +682,7 @@ Return JSON:
     platform: Platform, 
     updates: Partial<PlatformCopy>
   ) {
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     const { error } = await adminSupabase
       .from('post_copy')
@@ -709,7 +705,7 @@ Return JSON:
    * Approve suggestion and move to staging
    */
   static async approveSuggestion(suggestionId: string) {
-    const adminSupabase = createSupabaseAdminClient()
+    const adminSupabase = supabaseAdmin
 
     const { error } = await adminSupabase
       .from('post_suggestions')

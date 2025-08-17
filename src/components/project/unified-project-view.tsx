@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Sparkles, Image, Share2, Video, Calendar, Settings,
   ChevronRight, Play, Clock, FileText, Hash, Users,
-  TrendingUp, Zap, Palette, Brain, Wand2, BarChart3
+  TrendingUp, Zap, Palette, Brain, Wand2, BarChart3,
+  Lightbulb
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,10 +17,11 @@ import { FeatureCard } from '@/components/ui/feature-card'
 import { UnifiedPortal } from '@/components/ui/unified-portal'
 import { designSystem } from '@/lib/design-system'
 import { EnhancedThumbnailGenerator } from '@/components/thumbnail/enhanced-thumbnail-generator'
-import { EnhancedPostsGenerator } from '@/components/posts/enhanced-posts-generator'
+import { SmartPostsGenerator } from '@/components/posts/smart-posts-generator'
 import { EnhancedTranscriptEditor } from '@/components/enhanced-transcript-editor'
 import { EnhancedContentStager } from '@/components/staging/enhanced-content-stager'
 import { VideoChapters } from '@/components/video-chapters'
+import { AIContentInsights } from '@/components/project/ai-content-insights'
 
 interface UnifiedProjectViewProps {
   project: any
@@ -51,6 +53,21 @@ export function UnifiedProjectView({ project, user, onUpdate }: UnifiedProjectVi
 
   // Feature configurations
   const features = [
+    {
+      id: 'insights',
+      title: 'AI Content Insights',
+      description: 'Deep analysis with thumbnail ideas & viral potential',
+      icon: <Brain className="h-5 w-5" />,
+      gradient: 'sunset' as const,
+      badge: project.content_analysis?.deepAnalysis ? { text: 'GPT-5', variant: 'success' as const } : { text: 'New', variant: 'secondary' as const },
+      stats: [
+        { label: 'Thumbnails', value: project.content_analysis?.thumbnailIdeas?.concepts?.length || 0, trend: 'up' as const },
+        { label: 'Viral Score', value: `${project.content_analysis?.deepAnalysis?.viralPotential?.score || 0}%`, trend: 'up' as const },
+        { label: 'Post Ideas', value: project.content_analysis?.deepAnalysis?.customPostIdeas?.length || 0, trend: 'neutral' as const }
+      ],
+      isPremium: true,
+      isNew: true
+    },
     {
       id: 'thumbnail',
       title: 'AI Thumbnails',
@@ -242,6 +259,55 @@ export function UnifiedProjectView({ project, user, onUpdate }: UnifiedProjectVi
 
       {/* Feature Portals */}
       <AnimatePresence>
+        {/* AI Content Insights Portal */}
+        <UnifiedPortal
+          isOpen={activeFeature === 'insights'}
+          onClose={() => setActiveFeature(null)}
+          title="AI Content Insights"
+          subtitle="Deep analysis with thumbnail ideas, viral scoring, and content strategy"
+          icon={<Brain className="h-5 w-5" />}
+          badge={{ text: 'GPT-5', variant: 'success' }}
+          size="xl"
+          headerActions={
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setActiveFeature('thumbnail')}>
+                <Image className="h-4 w-4 mr-1.5" />
+                Use in Thumbnails
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setActiveFeature('posts')}>
+                <Share2 className="h-4 w-4 mr-1.5" />
+                Use in Posts
+              </Button>
+            </div>
+          }
+        >
+          <AIContentInsights
+            projectId={project.id}
+            contentAnalysis={project.content_analysis}
+            onRefresh={() => {
+              // Refresh project data
+              if (onUpdate) {
+                // Fetch updated project
+                fetch(`/api/projects/${project.id}`)
+                  .then(res => res.json())
+                  .then(data => onUpdate(data))
+              }
+            }}
+            onThumbnailSelect={(concept) => {
+              // Pass thumbnail concept to thumbnail generator
+              setActiveFeature('thumbnail')
+              // Store concept for use in thumbnail generator
+              sessionStorage.setItem('selectedThumbnailConcept', JSON.stringify(concept))
+            }}
+            onPostSelect={(post) => {
+              // Pass post to posts generator
+              setActiveFeature('posts')
+              // Store post for use in posts generator
+              sessionStorage.setItem('selectedPostIdea', JSON.stringify(post))
+            }}
+          />
+        </UnifiedPortal>
+
         {/* Thumbnail Generator Portal */}
         <UnifiedPortal
           isOpen={activeFeature === 'thumbnail'}
@@ -272,8 +338,8 @@ export function UnifiedProjectView({ project, user, onUpdate }: UnifiedProjectVi
           <EnhancedThumbnailGenerator
             projectId={project.id}
             projectTitle={project.title}
-            projectVideoUrl={project.video_url}
-            contentAnalysis={project.content_analysis}
+            videoUrl={project.video_url}
+            projectContext={project.content_analysis}
           />
         </UnifiedPortal>
 
@@ -311,12 +377,42 @@ export function UnifiedProjectView({ project, user, onUpdate }: UnifiedProjectVi
             </div>
           }
         >
-          <EnhancedPostsGenerator
+          {/* Demo Helper */}
+          <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-purple-500 mt-0.5" />
+              <div className="space-y-2">
+                <p className="font-medium text-purple-900 dark:text-purple-100">
+                  Demo Flow Instructions
+                </p>
+                <ol className="text-sm space-y-1 text-purple-800 dark:text-purple-200">
+                  <li>1️⃣ Click "Generate Smart Posts" to create AI-powered content</li>
+                  <li>2️⃣ Configure content types and platforms in the dialog</li>
+                  <li>3️⃣ After generation, use Publishing Workflow below</li>
+                  <li>4️⃣ Select generated content and click "Continue to Staging"</li>
+                  <li>5️⃣ Review content (can skip fields in demo mode)</li>
+                  <li>6️⃣ Click "Continue to Smart Scheduling"</li>
+                  <li>7️⃣ Choose a scheduling strategy and generate schedule</li>
+                  <li>8️⃣ Review and confirm to send posts to calendar</li>
+                  <li>9️⃣ View your scheduled posts in Social → Calendar</li>
+                </ol>
+                <p className="text-xs text-purple-700 dark:text-purple-300 italic">
+                  Note: Demo mode allows skipping required fields for faster testing
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <SmartPostsGenerator
             projectId={project.id}
             projectTitle={project.title}
             contentAnalysis={project.content_analysis}
             transcript={project.transcription?.text}
-            personaId={user?.persona_id}
+            onPostsGenerated={(posts) => {
+              console.log('Posts generated:', posts)
+              // Update project stats if needed
+              setProjectStats(prev => ({ ...prev, posts: posts.length }))
+            }}
           />
         </UnifiedPortal>
 
@@ -409,12 +505,47 @@ export function UnifiedProjectView({ project, user, onUpdate }: UnifiedProjectVi
           }
         >
           <EnhancedContentStager
-            projectId={project.id}
-            projectTitle={project.title}
-            availableContent={{
-              clips: project.clips || [],
-              thumbnails: [project.thumbnail_url].filter(Boolean),
-              posts: project.post_suggestions || []
+            content={(() => {
+              // Convert project content to staged content format
+              const stagedContent: any[] = []
+              
+              // Add clips
+              if (project.clips?.length > 0) {
+                project.clips.forEach((clip: any, index: number) => {
+                  stagedContent.push({
+                    id: clip.id || `clip-${index}`,
+                    type: 'clip',
+                    title: clip.title || `Clip ${index + 1}`,
+                    content: clip,
+                    platforms: ['youtube', 'tiktok', 'instagram'],
+                    status: 'ready'
+                  })
+                })
+              }
+              
+              // Add posts
+              if (project.post_suggestions?.length > 0) {
+                project.post_suggestions.forEach((post: any) => {
+                  stagedContent.push({
+                    id: post.id,
+                    type: 'post',
+                    title: post.title,
+                    content: post,
+                    platforms: post.eligible_platforms || ['instagram', 'twitter', 'linkedin'],
+                    status: post.status || 'ready'
+                  })
+                })
+              }
+              
+              return stagedContent
+            })()}
+            onUpdate={(updatedContent) => {
+              console.log('Content updated:', updatedContent)
+              // Handle content updates if needed
+            }}
+            onNext={() => {
+              console.log('Moving to next step')
+              // Handle next action
             }}
           />
         </UnifiedPortal>

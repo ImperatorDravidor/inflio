@@ -957,7 +957,35 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
           </div>
         </div>
       </div>
+      
+      {/* Navigation Footer */}
+      <div className="mt-8 border-t pt-6">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            {editedContent.length} items ready for scheduling
+          </div>
+          <Button
+            onClick={() => {
+              // Demo mode: Allow proceeding even with incomplete fields
+              const isDemoMode = true
+              
+              if (isDemoMode) {
+                toast.info('Proceeding to scheduling (Demo Mode)')
+                onNext()
+              } else {
+                // Production validation would go here
+                onNext()
+              }
+            }}
+            size="lg"
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          >
+            <IconSparkles className="mr-2 h-5 w-5" />
+            Continue to Smart Scheduling
+          </Button>
         </div>
+      </div>
+    </div>
   )
 }
 

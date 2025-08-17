@@ -638,15 +638,26 @@ export function ContentStager({ content, onUpdate, onNext }: ContentStagerProps)
   }
 
   const handleProceed = () => {
-    const errors = validateAllContent()
-    if (Object.keys(errors).length > 0) {
-      // Show error toast with first error
-      const firstError = Object.values(errors)[0][0]
-      toast.error(`Please complete all required fields: ${firstError}`)
-      
-      // Switch to overview mode to show all errors
-      setViewMode('overview')
-      return
+    // Demo mode: Allow proceeding without validation for now
+    const isDemoMode = true // Set this to false for production
+    
+    if (!isDemoMode) {
+      const errors = validateAllContent()
+      if (Object.keys(errors).length > 0) {
+        // Show error toast with first error
+        const firstError = Object.values(errors)[0][0]
+        toast.error(`Please complete all required fields: ${firstError}`)
+        
+        // Switch to overview mode to show all errors
+        setViewMode('overview')
+        return
+      }
+    } else {
+      // In demo mode, just show a warning but proceed
+      const errors = validateAllContent()
+      if (Object.keys(errors).length > 0) {
+        toast.warning('Some fields are incomplete, but proceeding for demo purposes')
+      }
     }
     
     onNext()

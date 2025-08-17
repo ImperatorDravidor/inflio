@@ -189,9 +189,30 @@ export function EnhancedThumbnailGenerator({
     improvements: [] as string[]
   })
 
-  // Load history on mount
+  // Load history on mount and check for selected concept
   useEffect(() => {
     loadGenerationHistory()
+    
+    // Check if there's a selected thumbnail concept from AI insights
+    const storedConcept = sessionStorage.getItem('selectedThumbnailConcept')
+    if (storedConcept) {
+      try {
+        const concept = JSON.parse(storedConcept)
+        // Use the AI-generated prompt
+        if (concept.aiPrompt) {
+          setPrompt(concept.aiPrompt)
+          toast.success('AI thumbnail concept loaded!')
+        }
+        // Set style based on concept
+        if (concept.style && settings.style !== concept.style) {
+          setSettings(prev => ({ ...prev, style: concept.style as any }))
+        }
+        // Clear the stored concept after using it
+        sessionStorage.removeItem('selectedThumbnailConcept')
+      } catch (error) {
+        console.error('Error loading thumbnail concept:', error)
+      }
+    }
   }, [projectId])
 
   const loadGenerationHistory = async () => {
@@ -571,6 +592,47 @@ export function EnhancedThumbnailGenerator({
                   })}
                 </div>
               </div>
+
+              {/* AI-Generated Suggestions (if available) */}
+              {projectContext?.thumbnailIdeas?.concepts && projectContext.thumbnailIdeas.concepts.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-4 w-4 text-purple-500" />
+                    <Label>AI-Generated Concepts</Label>
+                    <Badge variant="secondary" className="text-xs">
+                      {projectContext.thumbnailIdeas.concepts.length} ideas
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {projectContext.thumbnailIdeas.concepts.slice(0, 4).map((concept: any, idx: number) => (
+                      <button
+                        key={concept.id || idx}
+                        onClick={() => {
+                          setPrompt(concept.aiPrompt || concept.description)
+                          if (concept.style) {
+                            setSettings(prev => ({ ...prev, style: concept.style as any }))
+                          }
+                          toast.success('AI concept applied!')
+                        }}
+                        className="p-3 rounded-lg border-2 border-purple-500/20 hover:border-purple-500/50 bg-gradient-to-br from-purple-500/5 to-pink-500/5 text-left transition-all"
+                      >
+                        <div className="font-medium text-sm mb-1">{concept.title}</div>
+                        <div className="text-xs text-muted-foreground line-clamp-2">
+                          {concept.description}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant="outline" className="text-xs">
+                            {concept.style}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {concept.mood}
+                          </Badge>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Smart Prompt Section */}
               <div className="space-y-3">

@@ -143,6 +143,60 @@ export interface Project {
       socialMediaHooks: string[]
       shortFormContent: string[]
     }
+    thumbnailIdeas?: {
+      concepts: Array<{
+        id: string
+        title: string
+        description: string
+        visualElements: string[]
+        colorScheme: string[]
+        style: 'modern' | 'classic' | 'minimalist' | 'bold' | 'creative' | 'professional'
+        mood: string
+        targetAudience: string
+        keyText?: string
+        composition: string
+        aiPrompt?: string
+      }>
+      bestPractices: string[]
+      platformOptimized: {
+        youtube?: string
+        instagram?: string
+        tiktok?: string
+      }
+    }
+    deepAnalysis?: {
+      contentPillars: string[]
+      narrativeArc: string
+      emotionalJourney: string[]
+      targetDemographics: {
+        primary: string
+        secondary?: string
+        interests: string[]
+      }
+      viralPotential: {
+        score: number
+        factors: string[]
+        recommendations: string[]
+      }
+      customPostIdeas: Array<{
+        id: string
+        type: 'educational' | 'entertaining' | 'inspirational' | 'promotional' | 'storytelling'
+        hook: string
+        mainContent: string
+        callToAction: string
+        estimatedEngagement: 'high' | 'medium' | 'low'
+        bestTimeToPost?: string
+        platform: string[]
+        synergies?: string[] // How this post connects with other content
+      }>
+      contentStrategy: {
+        primaryTheme: string
+        secondaryThemes: string[]
+        contentSeries?: string[]
+        crossPromotionOpportunities: string[]
+      }
+    }
+    modelVersion?: string // Track which model was used
     analyzedAt: string
   }
   folders: ContentFolders
