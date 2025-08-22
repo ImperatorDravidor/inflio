@@ -1,7 +1,7 @@
 "use client"
 
 import { ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Variants } from 'framer-motion'
 import { usePathname } from 'next/navigation'
 import { designSystem } from '@/lib/design-system'
 
@@ -13,7 +13,7 @@ export function AnimationProvider({ children }: AnimationProviderProps) {
   const pathname = usePathname()
 
   // Page transition variants
-  const pageVariants = {
+  const pageVariants: Variants = {
     initial: {
       opacity: 0,
       y: 20,
@@ -25,7 +25,7 @@ export function AnimationProvider({ children }: AnimationProviderProps) {
       scale: 1,
       transition: {
         duration: 0.3,
-        ease: [0.4, 0, 0.2, 1]
+        ease: "easeInOut"
       }
     },
     exit: {
@@ -34,7 +34,7 @@ export function AnimationProvider({ children }: AnimationProviderProps) {
       scale: 0.98,
       transition: {
         duration: 0.2,
-        ease: [0.4, 0, 0.2, 1]
+        ease: "easeInOut"
       }
     }
   }

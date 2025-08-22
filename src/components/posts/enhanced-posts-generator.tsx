@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import confetti from 'canvas-confetti'
+import confetti from 'canvas-confetti' // Fixed missing dependency
 import {
   Card,
   CardContent,
@@ -281,9 +281,9 @@ export function EnhancedPostsGenerator({
     optimizeForEngagement: true
   })
 
-  // Load suggestions on mount
+  // Load suggestions on mount and auto-generate if none exist
   useEffect(() => {
-    loadSuggestions()
+    loadSuggestionsAndAutoGenerate()
   }, [projectId])
 
   const loadSuggestions = async () => {
@@ -292,10 +292,92 @@ export function EnhancedPostsGenerator({
       if (response.ok) {
         const data = await response.json()
         setSuggestions(data.suggestions || [])
+        return data.suggestions || []
       }
     } catch (error) {
       console.error('Failed to load suggestions:', error)
       toast.error('Failed to load post suggestions')
+    }
+    return []
+  }
+
+  const loadSuggestionsAndAutoGenerate = async () => {
+    // First, try to load existing suggestions
+    const existingSuggestions = await loadSuggestions()
+    
+    // If no suggestions exist and we have content analysis, auto-generate
+    if (existingSuggestions.length === 0 && contentAnalysis) {
+      // Show a toast that we're auto-generating
+      toast.info('🎨 Generating AI posts based on your content...', {
+        duration: 3000,
+        icon: <Sparkles className="h-4 w-4" />
+      })
+      
+      // Auto-trigger generation with default settings
+      await generateSuggestionsWithDefaults()
+    }
+  }
+
+  const generateSuggestionsWithDefaults = async () => {
+    setIsGenerating(true)
+    setGenerationProgress(0)
+    
+    // Use smart defaults for automatic generation
+    const defaultSettings = {
+      contentTypes: ['carousel', 'quote', 'single'], // Most popular types
+      platforms: ['instagram', 'twitter', 'linkedin'], // Most common platforms
+      creativity: 0.7,
+      tone: 'professional',
+      includeEmojis: true,
+      includeHashtags: true,
+      optimizeForEngagement: true,
+      usePersona: !!personaId,
+      selectedPersonaId: personaId
+    }
+
+    try {
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setGenerationProgress(prev => Math.min(prev + 10, 90))
+      }, 500)
+
+      const response = await fetch('/api/posts/generate-smart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectTitle,
+          contentAnalysis,
+          transcript: transcript?.substring(0, 3000),
+          settings: defaultSettings
+        })
+      })
+
+      clearInterval(progressInterval)
+      setGenerationProgress(100)
+
+      if (!response.ok) throw new Error('Failed to generate posts')
+
+      await loadSuggestions()
+      
+      // Subtle success notification
+      toast.success('✨ AI posts ready!', {
+        duration: 2000
+      })
+      
+      // Small celebration
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.8 },
+        colors: ['#8B5CF6', '#EC4899', '#10B981']
+      })
+    } catch (error) {
+      console.error('Auto-generation error:', error)
+      // Don't show error toast for auto-generation, just log it
+    } finally {
+      setIsGenerating(false)
+      setGenerationProgress(100)
     }
   }
 
@@ -786,7 +868,7 @@ export function EnhancedPostsGenerator({
             </Select>
 
             {/* Sort */}
-            <Select value={sortBy} onValueChange={setSortBy}>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'recent' | 'score' | 'engagement')}>
               <SelectTrigger className="w-32 h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -1207,7 +1289,7 @@ export function EnhancedPostsGenerator({
                               <CardTitle className="text-base">{config.name}</CardTitle>
                             </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span>{copy.caption.length}/{config.maxCaption}</span>
+                              <span>{copy.caption.length}/{(config as any).maxCaption || 280}</span>
                             </div>
                           </div>
                         </CardHeader>

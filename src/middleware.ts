@@ -91,8 +91,9 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(onboardingUrl);
     }
 
-    // If onboarding is complete and they somehow land on the onboarding page, redirect to dashboard
-    if (profile && profile.onboarding_completed && isOnboardingRoute(req)) {
+    // If onboarding is complete and they try to access the onboarding page
+    // In development mode, always allow access to onboarding for testing
+    if (profile && profile.onboarding_completed && isOnboardingRoute(req) && !isDevelopment) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
   }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Download, Star, ChevronLeft, ChevronRight, Wand2, ThumbsUp, ThumbsDown, History, Upload } from 'lucide-react'
+import { Sparkles, RefreshCw, Download, Star, ChevronLeft, ChevronRight, Wand2, ThumbsUp, ThumbsDown, History, Upload, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'

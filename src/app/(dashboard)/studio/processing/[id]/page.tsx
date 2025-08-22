@@ -109,8 +109,8 @@ export default function ProcessingPage() {
     // Check if all tasks are complete
     const allComplete = project.tasks.every(t => t.status === 'completed')
     if (allComplete) {
-      console.log('[Processing] All tasks complete, redirecting...')
-      router.push(`/projects/${projectId}`)
+      console.log('[Processing] All tasks complete, redirecting to posts tab...')
+      router.push(`/projects/${projectId}?tab=posts`)
       return
     }
 
@@ -205,11 +205,11 @@ export default function ProcessingPage() {
               duration: 5000
             })
           } else {
-            toast.success("Processing complete!")
+            toast.success("Processing complete! Loading AI posts...")
           }
           
           setTimeout(() => {
-            router.push(`/projects/${projectId}`)
+            router.push(`/projects/${projectId}?tab=posts`)
           }, 1500)
         }
       } catch (error) {
@@ -557,9 +557,9 @@ export default function ProcessingPage() {
             <Button 
               size="lg" 
               className="gradient-premium hover:opacity-90 transition-opacity"
-              onClick={() => router.push(`/projects/${projectId}`)}
+              onClick={() => router.push(`/projects/${projectId}?tab=posts`)}
             >
-              View Results
+              View AI Posts
               <IconArrowRight className="h-4 w-4 ml-2" />
             </Button>
           )}

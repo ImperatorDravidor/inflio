@@ -173,7 +173,7 @@ export function SeamlessOnboarding({ userId, onComplete }: SeamlessOnboardingPro
   }
 
   const updateFormData = (key: string, value: any) => {
-    setFormData(prev => ({ ...prev, [key]: value }))
+    setFormData((prev: any) => ({ ...prev, [key]: value }))
   }
 
   // Step progress calculation
@@ -425,7 +425,7 @@ export function SeamlessOnboarding({ userId, onComplete }: SeamlessOnboardingPro
                       onClick={() => {
                         const platforms = formData.platforms || []
                         const updated = platforms.includes(platform.id)
-                          ? platforms.filter(p => p !== platform.id)
+                          ? platforms.filter((p: any) => p !== platform.id)
                           : [...platforms, platform.id]
                         updateFormData('platforms', updated)
                       }}
@@ -530,7 +530,7 @@ export function SeamlessOnboarding({ userId, onComplete }: SeamlessOnboardingPro
                         onClick={() => {
                           const pillars = formData.pillars || []
                           const updated = pillars.includes(pillar)
-                            ? pillars.filter(p => p !== pillar)
+                            ? pillars.filter((p: any) => p !== pillar)
                             : [...pillars, pillar]
                           updateFormData('pillars', updated)
                         }}
@@ -690,7 +690,7 @@ export function SeamlessOnboarding({ userId, onComplete }: SeamlessOnboardingPro
                           onClick={() => {
                             const types = formData.contentTypes || []
                             const updated = types.includes(type.id)
-                              ? types.filter(t => t !== type.id)
+                              ? types.filter((t: any) => t !== type.id)
                               : [...types, type.id]
                             updateFormData('contentTypes', updated)
                           }}

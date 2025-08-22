@@ -1,5 +1,6 @@
 import { getOpenAI } from './openai'
 import { TranscriptionData } from './project-types'
+import { executeWithModelFallback } from './ai-model-config'
 
 export interface ContentAnalysis {
   keywords: string[]
@@ -73,7 +74,7 @@ export interface ContentAnalysis {
 
 export class AIContentService {
   /**
-   * Extract keywords and topics from transcript using OpenAI GPT-5 (future-ready)
+   * Extract keywords and topics from transcript using OpenAI GPT-5
    */
   static async analyzeTranscript(transcription: TranscriptionData, useDeepAnalysis: boolean = true): Promise<ContentAnalysis> {
     try {
@@ -174,17 +175,20 @@ Return in this exact JSON format:
   "modelVersion": "gpt-5"
 }`
 
-      const completion = await openai.chat.completions.create({
-        // Using GPT-5 model (future-ready, fallback to GPT-4 Turbo)
-        model: process.env.NEXT_PUBLIC_GPT5_MODEL || 'gpt-4-turbo-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.7, // Increased for more creative thumbnail ideas
-        max_tokens: 4000, // Increased for comprehensive analysis
-        response_format: { type: 'json_object' }
-      })
+      // Using GPT-5 with automatic fallback
+      const completion = await executeWithModelFallback(
+        openai,
+        {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.7, // Increased for more creative thumbnail ideas
+          max_tokens: 4000, // Increased for comprehensive analysis
+          response_format: { type: 'json_object' }
+        },
+        'Content Analysis'
+      )
 
       const response = completion.choices[0].message.content
       if (!response) {
@@ -201,7 +205,7 @@ Return in this exact JSON format:
         summary: analysis.summary || 'No summary available',
         sentiment: ['positive', 'neutral', 'negative'].includes(analysis.sentiment) ? analysis.sentiment : 'neutral',
         keyMoments: Array.isArray(analysis.keyMoments) ? analysis.keyMoments.slice(0, 5) : [],
-        modelVersion: process.env.NEXT_PUBLIC_GPT5_MODEL ? 'gpt-5' : 'gpt-4-turbo',
+        modelVersion: 'gpt-5',
         contentSuggestions: {
           blogPostIdeas: Array.isArray(analysis.contentSuggestions?.blogPostIdeas) ? analysis.contentSuggestions.blogPostIdeas : [],
           socialMediaHooks: Array.isArray(analysis.contentSuggestions?.socialMediaHooks) ? analysis.contentSuggestions.socialMediaHooks : [],
@@ -270,16 +274,20 @@ Return in JSON format:
   "seoDescription": "SEO meta description"
 }`
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4.1',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 2500,
-        response_format: { type: 'json_object' }
-      })
+      // Using GPT-5 with automatic fallback
+      const completion = await executeWithModelFallback(
+        openai,
+        {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 2500,
+          response_format: { type: 'json_object' }
+        },
+        'Blog Generation'
+      )
 
       const response = completion.choices[0].message.content
       if (!response) {
@@ -334,16 +342,20 @@ Return JSON:
   "type": "text|carousel|video"
 }`
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4.1',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.8,
-          max_tokens: 500,
-          response_format: { type: 'json_object' }
-        })
+        // Using GPT-5 with automatic fallback
+        const completion = await executeWithModelFallback(
+          openai,
+          {
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.8,
+            max_tokens: 500,
+            response_format: { type: 'json_object' }
+          },
+          `Social Post Generation (${platform})`
+        )
 
         const response = completion.choices[0].message.content
         if (response) {

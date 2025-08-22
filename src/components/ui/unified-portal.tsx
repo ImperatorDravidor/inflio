@@ -103,10 +103,13 @@ export function UnifiedPortal({
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
-          <motion.div
+                    {/* Backdrop */}
+          <motion.div 
             className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
-            {...designSystem.animations.portal.backdrop}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             onClick={!isFullscreen ? onClose : undefined}
           />
 
@@ -118,7 +121,10 @@ export function UnifiedPortal({
                 ? "inset-0" 
                 : "inset-x-0 top-[5vh] bottom-[5vh] flex items-center justify-center px-4"
             )}
-            {...designSystem.animations.portal.enter}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.2 }}
           >
             <div
               className={cn(
@@ -158,7 +164,15 @@ export function UnifiedPortal({
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-semibold">{title}</h2>
                         {badge && (
-                          <Badge variant={badge.variant || 'default'} className="ml-2">
+                          <Badge 
+                            variant={
+                              badge.variant === 'warning' ? 'destructive' :
+                              badge.variant === 'success' ? 'default' :
+                              badge.variant === 'error' ? 'destructive' :
+                              (badge.variant as any) || 'default'
+                            } 
+                            className="ml-2"
+                          >
                             {badge.text}
                           </Badge>
                         )}

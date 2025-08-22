@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -285,7 +286,11 @@ export function UnifiedSidebar({ user, credits = 100, notifications = 0 }: Unifi
                             <span className="flex-1 text-left">{item.label}</span>
                             {item.badge && (
                               <Badge 
-                                variant={item.badge.variant}
+                                variant={
+                                  item.badge.variant === 'warning' ? 'destructive' :
+                                  item.badge.variant === 'success' ? 'default' :
+                                  item.badge.variant as any
+                                }
                                 className="ml-auto"
                               >
                                 {item.badge.text}
@@ -313,7 +318,14 @@ export function UnifiedSidebar({ user, credits = 100, notifications = 0 }: Unifi
                         <div className="flex items-center gap-2">
                           <p>{item.label}</p>
                           {item.badge && (
-                            <Badge variant={item.badge.variant} className="ml-1">
+                            <Badge 
+                              variant={
+                                item.badge.variant === 'warning' ? 'destructive' :
+                                item.badge.variant === 'success' ? 'default' :
+                                item.badge.variant as any
+                              } 
+                              className="ml-1"
+                            >
                               {item.badge.text}
                             </Badge>
                           )}

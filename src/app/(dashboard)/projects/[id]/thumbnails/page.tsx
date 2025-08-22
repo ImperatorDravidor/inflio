@@ -87,8 +87,8 @@ export default function ProjectThumbnailsPage() {
       <EnhancedThumbnailGenerator
         projectId={projectId}
         projectTitle={project.title}
-        projectVideoUrl={project.video_url}
-        contentAnalysis={project.content_analysis}
+        videoUrl={project.video_url}
+        projectContext={project.content_analysis}
       />
     </div>
   )

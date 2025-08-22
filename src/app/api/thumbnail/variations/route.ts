@@ -66,26 +66,24 @@ export async function POST(req: NextRequest) {
         // Modify prompt for variation
         const variationPrompt = `${parentThumbnail.prompt}. Style variation: ${style}, maintain core composition but vary details.`
         
-        // Generate variation using img2img
+        // Generate variation using text-to-image (since img2img is not available)
         const result = await fal.subscribe("fal-ai/flux/dev", {
           input: {
             prompt: variationPrompt,
-            image_url: parentThumbnail.output_url,
             image_size: parentThumbnail.params?.image_size || 'landscape_16_9',
             num_inference_steps: 20, // Faster for variations
-            guidance_scale: 6.5,
-            strength: variationStrength, // How much to vary from original
+            guidance_scale: 6.5 + (variationStrength * 2), // Adjust guidance based on variation strength
             seed: Math.floor(Math.random() * 1000000), // Random seed for variation
             num_images: 1,
-            enable_safety_checker: true,
-            output_format: 'png'
+            enable_safety_checker: true
           },
           logs: true
         })
 
-        if (result?.images?.[0]?.url) {
+        const imageUrl = (result as any)?.data?.images?.[0]?.url || (result as any)?.images?.[0]?.url
+        if (imageUrl) {
           // Download and upload to storage
-          const imageResponse = await fetch(result.images[0].url)
+          const imageResponse = await fetch(imageUrl)
           const imageBuffer = await imageResponse.arrayBuffer()
           
           const fileName = `thumbnails/${projectId}/variation_${Date.now()}_${uuidv4()}.png`
@@ -120,13 +118,13 @@ export async function POST(req: NextRequest) {
                 },
                 model: 'fal-ai/flux/dev',
                 lora_ref: parentThumbnail.lora_ref,
-                seed: result.seed || null,
+                seed: (result as any)?.seed || (result as any)?.data?.seed || null,
                 input_image_url: parentThumbnail.output_url,
                 output_url: publicUrl,
                 file_size: imageBuffer.byteLength,
                 width: 1792,
                 height: 1024,
-                job_id: result.request_id || null,
+                job_id: result.requestId || (result as any)?.request_id || null,
                 status: 'completed',
                 parent_id: parentId,
                 created_by: userId

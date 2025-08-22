@@ -109,7 +109,15 @@ export function FeatureCard({
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-lg">{title}</h3>
                 {badge && (
-                  <Badge variant={badge.variant || 'secondary'} className="text-xs">
+                  <Badge 
+                    variant={
+                      badge.variant === 'warning' ? 'destructive' :
+                      badge.variant === 'success' ? 'default' :
+                      badge.variant === 'error' ? 'destructive' :
+                      (badge.variant as any) || 'secondary'
+                    } 
+                    className="text-xs"
+                  >
                     {badge.text}
                   </Badge>
                 )}
