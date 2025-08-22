@@ -26,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import confetti from 'canvas-confetti'
+import confetti from 'canvas-confetti' // Fixed missing dependency
 
 interface SmartPostsGeneratorProps {
   projectId: string
@@ -176,7 +176,7 @@ export function SmartPostsGenerator({
         console.error('Error loading post idea:', error)
       }
     }
-    loadExistingSuggestions()
+    loadExistingSuggestionsAndAutoGenerate()
   }, [projectId])
 
   const loadPersonas = async () => {
@@ -208,9 +208,106 @@ export function SmartPostsGenerator({
       if (response.ok) {
         const data = await response.json()
         setSuggestions(data.suggestions || [])
+        return data.suggestions || []
       }
     } catch (error) {
       console.error('Failed to load suggestions:', error)
+    }
+    return []
+  }
+
+  const loadExistingSuggestionsAndAutoGenerate = async () => {
+    // First, try to load existing suggestions
+    const existingSuggestions = await loadExistingSuggestions()
+    
+    // If no suggestions exist and we have content analysis, auto-generate
+    if (existingSuggestions.length === 0 && contentAnalysis && transcript) {
+      // Auto-trigger generation with smart defaults
+      await autoGeneratePosts()
+    }
+  }
+
+  const autoGeneratePosts = async () => {
+    setIsGenerating(true)
+    setGenerationStep('Analyzing content...')
+    
+    // Show subtle notification
+    toast.info('✨ Creating AI-powered posts for you...', {
+      duration: 3000
+    })
+
+    // Smart defaults for automatic generation
+    const autoSettings = {
+      ...settings,
+      contentTypes: ['carousel', 'quote', 'single'],
+      platforms: ['instagram', 'twitter', 'linkedin'],
+      creativity: 0.7,
+      tone: 'professional',
+      includeEmojis: true,
+      includeHashtags: true,
+      includeCTA: true,
+      optimizeForEngagement: true,
+      usePersona: personas.length > 0 && !!personas[0].id,
+      selectedPersonaId: personas[0]?.id || undefined,
+      useTrendingTopics: true
+    }
+
+    // Small celebration effect
+    const duration = 3000
+    const animationEnd = Date.now() + duration
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+    
+    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
+    
+    const interval = setInterval(() => {
+      const timeLeft = animationEnd - Date.now()
+      if (timeLeft <= 0) return clearInterval(interval)
+      
+      const particleCount = 20 * (timeLeft / duration)
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+        colors: ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B']
+      })
+    }, 250)
+
+    try {
+      setGenerationStep('Creating AI-powered content ideas...')
+      
+      const response = await fetch('/api/posts/generate-smart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectTitle,
+          contentAnalysis,
+          transcript: transcript?.substring(0, 3000),
+          settings: autoSettings
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to generate posts')
+
+      setGenerationStep('Optimizing for each platform...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      await loadExistingSuggestions()
+      
+      toast.success('🎉 Smart posts ready!', {
+        duration: 2000
+      })
+      
+      if (onPostsGenerated) {
+        const data = await response.json()
+        onPostsGenerated(data.suggestions)
+      }
+    } catch (error) {
+      console.error('Auto-generation error:', error)
+      // Don't show error toast for auto-generation
+    } finally {
+      setIsGenerating(false)
+      setGenerationStep('')
     }
   }
 
@@ -331,7 +428,7 @@ export function SmartPostsGenerator({
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                Powered by GPT-4
+                Powered by GPT-5
               </Badge>
             </div>
           </CardHeader>

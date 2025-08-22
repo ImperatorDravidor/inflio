@@ -204,11 +204,15 @@ export async function POST(req: NextRequest) {
             style: 'vivid'
           })
           
-          result = {
-            images: [{
-              url: openaiResponse.data[0].url,
-              content_type: 'image/png'
-            }]
+          if (openaiResponse.data && openaiResponse.data[0]?.url) {
+            result = {
+              images: [{
+                url: openaiResponse.data[0].url,
+                content_type: 'image/png'
+              }]
+            }
+          } else {
+            throw new Error('No image URL in OpenAI response')
           }
           modelUsed = 'openai/dall-e-3'
         } catch (openaiError) {
@@ -288,7 +292,7 @@ export async function POST(req: NextRequest) {
       .eq('type', 'iterate')
 
     // Generate text overlay suggestions if this is a good iteration
-    let textSuggestions = []
+    let textSuggestions: string[] = []
     if (rating && rating >= 4) {
       try {
         const suggestionsResponse = await openai.chat.completions.create({
@@ -380,8 +384,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Build iteration tree
-    const thumbnailMap = new Map()
-    const roots = []
+    const thumbnailMap = new Map<string, any>()
+    const roots: any[] = []
 
     thumbnails?.forEach(thumb => {
       thumbnailMap.set(thumb.id, { ...thumb, children: [] })

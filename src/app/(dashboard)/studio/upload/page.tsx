@@ -19,6 +19,7 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
+import { VideoPlaceholder } from "@/components/video-placeholder"
 
 export default function UploadPage() {
   const router = useRouter()
@@ -38,6 +39,7 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false)
   const [showMetadata, setShowMetadata] = useState(false)
   const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
+  const [videoLoading, setVideoLoading] = useState(false)
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
     transcription: true,
     clips: true,  // Changed from false to true
@@ -81,6 +83,7 @@ export default function UploadPage() {
       // Create preview URL
       const url = URL.createObjectURL(file)
       setVideoPreview(url)
+      setVideoLoading(true) // Start loading state
       
       // Extract video metadata
       toast.info("Extracting video metadata...")
@@ -144,6 +147,7 @@ export default function UploadPage() {
     setProjectTitle("")
     setShowMetadata(false)
     setShowWorkflowSelection(false)
+    setVideoLoading(false)
     setWorkflowOptions({
       transcription: true,
       clips: true,  // Changed from false to true
@@ -152,6 +156,10 @@ export default function UploadPage() {
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
+    }
+    // Clean up video preview URL to prevent memory leaks
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview)
     }
   }
 
@@ -370,14 +378,42 @@ export default function UploadPage() {
                     <div className="relative mx-auto max-w-3xl">
                       <div className="grid gap-4">
                         {/* Video */}
-                        <div className="relative group">
+                        <div className="relative group aspect-video rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                          {/* Video Loading Overlay */}
+                          {videoLoading && (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                              <div className="text-center">
+                                <LoadingSpinner size="lg" />
+                                <p className="text-sm text-muted-foreground mt-2">Loading video preview...</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Fallback placeholder - shows when no thumbnail */}
+                          {!thumbnail && !videoLoading && (
+                            <div className="absolute inset-0 z-10">
+                              <VideoPlaceholder message="" />
+                            </div>
+                          )}
+                          
                           <video
                             ref={videoRef}
                             src={videoPreview}
-                            className="w-full rounded-xl bg-black shadow-2xl"
+                            poster={thumbnail || undefined}
+                            className="absolute inset-0 w-full h-full object-contain"
                             controls
                             controlsList="nodownload"
+                            preload="auto"
+                            onLoadStart={() => setVideoLoading(true)}
+                            onLoadedData={() => setVideoLoading(false)}
+                            onCanPlay={() => setVideoLoading(false)}
+                            onError={() => {
+                              setVideoLoading(false)
+                              toast.error("Failed to load video preview")
+                            }}
                           />
+                          
+                          {/* Remove button */}
                           <Button
                             size="icon"
                             variant="ghost"

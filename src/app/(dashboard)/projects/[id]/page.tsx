@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useClerkUser } from "@/hooks/use-clerk-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -154,6 +154,7 @@ const platformColors = {
 function ProjectDetailPageContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useClerkUser()
   const projectId = params.id as string
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -164,7 +165,11 @@ function ProjectDetailPageContent() {
   // Access control check
   const isOwner = project?.user_id === user?.id
   const hasAccess = !project?.user_id || isOwner // Allow access if no user_id (legacy) or is owner
-  const [activeTab, setActiveTab] = useState<string>("overview")
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    // Check for tab query parameter
+    const tabParam = searchParams.get('tab')
+    return tabParam || "overview"
+  })
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
   const [showBlogDialog, setShowBlogDialog] = useState(false)
@@ -199,9 +204,10 @@ function ProjectDetailPageContent() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
   const [hasSubtitles, setHasSubtitles] = useState(false)
-  const [videoLoading, setVideoLoading] = useState(true)
+  const [videoLoading, setVideoLoading] = useState(false)
   const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
   const [usePersonaForGraphics, setUsePersonaForGraphics] = useState(true)
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
   
@@ -1608,9 +1614,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <div className="relative bg-black rounded-lg overflow-hidden">
                 {project.video_url ? (
                   <>
-                    {/* Loading Overlay */}
+                    {/* Loading Overlay - Only show when actually loading */}
                     {videoLoading && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 pointer-events-none">
+                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80">
                         <div className="text-center">
                           <IconLoader2 className="h-10 w-10 animate-spin text-white/70 mx-auto" />
                           <p className="text-white/60 text-sm mt-2">Loading video...</p>
@@ -1618,16 +1624,15 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </div>
                     )}
                     
-                    {/* Thumbnail Display (when video is not playing) */}
-                    {(project.thumbnail_url || defaultThumbnail) && !videoLoading && (
-                      <div className="absolute inset-0 z-5 group cursor-pointer"
+                    {/* Thumbnail Display - Only show when video is paused and not playing */}
+                    {(project.thumbnail_url || defaultThumbnail) && !isVideoPlaying && !videoLoading && (
+                      <div className="absolute inset-0 z-10 group cursor-pointer"
                         onClick={() => {
                           if (videoRef.current) {
                             videoRef.current.play()
-                            setVideoLoading(false)
+                            setIsVideoPlaying(true)
                           }
                         }}
-                        style={{ display: videoRef.current?.paused === false ? 'none' : 'flex' }}
                       >
                         <img 
                           src={project.thumbnail_url || defaultThumbnail} 
@@ -1650,7 +1655,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       className="w-full aspect-video bg-black"
                       controls
                       playsInline
-                      preload="metadata"
+                      preload="auto"  // Changed from "metadata" to "auto" for better preloading
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget
                         if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
@@ -1671,11 +1676,21 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       onLoadStart={() => {
                         setVideoLoading(true)
                       }}
-                      onCanPlay={() => {
+                      onCanPlayThrough={() => {
                         setVideoLoading(false)
                       }}
-                      onLoadedData={() => {
+                      onWaiting={() => {
+                        setVideoLoading(true)
+                      }}
+                      onPlaying={() => {
                         setVideoLoading(false)
+                        setIsVideoPlaying(true)
+                      }}
+                      onPause={() => {
+                        setIsVideoPlaying(false)
+                      }}
+                      onEnded={() => {
+                        setIsVideoPlaying(false)
                       }}
                     >
                       <source src={project.video_url} type="video/mp4" />
@@ -1972,7 +1987,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                         className="absolute inset-0 w-full h-full object-cover"
                                             muted
                                             playsInline
-                                            preload="metadata"
+                                            preload="auto"
                                             controls={false}
                                         crossOrigin="anonymous"
                                         onLoadedMetadata={(e) => {
@@ -2049,6 +2064,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                                 <IconSparkles className="h-5 w-5 text-primary" />
                                 AI Content Analysis
+                                {project.content_analysis.modelVersion && (
+                                  <Badge variant="secondary" className="ml-auto text-xs">
+                                    {project.content_analysis.modelVersion === 'gpt-5' ? 'GPT-5' : 
+                                     project.content_analysis.modelVersion === 'fallback' ? 'Fallback Mode' :
+                                     project.content_analysis.modelVersion?.toUpperCase() || 'AI Generated'}
+                                  </Badge>
+                                )}
                               </h3>
                               
                               {/* Keywords and Topics */}
@@ -2320,7 +2342,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           className="absolute inset-0 w-full h-full object-cover"
                                           muted
                                           playsInline
-                                          preload="metadata"
+                                          preload="auto"
                                           controls={false}
                                           crossOrigin="anonymous"
 

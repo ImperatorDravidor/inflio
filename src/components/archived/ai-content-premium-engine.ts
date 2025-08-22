@@ -1,4 +1,4 @@
-import { getOpenAI } from './openai'
+import { getOpenAI } from '@/lib/openai'
 
 export interface PremiumInsight {
   id: string

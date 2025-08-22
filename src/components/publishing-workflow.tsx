@@ -997,7 +997,7 @@ function ContentCard({
                 }}
                 muted
                 playsInline
-                preload="metadata"
+                preload="auto"
                 controls={false}
                 onMouseEnter={(e) => {
                   const video = e.currentTarget
@@ -1041,7 +1041,7 @@ function ContentCard({
                 }}
                 muted
                 playsInline
-                preload="metadata"
+                preload="auto"
                 controls={false}
                 poster={item.metadata?.thumbnail}
                 onMouseEnter={(e) => {

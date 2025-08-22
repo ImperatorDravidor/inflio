@@ -1,4 +1,4 @@
-import { getOpenAI } from './openai'
+import { getOpenAI } from '@/lib/openai'
 
 export interface ContentInsight {
   type: 'hook' | 'story' | 'lesson' | 'statistic' | 'quote' | 'controversy' | 'transformation'
