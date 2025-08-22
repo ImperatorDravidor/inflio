@@ -3,6 +3,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  
+  // Build optimizations
+  compress: true, // Enable gzip compression
+  poweredByHeader: false, // Remove X-Powered-By header
+  
+  // Bundle optimization
+  productionBrowserSourceMaps: false, // Disable source maps in production for smaller bundle
+  
   images: {
     remotePatterns: [
       {
@@ -26,6 +34,9 @@ const nextConfig: NextConfig = {
         hostname: 'fal.run',
       },
     ],
+    // Image optimization
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 60,
   },
   // Ensure environment variables are available
   env: {

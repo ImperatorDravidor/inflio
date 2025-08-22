@@ -5,90 +5,15 @@ import { useAuth } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   Layers,
   ArrowRight,
   CheckCircle,
-  Star,
-  Users,
-  Video,
-  Clock,
   Sparkles,
-  TrendingUp,
-  Shield,
-  Globe,
-  Zap,
   Gift,
-  Rocket,
+  Zap,
+  Shield,
 } from "lucide-react";
-import {
-  IconBrandYoutube,
-  IconBrandInstagram,
-  IconBrandTiktok,
-  IconBrandX,
-  IconBrandLinkedin,
-  IconBrandFacebook,
-  IconSparkles,
-  IconRocket,
-  IconBolt,
-  IconWand,
-} from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
-
-const features = [
-  {
-    icon: <Zap className="h-5 w-5" />,
-    title: "AI-Powered Clips",
-    description: "Extract viral moments automatically"
-  },
-  {
-    icon: <Globe className="h-5 w-5" />,
-    title: "50+ Languages",
-    description: "Perfect transcriptions worldwide"
-  },
-  {
-    icon: <Rocket className="h-5 w-5" />,
-    title: "10min Processing",
-    description: "From upload to publish instantly"
-  },
-  {
-    icon: <Shield className="h-5 w-5" />,
-    title: "Enterprise Security",
-    description: "SOC 2 compliant platform"
-  },
-];
-
-const testimonials = [
-  {
-    content: "Inflio helped me grow from 10K to 2.3M subscribers in just 18 months!",
-    author: "Sarah Chen",
-    role: "YouTube Creator",
-    rating: 5,
-  },
-  {
-    content: "The AI is scary good at finding viral moments. My engagement tripled!",
-    author: "Marcus Johnson",
-    role: "TikTok Influencer",
-    rating: 5,
-  },
-  {
-    content: "I save 30+ hours every week. Best investment for content creators.",
-    author: "Emily Rodriguez",
-    role: "Instagram Creator",
-    rating: 5,
-  },
-];
-
-const platforms = [
-  { icon: IconBrandYoutube, color: "text-red-600" },
-  { icon: IconBrandInstagram, color: "text-pink-600" },
-  { icon: IconBrandTiktok, color: "text-black dark:text-white" },
-  { icon: IconBrandX, color: "text-black dark:text-white" },
-  { icon: IconBrandLinkedin, color: "text-blue-600" },
-  { icon: IconBrandFacebook, color: "text-blue-700" },
-];
 
 export default function SignUpPage() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -96,21 +21,24 @@ export default function SignUpPage() {
   // If already signed in, redirect
   if (isLoaded && isSignedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/20">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-black">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
           className="text-center"
         >
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <CheckCircle className="h-8 w-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
+            <CheckCircle className="h-10 w-10 text-green-600 dark:text-green-400" />
           </div>
-          <h1 className="text-2xl font-bold mb-2">You're already signed in!</h1>
-          <p className="text-muted-foreground mb-6">Ready to create amazing content?</p>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+            Welcome aboard!
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">Ready to create amazing content?</p>
           <Link href="/dashboard">
-            <Button className="group">
+            <Button className="rounded-full">
               Go to Dashboard
-              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
         </motion.div>
@@ -119,184 +47,118 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Navigation */}
-      <nav className="border-b bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <Link href="/" className="flex items-center space-x-2 group">
-              <div className="relative">
-                <Layers className="h-6 w-6 text-primary transition-transform group-hover:scale-110" />
-                <div className="absolute inset-0 bg-primary/20 blur-xl group-hover:bg-primary/30 transition-all" />
-              </div>
-              <span className="text-xl font-bold">Inflio</span>
-            </Link>
-            <Link href="/sign-in">
-              <Button variant="ghost" size="sm">
-                Already have an account? Sign in
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-black flex flex-col">
+      {/* Simple Navigation */}
+      <nav className="p-6">
+        <Link href="/" className="flex items-center space-x-2 w-fit">
+          <Layers className="h-6 w-6 text-primary" />
+          <span className="text-xl font-semibold text-gray-900 dark:text-white">Inflio</span>
+        </Link>
       </nav>
 
-      <div className="flex min-h-[calc(100vh-4rem)]">
-        {/* Left side - Marketing content */}
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary/5 via-purple-600/5 to-pink-600/5 p-12 items-center justify-center relative overflow-hidden">
-          {/* Background decoration */}
-          <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(ellipse_at_center,white,transparent)]" />
-          <div className="absolute top-0 left-0 -mt-40 -ml-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 -mb-40 -mr-40 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl" />
-          
+      {/* Main Content - Centered */}
+      <div className="flex-1 flex items-center justify-center px-6 pb-12">
+        <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-12 items-center">
+          {/* Left side - Value props */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="relative z-10 max-w-md"
+            transition={{ duration: 0.4 }}
+            className="hidden lg:block"
           >
-            {/* Hero content */}
-            <div className="mb-8">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 0.5, type: "spring" }}
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-primary/20 to-purple-600/20 rounded-full px-4 py-2 mb-6"
-              >
-                <Gift className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Start with 25 free videos/month</span>
-              </motion.div>
-              
-              <h2 className="text-3xl font-bold mb-4">
-                Join 15,000+ Creators
-                <span className="block text-2xl mt-2 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                  Growing Faster with AI
-                </span>
-              </h2>
-              <p className="text-muted-foreground text-lg">
-                Transform your content creation workflow and save 30+ hours every week
-              </p>
-            </div>
-
-            {/* Features grid */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              {features.map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-                  className="bg-background/50 backdrop-blur-sm rounded-lg p-4 border border-primary/10"
-                >
-                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary mb-3">
-                    {feature.icon}
-                  </div>
-                  <h3 className="font-semibold text-sm mb-1">{feature.title}</h3>
-                  <p className="text-xs text-muted-foreground">{feature.description}</p>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Testimonials carousel */}
-            <div className="mb-8">
-              <h3 className="font-semibold mb-4">What creators are saying:</h3>
-              <div className="space-y-3">
-                {testimonials.map((testimonial, index) => (
-                  <motion.div
-                    key={testimonial.author}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.5, delay: 0.5 + index * 0.1 }}
-                  >
-                    <Card className="border-primary/10 bg-background/50 backdrop-blur-sm">
-                      <div className="p-4">
-                        <div className="flex gap-1 mb-2">
-                          {[...Array(testimonial.rating)].map((_, i) => (
-                            <Star key={i} className="h-3 w-3 fill-yellow-500 text-yellow-500" />
-                          ))}
-                        </div>
-                        <p className="text-sm mb-2">"{testimonial.content}"</p>
-                        <p className="text-xs text-muted-foreground">
-                          — {testimonial.author}, {testimonial.role}
-                        </p>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
+            <div className="space-y-8">
+              {/* Hero message */}
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+                  Transform your content creation workflow
+                </h2>
+                <p className="text-lg text-gray-600 dark:text-gray-400">
+                  Join 15,000+ creators saving 30+ hours every week
+                </p>
               </div>
-            </div>
 
-            {/* Platform icons */}
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-3">
-                One-click publishing to:
-              </p>
-              <div className="flex justify-center gap-4">
-                {platforms.map((platform, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.8 + index * 0.05 }}
-                  >
-                    <platform.icon
-                      className={cn("h-6 w-6 transition-all hover:scale-110", platform.color)}
-                    />
-                  </motion.div>
-                ))}
+              {/* Key features */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Zap className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      AI Viral Clip Detection
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Our AI analyzes your content and extracts the most engaging moments that are proven to go viral
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      Multi-Platform Optimization
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Automatically format your content for YouTube Shorts, TikTok, Instagram Reels, and more
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Shield className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      Enterprise-Grade Security
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Your content is encrypted and secure. SOC 2 compliant with GDPR protection
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Special offer */}
+              <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-2xl p-6 border border-primary/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Gift className="h-5 w-5 text-primary" />
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    Start Free Today
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Get 25 videos/month free forever. No credit card required.
+                </p>
               </div>
             </div>
           </motion.div>
-        </div>
 
-        {/* Right side - Sign up form */}
-        <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+          {/* Right side - Sign up form */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-md"
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="w-full max-w-md mx-auto lg:mx-0"
           >
-            <div className="text-center mb-8">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", duration: 0.5 }}
-                className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 mb-4"
-              >
-                <IconRocket className="h-8 w-8 text-primary" />
-              </motion.div>
-              <h1 className="text-3xl font-bold mb-2">Create Your Account</h1>
-              <p className="text-muted-foreground">
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                Create your account
+              </h1>
+              <p className="text-lg text-gray-600 dark:text-gray-400">
                 Start creating viral content in minutes
               </p>
             </div>
 
             {!isLoaded ? (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 animate-pulse mb-4">
-                  <Sparkles className="h-6 w-6 text-primary" />
-                </div>
-                <p className="text-muted-foreground">Loading...</p>
+              <div className="flex items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-gray-300 dark:border-gray-700 rounded-full animate-spin border-t-primary" />
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* Special offer banner */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-gradient-to-r from-primary/10 to-purple-600/10 rounded-lg p-4 text-center border border-primary/20"
-                >
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <IconBolt className="h-5 w-5 text-primary" />
-                    <span className="font-semibold">Limited Time Offer</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Sign up today and get 50 bonus videos in your first month!
-                  </p>
-                </motion.div>
-
+              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
                 <SignUp 
                   appearance={{
                     elements: {
@@ -304,18 +166,18 @@ export default function SignUpPage() {
                       card: "shadow-none border-0 bg-transparent p-0",
                       headerTitle: "hidden",
                       headerSubtitle: "hidden",
-                      socialButtonsBlockButton: "border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-8 rounded-md font-medium transition-colors",
-                      socialButtonsBlockButtonText: "font-normal",
+                      socialButtonsBlockButton: "bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white h-11 px-4 rounded-xl font-medium transition-colors",
+                      socialButtonsBlockButtonText: "font-medium",
                       dividerRow: "hidden",
-                      formFieldLabel: "text-sm font-medium text-foreground",
-                      formFieldInput: "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                      formButtonPrimary: "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground h-11 px-8 w-full shadow-lg shadow-primary/25",
-                      footerActionLink: "text-primary hover:text-primary/80 font-medium",
-                      identityPreviewText: "text-sm text-muted-foreground",
-                      identityPreviewEditButton: "text-primary hover:text-primary/80 text-sm font-medium",
-                      formFieldInputShowPasswordButton: "text-muted-foreground hover:text-foreground",
-                      otpCodeFieldInput: "flex h-11 w-11 rounded-md border border-input bg-background px-3 py-2 text-center text-sm",
-                      formResendCodeLink: "text-primary hover:text-primary/80 text-sm font-medium",
+                      formFieldLabel: "text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5",
+                      formFieldInput: "h-11 w-full rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
+                      formButtonPrimary: "h-11 w-full rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors",
+                      footerActionLink: "text-primary hover:text-primary/80 font-medium transition-colors",
+                      identityPreviewText: "text-sm text-gray-600 dark:text-gray-400",
+                      identityPreviewEditButton: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
+                      formFieldInputShowPasswordButton: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors",
+                      otpCodeFieldInput: "h-11 w-11 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
+                      formResendCodeLink: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
                     },
                     layout: {
                       socialButtonsPlacement: "top",
@@ -325,48 +187,46 @@ export default function SignUpPage() {
                   redirectUrl="/onboarding"
                 />
                 
-                {/* Benefits list */}
-                <div className="space-y-2 py-4">
-                  {[
-                    "No credit card required",
-                    "25 free videos every month",
-                    "Cancel anytime",
-                    "Full access to all features"
-                  ].map((benefit) => (
-                    <div key={benefit} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      <span>{benefit}</span>
-                    </div>
-                  ))}
+                {/* What you get */}
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+                  <div className="grid grid-cols-2 gap-3 mb-6">
+                    {[
+                      "25 free videos/month",
+                      "No credit card",
+                      "All AI features",
+                      "Cancel anytime",
+                    ].map((benefit) => (
+                      <div key={benefit} className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-600 dark:text-gray-400">{benefit}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-center text-gray-600 dark:text-gray-400 mb-3">
+                    Already have an account?
+                  </p>
+                  <Link href="/sign-in" className="block">
+                    <Button 
+                      variant="outline" 
+                      className="w-full h-11 rounded-xl"
+                    >
+                      Sign in instead
+                    </Button>
+                  </Link>
                 </div>
-                
-                {/* Terms */}
-                <p className="text-xs text-center text-muted-foreground">
+
+                {/* Terms - compact */}
+                <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-6">
                   By signing up, you agree to our{" "}
-                  <Link href="/terms" className="text-primary hover:underline">
-                    Terms of Service
+                  <Link href="/terms" className="text-primary hover:text-primary/80">
+                    Terms
                   </Link>{" "}
                   and{" "}
-                  <Link href="/privacy" className="text-primary hover:underline">
+                  <Link href="/privacy" className="text-primary hover:text-primary/80">
                     Privacy Policy
                   </Link>
                 </p>
-
-                {/* Trust badges */}
-                <div className="flex items-center justify-center gap-6 pt-4 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Shield className="h-3 w-3" />
-                    SOC 2
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Globe className="h-3 w-3" />
-                    GDPR
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    99.9% Uptime
-                  </div>
-                </div>
               </div>
             )}
           </motion.div>

@@ -19,7 +19,7 @@ export { TranscriptionService } from '../transcription-service'
 
 // Utility services
 export { uploadVideoInChunks } from '../chunked-uploader'
-export { extractAudioWithFFmpeg, createAudioExtractionEndpoint } from '../audio-extraction'
+
 
 // Usage tracking
 export { UsageService } from '../usage-service'

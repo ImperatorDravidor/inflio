@@ -15,13 +15,67 @@ export interface ContentAnalysis {
     socialMediaHooks: string[]
     shortFormContent: string[]
   }
+  thumbnailIdeas?: {
+    concepts: Array<{
+      id: string
+      title: string
+      description: string
+      visualElements: string[]
+      colorScheme: string[]
+      style: 'modern' | 'classic' | 'minimalist' | 'bold' | 'creative' | 'professional'
+      mood: string
+      targetAudience: string
+      keyText?: string
+      composition: string
+      aiPrompt?: string
+    }>
+    bestPractices: string[]
+    platformOptimized: {
+      youtube?: string
+      instagram?: string
+      tiktok?: string
+    }
+  }
+  deepAnalysis?: {
+    contentPillars: string[]
+    narrativeArc: string
+    emotionalJourney: string[]
+    targetDemographics: {
+      primary: string
+      secondary?: string
+      interests: string[]
+    }
+    viralPotential: {
+      score: number
+      factors: string[]
+      recommendations: string[]
+    }
+    customPostIdeas: Array<{
+      id: string
+      type: 'educational' | 'entertaining' | 'inspirational' | 'promotional' | 'storytelling'
+      hook: string
+      mainContent: string
+      callToAction: string
+      estimatedEngagement: 'high' | 'medium' | 'low'
+      bestTimeToPost?: string
+      platform: string[]
+      synergies?: string[]
+    }>
+    contentStrategy: {
+      primaryTheme: string
+      secondaryThemes: string[]
+      contentSeries?: string[]
+      crossPromotionOpportunities: string[]
+    }
+  }
+  modelVersion?: string
 }
 
 export class AIContentService {
   /**
-   * Extract keywords and topics from transcript using OpenAI GPT-4 Turbo
+   * Extract keywords and topics from transcript using OpenAI GPT-5 (future-ready)
    */
-  static async analyzeTranscript(transcription: TranscriptionData): Promise<ContentAnalysis> {
+  static async analyzeTranscript(transcription: TranscriptionData, useDeepAnalysis: boolean = true): Promise<ContentAnalysis> {
     try {
       const openai = getOpenAI()
       
@@ -30,47 +84,105 @@ export class AIContentService {
         .map(seg => `[${Math.floor(seg.start / 60)}:${String(Math.floor(seg.start % 60)).padStart(2, '0')}] ${seg.text}`)
         .join('\n')
 
-      const systemPrompt = `You are an expert content analyst specializing in video content optimization. 
-Your task is to analyze video transcripts and extract valuable insights for content creation.
-Provide your analysis in a structured JSON format.`
+      const systemPrompt = `You are an expert content strategist, visual designer, and viral content specialist. 
+Your task is to perform deep content analysis including thumbnail ideas, viral potential assessment, and custom content strategies.
+Provide comprehensive analysis in structured JSON format.`
 
-      const userPrompt = `Analyze this video transcript and provide:
-1. 10-15 relevant keywords (single words or short phrases)
-2. 5-8 main topics discussed
-3. A brief summary (2-3 sentences)
-4. Overall sentiment
-5. 3-5 key moments with timestamps
-6. Content suggestions for repurposing
+      const userPrompt = `Perform a comprehensive deep analysis of this video transcript:
 
 Transcript:
 ${transcriptWithTimestamps}
 
-Return the analysis in this exact JSON format:
+Provide analysis including:
+1. Keywords & Topics (10-15 keywords, 5-8 topics)
+2. Summary & Sentiment
+3. Key Moments with timestamps
+4. Content Suggestions (blog, social, short-form)
+5. Thumbnail Ideas (3-5 creative concepts with visual details)
+6. Deep Analysis (content pillars, viral potential, demographics)
+7. Custom Post Ideas (5-7 platform-specific posts with engagement predictions)
+
+Return in this exact JSON format:
 {
   "keywords": ["keyword1", "keyword2", ...],
   "topics": ["topic1", "topic2", ...],
-  "summary": "Brief summary of the content",
+  "summary": "Brief summary",
   "sentiment": "positive|neutral|negative",
-  "keyMoments": [
-    {"timestamp": seconds, "description": "what happens"},
-    ...
-  ],
+  "keyMoments": [{"timestamp": seconds, "description": "what happens"}],
   "contentSuggestions": {
     "blogPostIdeas": ["idea1", "idea2", "idea3"],
     "socialMediaHooks": ["hook1", "hook2", "hook3"],
     "shortFormContent": ["idea1", "idea2", "idea3"]
-  }
+  },
+  "thumbnailIdeas": {
+    "concepts": [
+      {
+        "id": "concept1",
+        "title": "Concept Title",
+        "description": "Visual concept description",
+        "visualElements": ["element1", "element2"],
+        "colorScheme": ["#color1", "#color2"],
+        "style": "modern|classic|minimalist|bold|creative|professional",
+        "mood": "energetic|calm|mysterious|professional|playful",
+        "targetAudience": "audience description",
+        "keyText": "TEXT OVERLAY",
+        "composition": "rule of thirds, focal point description",
+        "aiPrompt": "detailed AI image generation prompt"
+      }
+    ],
+    "bestPractices": ["practice1", "practice2"],
+    "platformOptimized": {
+      "youtube": "YouTube-specific thumbnail recommendation",
+      "instagram": "Instagram-specific visual recommendation",
+      "tiktok": "TikTok-specific cover recommendation"
+    }
+  },
+  "deepAnalysis": {
+    "contentPillars": ["pillar1", "pillar2"],
+    "narrativeArc": "story structure analysis",
+    "emotionalJourney": ["emotion1", "emotion2"],
+    "targetDemographics": {
+      "primary": "primary audience",
+      "secondary": "secondary audience",
+      "interests": ["interest1", "interest2"]
+    },
+    "viralPotential": {
+      "score": 85,
+      "factors": ["factor1", "factor2"],
+      "recommendations": ["recommendation1", "recommendation2"]
+    },
+    "customPostIdeas": [
+      {
+        "id": "post1",
+        "type": "educational|entertaining|inspirational|promotional|storytelling",
+        "hook": "attention-grabbing opening",
+        "mainContent": "main post content",
+        "callToAction": "CTA text",
+        "estimatedEngagement": "high|medium|low",
+        "bestTimeToPost": "optimal posting time",
+        "platform": ["instagram", "twitter"],
+        "synergies": ["connection to other content"]
+      }
+    ],
+    "contentStrategy": {
+      "primaryTheme": "main theme",
+      "secondaryThemes": ["theme1", "theme2"],
+      "contentSeries": ["series idea 1", "series idea 2"],
+      "crossPromotionOpportunities": ["opportunity1", "opportunity2"]
+    }
+  },
+  "modelVersion": "gpt-5"
 }`
 
       const completion = await openai.chat.completions.create({
-        // Using the latest GPT-4.1 model
-        model: 'gpt-4.1',
+        // Using GPT-5 model (future-ready, fallback to GPT-4 Turbo)
+        model: process.env.NEXT_PUBLIC_GPT5_MODEL || 'gpt-4-turbo-preview',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 1500,
+        temperature: 0.7, // Increased for more creative thumbnail ideas
+        max_tokens: 4000, // Increased for comprehensive analysis
         response_format: { type: 'json_object' }
       })
 
@@ -81,17 +193,19 @@ Return the analysis in this exact JSON format:
 
       const analysis = JSON.parse(response) as ContentAnalysis
       
-      // Validate and sanitize the response
+      // Validate and enhance the response
       return {
+        ...analysis,
         keywords: Array.isArray(analysis.keywords) ? analysis.keywords.slice(0, 15) : [],
         topics: Array.isArray(analysis.topics) ? analysis.topics.slice(0, 8) : [],
         summary: analysis.summary || 'No summary available',
         sentiment: ['positive', 'neutral', 'negative'].includes(analysis.sentiment) ? analysis.sentiment : 'neutral',
         keyMoments: Array.isArray(analysis.keyMoments) ? analysis.keyMoments.slice(0, 5) : [],
+        modelVersion: process.env.NEXT_PUBLIC_GPT5_MODEL ? 'gpt-5' : 'gpt-4-turbo',
         contentSuggestions: {
-          blogPostIdeas: Array.isArray(analysis.contentSuggestions?.blogPostIdeas) ? analysis.contentSuggestions.blogPostIdeas.slice(0, 3) : [],
-          socialMediaHooks: Array.isArray(analysis.contentSuggestions?.socialMediaHooks) ? analysis.contentSuggestions.socialMediaHooks.slice(0, 3) : [],
-          shortFormContent: Array.isArray(analysis.contentSuggestions?.shortFormContent) ? analysis.contentSuggestions.shortFormContent.slice(0, 3) : []
+          blogPostIdeas: Array.isArray(analysis.contentSuggestions?.blogPostIdeas) ? analysis.contentSuggestions.blogPostIdeas : [],
+          socialMediaHooks: Array.isArray(analysis.contentSuggestions?.socialMediaHooks) ? analysis.contentSuggestions.socialMediaHooks : [],
+          shortFormContent: Array.isArray(analysis.contentSuggestions?.shortFormContent) ? analysis.contentSuggestions.shortFormContent : []
         }
       }
     } catch (error) {
@@ -310,7 +424,107 @@ Return JSON:
           'Main highlights in 60 seconds',
           '3 things you need to know'
         ]
-      }
+      },
+      thumbnailIdeas: {
+        concepts: [
+          {
+            id: 'concept-1',
+            title: 'Bold Typography Focus',
+            description: 'Large, impactful text overlay with key message',
+            visualElements: ['Bold text', 'Gradient background', 'Icon elements'],
+            colorScheme: ['#FF6B6B', '#4ECDC4', '#45B7D1'],
+            style: 'modern',
+            mood: 'energetic',
+            targetAudience: 'General viewers seeking quick insights',
+            keyText: keywords[0]?.toUpperCase() || 'KEY INSIGHTS',
+            composition: 'Center-aligned text with supporting graphics',
+            aiPrompt: `Modern thumbnail with bold "${keywords[0]}" text, gradient background, professional design`
+          },
+          {
+            id: 'concept-2',
+            title: 'Visual Metaphor',
+            description: 'Abstract representation of main topic',
+            visualElements: ['Symbolic imagery', 'Clean layout', 'Subtle text'],
+            colorScheme: ['#667EEA', '#764BA2', '#F093FB'],
+            style: 'minimalist',
+            mood: 'professional',
+            targetAudience: 'Professional audience',
+            keyText: topics[0],
+            composition: 'Rule of thirds with focal point on left',
+            aiPrompt: `Minimalist thumbnail representing "${topics[0]}", professional aesthetic, clean design`
+          },
+          {
+            id: 'concept-3',
+            title: 'Data Visualization',
+            description: 'Infographic-style with key statistics',
+            visualElements: ['Charts', 'Numbers', 'Icons'],
+            colorScheme: ['#0F2027', '#203A43', '#2C5364'],
+            style: 'professional',
+            mood: 'calm',
+            targetAudience: 'Data-driven viewers',
+            keyText: '5 KEY POINTS',
+            composition: 'Grid layout with balanced elements',
+            aiPrompt: `Infographic thumbnail showing 5 key points about "${topics[0]}", clean data visualization`
+          }
+        ],
+        bestPractices: [
+          'Use high contrast for text readability',
+          'Keep text under 5 words for impact',
+          'Include faces for higher CTR when relevant',
+          'Use bright colors to stand out in feed'
+        ],
+        platformOptimized: {
+          youtube: 'Use 1280x720px, include channel branding, high contrast text',
+          instagram: 'Square format 1080x1080px, minimal text, visual focus',
+          tiktok: 'Vertical 9:16 format, eye-catching first frame'
+        }
+      },
+      deepAnalysis: {
+        contentPillars: [topics[0], topics[1] || 'Educational Content'],
+        narrativeArc: 'Introduction → Main Points → Conclusion',
+        emotionalJourney: ['Curiosity', 'Interest', 'Understanding'],
+        targetDemographics: {
+          primary: 'General audience interested in ' + topics[0],
+          secondary: 'Content creators and educators',
+          interests: keywords.slice(0, 5)
+        },
+        viralPotential: {
+          score: 70,
+          factors: ['Relevant topic', 'Clear message', 'Shareable insights'],
+          recommendations: ['Add emotional hook', 'Include surprising fact', 'Create controversy or debate']
+        },
+        customPostIdeas: [
+          {
+            id: 'post-1',
+            type: 'educational',
+            hook: `Did you know about ${keywords[0]}?`,
+            mainContent: `Here are 3 things about ${topics[0]} that will change your perspective...`,
+            callToAction: 'Share if you found this helpful!',
+            estimatedEngagement: 'medium',
+            bestTimeToPost: '9 AM or 5 PM local time',
+            platform: ['twitter', 'linkedin'],
+            synergies: ['Can be part of educational series']
+          },
+          {
+            id: 'post-2',
+            type: 'entertaining',
+            hook: `The truth about ${topics[0]} might surprise you...`,
+            mainContent: `Most people don't realize that ${keywords.slice(0, 3).join(', ')} are connected in this way...`,
+            callToAction: 'What\'s your take on this?',
+            estimatedEngagement: 'high',
+            bestTimeToPost: '12 PM or 7 PM local time',
+            platform: ['instagram', 'tiktok'],
+            synergies: ['Great for carousel or reel format']
+          }
+        ],
+        contentStrategy: {
+          primaryTheme: topics[0],
+          secondaryThemes: topics.slice(1, 3),
+          contentSeries: [`${topics[0]} Explained`, 'Weekly Insights'],
+          crossPromotionOpportunities: ['Blog post expansion', 'Podcast discussion', 'Q&A session']
+        }
+      },
+      modelVersion: 'fallback'
     }
   }
 } 

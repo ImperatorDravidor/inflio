@@ -1243,7 +1243,8 @@ Return JSON array of optimal times:
           publish_date: scheduledPost.scheduledDate.toISOString(),
           state: 'scheduled' as const,
           hashtags: platformContent.hashtags || [],
-          settings: metadata, // Store metadata in settings field
+          metadata: metadata, // Store metadata in metadata field
+          settings: {}, // Keep settings empty or for other config
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
@@ -1252,7 +1253,8 @@ Return JSON array of optimal times:
         if (integrationId) {
           postRecord.integration_id = integrationId
         } else {
-          postRecord.demo_platform = platform
+          // Store platform in metadata for demo posts
+          postRecord.metadata.platform = platform
           console.log(`Creating demo scheduled post for ${platform}`)
         }
         

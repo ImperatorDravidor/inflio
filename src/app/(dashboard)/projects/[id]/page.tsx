@@ -64,6 +64,7 @@ import {
   IconChevronDown,
   IconHash,
   IconUsers,
+  IconDotsVertical,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -93,11 +94,22 @@ import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-edito
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { predefinedStyles, type ImageSuggestion } from "@/lib/ai-image-service"
 import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/blog-generation-dialog"
 import { ImageCarousel } from "@/components/image-carousel"
 import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
+import { EnhancedPostsGenerator } from "@/components/posts/enhanced-posts-generator"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
@@ -165,6 +177,9 @@ function ProjectDetailPageContent() {
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [expandedBlogId, setExpandedBlogId] = useState<string | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isDuplicating, setIsDuplicating] = useState(false)
   const [customPrompt, setCustomPrompt] = useState("")
   const [selectedStyle, setSelectedStyle] = useState<string>("realistic")
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
@@ -616,6 +631,80 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     }
   }
 
+  // Project Action Handlers
+  const handleDuplicateProject = async () => {
+    setIsDuplicating(true)
+    try {
+      const response = await fetch('/api/projects/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project?.id })
+      })
+      
+      if (response.ok) {
+        const { newProjectId } = await response.json()
+        toast.success('Project duplicated successfully')
+        router.push(`/projects/${newProjectId}`)
+      } else {
+        throw new Error('Failed to duplicate project')
+      }
+    } catch (error) {
+      console.error('Error duplicating project:', error)
+      toast.error('Failed to duplicate project')
+    } finally {
+      setIsDuplicating(false)
+    }
+  }
+
+  const handleExportProject = async () => {
+    setIsExporting(true)
+    try {
+      const response = await fetch(`/api/projects/${project?.id}/export`)
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${project?.title || 'project'}-export.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        toast.success('Project exported successfully')
+      } else {
+        throw new Error('Failed to export project')
+      }
+    } catch (error) {
+      console.error('Error exporting project:', error)
+      toast.error('Failed to export project')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleDeleteProject = async () => {
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/projects/${project?.id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        toast.success('Project deleted successfully')
+        router.push('/projects')
+      } else {
+        throw new Error('Failed to delete project')
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error)
+      toast.error('Failed to delete project')
+    } finally {
+      setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
+    }
+  }
+
   const handleExportAllClips = async () => {
     if (!project?.klap_project_id || !project.folders.clips.length) {
       toast.error("No clips to export")
@@ -949,29 +1038,36 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="hover:bg-primary/10">
-                    <IconDots className="h-4 w-4" />
+                    <IconDotsVertical className="h-4 w-4" />
               </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Project Actions</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  
+                  <DropdownMenuItem 
+                    onClick={handleDuplicateProject}
+                    disabled={isDuplicating}
+                  >
+                    <IconCopy className="h-4 w-4 mr-2" />
+                    {isDuplicating ? 'Duplicating...' : 'Duplicate Project'}
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem 
+                    onClick={handleExportProject}
+                    disabled={isExporting}
+                  >
+                    <IconFileDownload className="h-4 w-4 mr-2" />
+                    {isExporting ? 'Exporting...' : 'Export Data'}
+                  </DropdownMenuItem>
+                  
                   <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/settings`)}>
                     <IconSettings className="h-4 w-4 mr-2" />
                     Project Settings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    const projectData = JSON.stringify(project, null, 2)
-                    const blob = new Blob([projectData], { type: 'application/json' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `${project.title}-data.json`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                    toast.success('Project data exported')
-                  }}>
-                    <IconFileDownload className="h-4 w-4 mr-2" />
-                    Export Data
-                  </DropdownMenuItem>
+                  
                   <DropdownMenuSeparator />
+                  
                   <DropdownMenuItem 
                     onClick={() => setIsDeleteDialogOpen(true)} 
                     className="text-destructive focus:text-destructive"
@@ -1676,17 +1772,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       )}
                     </Button>
                     
-                    <Button
-                      size="sm"
-                      onClick={() => setShowUnifiedContentDialog(true)}
-                      disabled={!project.transcription || !project.content_analysis}
-                      variant="default"
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
-                    >
-                      <IconLayoutGridAdd className="mr-2 h-4 w-4" />
-                      Content Package
-                    </Button>
-                    
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" variant="outline">
@@ -1696,10 +1781,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => setActiveTab('graphics')}>
-                          <IconPhoto className="h-4 w-4 mr-2" />
-                          Generate Images
-                        </DropdownMenuItem>
                         <DropdownMenuItem disabled>
                           <IconScissors className="h-4 w-4 mr-2" />
                           More Clips
@@ -1722,7 +1803,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="border-b bg-gradient-to-r from-background to-muted/20 rounded-t-lg overflow-hidden">
                   <div className="px-6 pt-6 pb-0">
-                    <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
+                    <TabsList className="grid w-full grid-cols-5 h-auto p-1 bg-muted/50">
                       <TabsTrigger 
                         value="overview" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1758,24 +1839,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </TabsTrigger>
                       
                       <TabsTrigger 
-                        value="graphics" 
+                        value="posts" 
                         className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                       >
-                        <IconPhoto className="h-5 w-5" />
-                        <span className="text-xs font-medium">Graphics</span>
+                        <IconLayoutGrid className="h-5 w-5" />
+                        <span className="text-xs font-medium">Posts</span>
                         <span className="text-[10px] text-muted-foreground">
-                          {totalImages} images
-                        </span>
-                      </TabsTrigger>
-                      
-                      <TabsTrigger 
-                        value="quotes" 
-                        className="flex flex-col items-center gap-1.5 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        <IconQuote className="h-5 w-5" />
-                        <span className="text-xs font-medium">Quotes</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          Cards
+                          AI Posts
                         </span>
                       </TabsTrigger>
                       
@@ -2876,6 +2946,16 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       </div>
                     </TabsContent>
 
+                    <TabsContent value="posts" className="mt-0">
+                      <EnhancedPostsGenerator
+                        projectId={project.id}
+                        projectTitle={project.title}
+                        contentAnalysis={project.content_analysis}
+                        transcript={project.transcription?.text}
+                        personaId={selectedPersona?.id}
+                      />
+                    </TabsContent>
+
                     <TabsContent value="graphics" className="mt-0">
                       <SimplifiedGraphicsTab
                         project={project}
@@ -3508,6 +3588,37 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the project
+              "{project?.title || 'Untitled'}" and all associated data including:
+              <ul className="mt-2 ml-4 list-disc text-sm">
+                <li>Video and transcription</li>
+                <li>Generated thumbnails</li>
+                <li>Social media posts</li>
+                <li>Blog posts</li>
+                <li>Clips and chapters</li>
+                <li>Analytics data</li>
+              </ul>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteProject}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Project'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
