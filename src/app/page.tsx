@@ -45,6 +45,8 @@ import {
   ArrowUpRight,
   Timer,
   DollarSign,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react"
 import Image from "next/image"
 import { Badge } from "@/components/ui/badge"
@@ -505,6 +507,192 @@ export default function LandingPage() {
         </div>
         <div className="absolute inset-x-0 top-[calc(100%-13rem)] -z-10 transform-gpu overflow-hidden blur-3xl sm:top-[calc(100%-30rem)]" aria-hidden="true">
           <div className="relative left-[calc(50%+3rem)] aspect-[1155/678] w-[36.125rem] -translate-x-1/2 bg-gradient-to-tr from-pink-600/20 to-primary/20 opacity-30 sm:left-[calc(50%+36rem)] sm:w-[72.1875rem]" />
+        </div>
+      </section>
+
+      {/* Problem Statement Section */}
+      <section className="py-20 sm:py-24 lg:py-32 bg-gradient-to-b from-background to-muted/20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-4xl">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="text-center mb-12"
+            >
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl mb-6">
+                You've been there. The endless meetings, the missed deadlines, the "unexpected" costs.
+              </h2>
+              <p className="text-xl text-muted-foreground">
+                Here's what's really happening behind the scenes:
+              </p>
+            </motion.div>
+
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {/* Problem Cards */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-destructive/20 bg-gradient-to-br from-destructive/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-destructive mb-2">67%</div>
+                    <CardTitle className="text-xl">of projects run over deadline</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-destructive" />
+                      Months of Delays
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Your competitors are shipping while you're still in meetings with agencies.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-warning/20 bg-gradient-to-br from-warning/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-warning mb-2">2.5x</div>
+                    <CardTitle className="text-xl">average cost overrun</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-warning" />
+                      Budget Overruns
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Hidden costs, scope creep, and endless revisions drain your resources.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-orange-500 mb-2">73%</div>
+                    <CardTitle className="text-xl">have wrong skill match</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <Users className="h-4 w-4 text-orange-500" />
+                      Wrong Talent
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Junior devs learning on your dime, managed by non-technical PMs.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.4 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-purple-500 mb-2">$85K</div>
+                    <CardTitle className="text-xl">average refactor cost</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-purple-500" />
+                      Technical Debt
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Quick fixes that become permanent problems, costing millions later.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.5 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-red-500/20 bg-gradient-to-br from-red-500/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-red-500 mb-2">5+</div>
+                    <CardTitle className="text-xl">layers of communication</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-red-500" />
+                      Communication Chaos
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Lost in translation between you, PMs, and the actual developers.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+                viewport={{ once: true }}
+              >
+                <Card className="h-full border-indigo-500/20 bg-gradient-to-br from-indigo-500/5 to-transparent">
+                  <CardHeader>
+                    <div className="text-4xl font-bold text-indigo-500 mb-2">40%</div>
+                    <CardTitle className="text-xl">of projects fail completely</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-indigo-500" />
+                      Complete Failure
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      After months of effort and resources, nothing to show for it.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </div>
+
+            {/* Solution CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.7 }}
+              viewport={{ once: true }}
+              className="mt-16 text-center"
+            >
+              <h3 className="text-2xl font-bold mb-4">
+                There's a better way to create content
+              </h3>
+              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+                Skip the agencies, meetings, and delays. Get AI-powered content creation that actually works.
+              </p>
+              <Link href={isSignedIn ? "/studio/upload" : "/sign-up"}>
+                <Button size="lg" className="group bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
+                  <Zap className="h-5 w-5 mr-2" />
+                  See How Inflio Solves This
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+            </motion.div>
+          </div>
         </div>
       </section>
 

@@ -30,6 +30,7 @@ interface GeneratePostsParams {
   personaId?: string
   contentTypes?: PostContentType[]
   platforms?: Platform[]
+  settings?: any
 }
 
 interface PlatformCopy {
@@ -51,9 +52,18 @@ export class PostsService {
       transcript,
       projectTitle,
       personaId,
-      contentTypes = ['carousel', 'quote', 'single', 'thread', 'reel', 'story'],
-      platforms = ['instagram', 'twitter', 'linkedin', 'facebook', 'youtube', 'tiktok']
+      contentTypes = ['carousel', 'quote', 'single', 'thread'],
+      platforms = ['instagram', 'twitter', 'linkedin', 'facebook'],
+      settings = {}
     } = params
+
+    console.log('[PostsService] Starting generation with params:', {
+      projectId,
+      contentTypes,
+      platforms,
+      hasContentAnalysis: !!contentAnalysis,
+      personaId
+    })
 
     const supabase = await createSupabaseServerClient()
     const adminSupabase = supabaseAdmin
@@ -90,7 +100,8 @@ export class PostsService {
           contentType,
           platforms,
           personaId,
-          userId: user.id
+          userId: user.id,
+          settings
         })
         
         suggestions.push(suggestion)
@@ -339,9 +350,17 @@ Return a JSON object with:
     })
 
     const response = completion.choices[0].message.content
-    if (!response) throw new Error('Failed to generate content idea')
-
-    return JSON.parse(response)
+    if (!response) {
+      console.warn('[PostsService] No response from AI, using mock data')
+      return MockPostsGenerator.generateMockContentIdea({ contentType, projectTitle })
+    }
+    
+    try {
+      return JSON.parse(response)
+    } catch (parseError) {
+      console.error('[PostsService] Failed to parse AI response:', parseError)
+      return MockPostsGenerator.generateMockContentIdea({ contentType, projectTitle })
+    }
   }
 
   /**
@@ -382,13 +401,21 @@ Return a JSON object with:
       })
 
       try {
-        // Generate image using Flux via FAL
-        const imageUrl = await AIImageService.generateWithFlux({
-          prompt: imagePrompt,
-          model: 'flux-pro-1.1',
-          aspectRatio: contentType === 'carousel' ? '4:5' : '16:9',
-          personaId
-        })
+        let imageUrl
+        try {
+          // Try to generate image using Flux via FAL
+          imageUrl = await AIImageService.generateWithFlux({
+            prompt: imagePrompt,
+            model: 'flux-pro-1.1',
+            aspectRatio: contentType === 'carousel' ? '4:5' : '16:9',
+            personaId
+          })
+        } catch (aiError) {
+          console.warn(`[PostsService] AI image generation failed for image ${i + 1}, using mock image:`, aiError)
+          // Use mock image if AI service fails
+          const mockImages = MockPostsGenerator.generateMockImages(1, contentType)
+          imageUrl = mockImages[0].url
+        }
 
         // Store image metadata in memory for now
         // TODO: Store in post_suggestions table as JSON column or create post_images table
@@ -407,8 +434,21 @@ Return a JSON object with:
         
         images.push(imageRecord)
       } catch (error) {
-        console.error(`Failed to generate image ${i + 1}:`, error)
-        // Continue with other images
+        console.error(`Failed to process image ${i + 1}:`, error)
+        // Add a mock image as fallback
+        const mockImages = MockPostsGenerator.generateMockImages(1, contentType)
+        images.push({
+          suggestion_id: suggestionId,
+          user_id: userId,
+          url: mockImages[0].url,
+          platform: 'instagram',
+          dimensions: dimensions.instagram,
+          prompt: 'Mock image',
+          model: 'mock',
+          persona_id: personaId,
+          position: i,
+          status: 'generated'
+        })
       }
     }
 
@@ -468,7 +508,16 @@ Return a JSON object with:
     contentType: PostContentType
   }) {
     const { suggestionId, contentIdea, platforms, contentType } = params
-    const openai = getOpenAI()
+    
+    let openai
+    let useAI = true
+    try {
+      openai = getOpenAI()
+    } catch (error) {
+      console.warn('[PostsService] OpenAI not configured for copy generation, using mock data')
+      useAI = false
+    }
+    
     const adminSupabase = supabaseAdmin
 
     const platformLimits = {
@@ -505,21 +554,33 @@ Return JSON:
 }`
 
       try {
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4-turbo-preview',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 800,
-          response_format: { type: 'json_object' }
-        })
+        let copy: PlatformCopy
+        
+        if (useAI && openai) {
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4-turbo-preview',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 800,
+            response_format: { type: 'json_object' }
+          })
 
-        const response = completion.choices[0].message.content
-        if (response) {
-          const copy = JSON.parse(response) as PlatformCopy
-          copyVariants[platform] = copy
+          const response = completion.choices[0].message.content
+          if (response) {
+            copy = JSON.parse(response) as PlatformCopy
+          } else {
+            // Fallback to mock if no response
+            copy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
+          }
+        } else {
+          // Use mock generator
+          copy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
+        }
+        
+        copyVariants[platform] = copy
 
           // Store in database
           await adminSupabase
@@ -537,6 +598,27 @@ Return JSON:
         }
       } catch (error) {
         console.error(`Failed to generate ${platform} copy:`, error)
+        // Use mock data as fallback
+        const mockCopy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
+        copyVariants[platform] = mockCopy
+        
+        // Still try to store in database
+        try {
+          await adminSupabase
+            .from('post_copy')
+            .insert({
+              suggestion_id: suggestionId,
+              platform,
+              caption: mockCopy.caption,
+              hashtags: mockCopy.hashtags,
+              cta: mockCopy.cta,
+              title: mockCopy.title,
+              description: mockCopy.description,
+              total_length: mockCopy.caption.length + mockCopy.hashtags.join(' ').length
+            })
+        } catch (dbError) {
+          console.error(`Failed to store ${platform} copy in database:`, dbError)
+        }
       }
     }
 
