@@ -134,7 +134,7 @@ Format the response as a detailed JSON object with all variations and optimizati
 
       try {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-5',
+          model: 'gpt-4-turbo-preview',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -166,7 +166,7 @@ Format the response as a detailed JSON object with all variations and optimizati
             status: 'ready',
             engagement_prediction: (parsed.engagement_prediction || 75) / 100,
             generation_prompt: userPrompt.substring(0, 1000), // Store truncated prompt
-            generation_model: 'gpt-5',
+            generation_model: 'gpt-4-turbo-preview',
             generation_params: {
               creativity: settings.creativity,
               tone: settings.tone,
