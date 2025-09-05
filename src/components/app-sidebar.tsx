@@ -11,8 +11,7 @@ import {
   IconVideo,
   IconTrendingUp,
   IconShare2,
-  IconFileText,
-  IconHelp
+  IconFileText
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -35,7 +34,6 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { ProjectService, UsageService } from "@/lib/services"
 import type { UsageData } from "@/lib/usage-service"
-import { GlobalPersonaSelector } from "@/components/global-persona-selector"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
@@ -268,34 +266,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               )}
             </div>
           </div>
-        </div>
-        
-        <SidebarSeparator />
-        
-        {/* AI Persona Selector */}
-        <SidebarGroup>
-          <SidebarGroupLabel>AI Persona</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="px-2">
-              <GlobalPersonaSelector />
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        
-        {/* Help & Docs */}
-        <div className="px-2 mb-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild className="h-10 px-3 rounded-xl hover:bg-sidebar-accent/60 transition-colors">
-                <Link href="/docs" className="flex items-center">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-sidebar-accent/50 mr-3">
-                    <IconHelp className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium">Help & Docs</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
         </div>
       </SidebarContent>
       

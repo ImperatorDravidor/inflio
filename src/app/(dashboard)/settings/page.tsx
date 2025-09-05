@@ -265,6 +265,18 @@ export default function SettingsPage() {
                     <IconRefresh className="h-5 w-5 text-orange-600" />
                   </div>
                 </Link>
+
+                <Link href="/settings/reset-onboarding" className="block">
+                  <div className="flex items-center justify-between p-4 rounded-lg border border-blue-500/50 hover:border-blue-500 transition-colors cursor-pointer">
+                    <div>
+                      <h4 className="font-medium text-blue-600">Reset Onboarding</h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Test the onboarding flow again (for developers)
+                      </p>
+                    </div>
+                    <IconRefresh className="h-5 w-5 text-blue-600" />
+                  </div>
+                </Link>
                 
                 <div className="flex items-center justify-between p-4 rounded-lg border border-destructive/50">
                   <div>

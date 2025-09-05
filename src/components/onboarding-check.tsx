@@ -10,6 +10,9 @@ export function OnboardingCheck() {
   const pathname = usePathname()
   const { userId, isLoaded: isAuthLoaded } = useAuth()
   const { profile, needsOnboarding, isLoading } = useProfile()
+  
+  // Developer bypass: Allow accessing onboarding with ?force=true
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
 
   useEffect(() => {
     // Don't do anything while auth or profile is loading
@@ -24,8 +27,11 @@ export function OnboardingCheck() {
     
     // If already on onboarding page
     if (pathname.startsWith("/onboarding")) {
-      // If onboarding is already completed, redirect to dashboard
-      if (profile?.onboarding_completed === true) {
+      // Check for developer bypass
+      const forceOnboarding = searchParams.get('force') === 'true'
+      
+      // If onboarding is already completed and no force flag, redirect to dashboard
+      if (profile?.onboarding_completed === true && !forceOnboarding) {
         console.log("Onboarding already completed, redirecting to dashboard")
         router.push("/dashboard")
       }
