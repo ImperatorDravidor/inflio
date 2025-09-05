@@ -197,7 +197,7 @@ export class PostsService {
         persona_used: !!personaId,
         status: 'generating',
         generation_prompt: contentIdea.prompt,
-        generation_model: 'gpt-4-turbo',
+        generation_model: 'gpt-5',
         generation_params: settings
       })
       .select()
@@ -305,18 +305,21 @@ export class PostsService {
     projectTitle: string
     transcript?: string
     creativity?: number
+    additionalContext?: string
   }) {
-    const { contentType, contentAnalysis, projectTitle, transcript, creativity = 0.7 } = params
+    const { contentType, contentAnalysis, projectTitle, transcript, creativity = 0.7, additionalContext = '' } = params
     const openai = getOpenAI()
 
-    const contentTypeDescriptions = {
+    const contentTypeDescriptions: Record<PostContentType, string> = {
       carousel: 'Multi-slide educational or storytelling post (3-8 slides)',
       quote: 'Powerful quote with speaker attribution and visual design',
       single: 'Single impactful image with hook or key message',
-      thread: 'Text-based thread with 1-3 supporting visuals'
+      thread: 'Text-based thread with 1-3 supporting visuals',
+      reel: 'Short-form video concept with hook and CTA',
+      story: 'Ephemeral story content for maximum urgency'
     }
 
-    const systemPrompt = `You are a viral social media content strategist. Create compelling ${contentType} content ideas that maximize engagement.`
+    const systemPrompt = `You are a viral social media content strategist. Create compelling ${contentType} content ideas that maximize engagement.${additionalContext ? '\n\n' + additionalContext : ''}`
 
     const userPrompt = `Create a ${contentTypeDescriptions[contentType]} for the video "${projectTitle}".
 
@@ -339,13 +342,13 @@ Return a JSON object with:
 }`
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-5',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: creativity,
-      max_tokens: 1000,
+      // GPT-5 only supports default temperature (1.0)
+      max_completion_tokens: 1000,
       response_format: { type: 'json_object' }
     })
 
@@ -506,18 +509,8 @@ Return a JSON object with:
     contentIdea: any
     platforms: Platform[]
     contentType: PostContentType
+    additionalContext?: string
   }) {
-    const { suggestionId, contentIdea, platforms, contentType } = params
-    
-    let openai
-    let useAI = true
-    try {
-      openai = getOpenAI()
-    } catch (error) {
-      console.warn('[PostsService] OpenAI not configured for copy generation, using mock data')
-      useAI = false
-    }
-    
     const adminSupabase = supabaseAdmin
 
     const platformLimits = {
@@ -532,7 +525,7 @@ Return a JSON object with:
     const copyVariants: Record<string, PlatformCopy> = {}
 
     for (const platform of platforms) {
-      const systemPrompt = `You are a ${platform} content expert. Create engaging, platform-optimized copy.`
+      const systemPrompt = `You are a ${platform} content expert. Create engaging, platform-optimized copy.${additionalContext ? '\n\n' + additionalContext : ''}`
 
       const userPrompt = `Create ${platform} copy for this ${contentType} post:
 Title: ${contentIdea.title}
@@ -541,8 +534,8 @@ Key Message: ${contentIdea.key_message}
 Hook: ${contentIdea.hook}
 
 Platform limits:
-- Caption: ${platformLimits[platform].caption} characters
-- Hashtags: ${platformLimits[platform].hashtags} max
+- ${platform === 'youtube' ? 'Title' : 'Caption'}: ${platform === 'youtube' ? (platformLimits[platform] as any).title : (platformLimits[platform] as any).caption} characters
+- ${platform === 'youtube' ? 'Description' : 'Hashtags'}: ${platform === 'youtube' ? (platformLimits[platform] as any).description + ' characters' : (platformLimits[platform] as any).hashtags + ' max'}
 
 Return JSON:
 {
@@ -554,19 +547,6 @@ Return JSON:
 }`
 
       try {
-        let copy: PlatformCopy
-        
-        if (useAI && openai) {
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4-turbo-preview',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 800,
-            response_format: { type: 'json_object' }
-          })
 
           const response = completion.choices[0].message.content
           if (response) {
@@ -732,28 +712,115 @@ Return JSON:
     const supabase = await createSupabaseServerClient()
     const adminSupabase = supabaseAdmin
 
-    // Get existing suggestion
-    const { data: suggestion, error } = await supabase
+    // Get existing suggestion with project info
+    const { data: suggestion, error } = await adminSupabase
       .from('post_suggestions')
-      .select('*')
+      .select(`
+        *,
+        projects:project_id (
+          id,
+          title,
+          content_analysis,
+          transcription
+        )
+      `)
       .eq('id', suggestionId)
       .single()
 
     if (error || !suggestion) throw new Error('Suggestion not found')
 
-    // Update with feedback if provided
-    if (feedback) {
+    // Get user ID
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User not authenticated')
+
+    // Update status to regenerating
+    await adminSupabase
+      .from('post_suggestions')
+      .update({ 
+        status: 'generating',
+        feedback: feedback || suggestion.feedback
+      })
+      .eq('id', suggestionId)
+
+    try {
+      // Prepare regeneration with feedback incorporated
+      const enhancedPrompt = feedback 
+        ? `Previous attempt feedback: "${feedback}". Please address this feedback in the regeneration.`
+        : ''
+
+      // Get project details
+      const project = suggestion.projects
+      const contentAnalysis = project?.content_analysis || {}
+      const transcript = project?.transcription?.text
+
+      // Generate new content idea with feedback
+      const contentIdea = await this.generateContentIdea({
+        contentType: suggestion.content_type,
+        contentAnalysis,
+        projectTitle: project?.title || 'Untitled',
+        transcript,
+        creativity: suggestion.generation_params?.creativity || 0.8, // Slightly higher for variation
+        additionalContext: enhancedPrompt
+      })
+
+      // Regenerate images with new prompts
+      const images = await this.generatePostImages({
+        suggestionId,
+        contentType: suggestion.content_type,
+        contentIdea,
+        personaId: suggestion.persona_id,
+        userId: user.id
+      })
+
+      // Regenerate platform copy with feedback
+      const copyVariants = await this.generatePlatformCopy({
+        suggestionId,
+        contentIdea,
+        platforms: suggestion.eligible_platforms || ['instagram', 'twitter', 'linkedin'],
+        contentType: suggestion.content_type,
+        additionalContext: enhancedPrompt
+      })
+
+      // Update suggestion with regenerated content
+      const { error: updateError } = await adminSupabase
+        .from('post_suggestions')
+        .update({
+          title: contentIdea.title,
+          description: contentIdea.description,
+          images,
+          copy_variants: copyVariants,
+          status: 'ready',
+          generation_params: {
+            ...suggestion.generation_params,
+            regenerated: true,
+            regeneration_count: (suggestion.generation_params?.regeneration_count || 0) + 1
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', suggestionId)
+
+      if (updateError) throw updateError
+
+      // Return updated suggestion
+      const { data: updatedSuggestion } = await adminSupabase
+        .from('post_suggestions')
+        .select('*')
+        .eq('id', suggestionId)
+        .single()
+
+      return updatedSuggestion
+    } catch (error) {
+      // Mark as failed
       await adminSupabase
         .from('post_suggestions')
-        .update({ feedback })
+        .update({
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Regeneration failed'
+        })
         .eq('id', suggestionId)
+
+      throw error
     }
-
-    // Regenerate content
-    // Implementation would follow similar pattern to generateSingleSuggestion
-    // but incorporate the feedback into prompts
-
-    return suggestion
   }
 
   /**
@@ -788,8 +855,23 @@ Return JSON:
    */
   static async approveSuggestion(suggestionId: string) {
     const adminSupabase = supabaseAdmin
+    const supabase = await createSupabaseServerClient()
 
-    const { error } = await adminSupabase
+    // Get user ID
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User not authenticated')
+
+    // Get the suggestion with all details
+    const { data: suggestion, error: fetchError } = await adminSupabase
+      .from('post_suggestions')
+      .select('*')
+      .eq('id', suggestionId)
+      .single()
+
+    if (fetchError || !suggestion) throw new Error('Suggestion not found')
+
+    // Update suggestion status
+    const { error: updateError } = await adminSupabase
       .from('post_suggestions')
       .update({
         status: 'approved',
@@ -797,10 +879,69 @@ Return JSON:
       })
       .eq('id', suggestionId)
 
-    if (error) throw error
+    if (updateError) throw updateError
 
-    // TODO: Add to staging area
-    
-    return { success: true }
+    // Create staging session for this post
+    try {
+      // Import staging sessions service dynamically to avoid circular dependencies
+      const { StagingSessionsService } = await import('@/lib/staging/staging-sessions-service')
+      
+      // Prepare content for staging
+      const stagedContent = {
+        id: suggestionId,
+        type: suggestion.content_type as 'carousel' | 'quote' | 'single' | 'thread',
+        title: suggestion.title,
+        description: suggestion.description,
+        images: suggestion.images || [],
+        platforms: suggestion.eligible_platforms || [],
+        platformContent: {} as any,
+        metadata: {
+          personaUsed: suggestion.persona_used,
+          personaId: suggestion.persona_id,
+          engagementPrediction: suggestion.engagement_prediction,
+          generationModel: suggestion.generation_model
+        }
+      }
+
+      // Add platform-specific content
+      for (const platform of suggestion.eligible_platforms || []) {
+        const copyData = suggestion.copy_variants?.[platform]
+        if (copyData) {
+          stagedContent.platformContent[platform] = {
+            caption: copyData.caption,
+            hashtags: copyData.hashtags || [],
+            cta: copyData.cta,
+            title: copyData.title,
+            description: copyData.description
+          }
+        }
+      }
+
+      // Create or update staging session
+      const result = await StagingSessionsService.saveStagingSession(
+        user.id,
+        suggestion.project_id,
+        {
+          ids: [suggestionId],
+          items: [stagedContent]
+        }
+      )
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save staging session')
+      }
+
+      return { 
+        success: true, 
+        message: 'Post approved and moved to staging'
+      }
+    } catch (stagingError) {
+      console.error('Failed to create staging session:', stagingError)
+      // Still return success since approval worked
+      return { 
+        success: true,
+        warning: 'Post approved but staging failed'
+      }
+    }
   }
 }

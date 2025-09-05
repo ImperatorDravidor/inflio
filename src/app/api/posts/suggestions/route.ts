@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
 
     if (!projectId) {
@@ -19,30 +19,73 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const supabase = await createSupabaseServerClient()
-    
-    // Get suggestions - simplified query without joins
-    const { data: suggestions, error } = await supabase
+    // Get all post suggestions for the project
+    const { data: suggestions, error } = await supabaseAdmin
       .from('post_suggestions')
       .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Failed to fetch suggestions:', error)
+      console.error('Failed to fetch post suggestions:', error)
       return NextResponse.json(
         { error: 'Failed to fetch suggestions' },
         { status: 500 }
       )
     }
 
-    // Return suggestions directly - data structure is already in the table
-    // The post_suggestions table should contain all necessary data
-    return NextResponse.json({ suggestions: suggestions || [] })
+    // Also get any associated copy data if the post_copy table exists
+    let copyData: any[] = []
+    try {
+      const suggestionIds = suggestions?.map(s => s.id) || []
+      if (suggestionIds.length > 0) {
+        const { data } = await supabaseAdmin
+          .from('post_copy')
+          .select('*')
+          .in('suggestion_id', suggestionIds)
+        
+        copyData = data || []
+      }
+    } catch (copyError) {
+      // Ignore if post_copy table doesn't exist
+      console.log('post_copy table might not exist, continuing without it')
+    }
+
+    // Merge copy data with suggestions
+    const suggestionsWithCopy = suggestions?.map(suggestion => {
+      const copies = copyData.filter(c => c.suggestion_id === suggestion.id)
+      const copy_variants: Record<string, any> = {}
+      
+      copies.forEach(copy => {
+        copy_variants[copy.platform] = {
+          caption: copy.caption || '',
+          hashtags: copy.hashtags || [],
+          cta: copy.cta || '',
+          title: copy.title || '',
+          description: copy.description || ''
+        }
+      })
+
+      // If no copy data exists, use the existing copy_variants from the suggestion
+      return {
+        ...suggestion,
+        copy_variants: Object.keys(copy_variants).length > 0 ? copy_variants : suggestion.copy_variants
+      }
+    }) || []
+
+    return NextResponse.json({
+      success: true,
+      suggestions: suggestionsWithCopy,
+      count: suggestionsWithCopy.length
+    })
+
   } catch (error) {
-    console.error('Error fetching suggestions:', error)
+    console.error('Error fetching post suggestions:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Failed to fetch post suggestions',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

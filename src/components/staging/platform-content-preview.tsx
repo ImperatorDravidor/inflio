@@ -22,7 +22,8 @@ import {
   IconRepeat,
   IconEye,
   IconClock,
-  IconMapPin
+  IconMapPin,
+  IconPhoto
 } from "@tabler/icons-react"
 import { Platform } from "@/lib/social/types"
 import { StagedContent } from "@/lib/staging/staging-service"
@@ -36,34 +37,65 @@ interface PlatformContentPreviewProps {
   scheduledDate?: Date
 }
 
-const platformIcons: Record<Platform, any> = {
+const platformIcons: Record<string, any> = {
   instagram: IconBrandInstagram,
   linkedin: IconBrandLinkedin,
   tiktok: IconBrandTiktok,
   youtube: IconBrandYoutube,
   x: IconBrandX,
   facebook: IconBrandFacebook,
-  threads: IconBrandInstagram
+  threads: IconBrandInstagram,
+  // Legacy/alternate names for compatibility
+  twitter: IconBrandX,
+  'youtube-short': IconBrandYoutube,
+  'youtube-shorts': IconBrandYoutube
 }
 
-const platformColors = {
+const platformColors: Record<string, string> = {
   instagram: 'from-purple-500 to-pink-500',
   linkedin: 'from-blue-600 to-blue-700',
   tiktok: 'from-black to-gray-800',
   youtube: 'from-red-500 to-red-600',
   x: 'from-gray-900 to-black',
   facebook: 'from-blue-500 to-blue-600',
-  threads: 'from-gray-800 to-black'
+  threads: 'from-gray-800 to-black',
+  // Legacy/alternate names for compatibility
+  twitter: 'from-gray-900 to-black',
+  'youtube-short': 'from-red-500 to-red-600',
+  'youtube-shorts': 'from-red-500 to-red-600'
 }
 
 export function PlatformContentPreview({ content, platform, scheduledDate }: PlatformContentPreviewProps) {
-  const platformData = content.platformContent[platform]
+  // Add safety checks
+  if (!content) {
+    console.error('PlatformContentPreview: content prop is missing')
+    return (
+      <Card className="h-full">
+        <CardContent className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Content not available</p>
+        </CardContent>
+      </Card>
+    )
+  }
+  
+  if (!platform) {
+    console.error('PlatformContentPreview: platform prop is missing')
+    return (
+      <Card className="h-full">
+        <CardContent className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Platform not specified</p>
+        </CardContent>
+      </Card>
+    )
+  }
+  
+  const platformData = content.platformContent?.[platform]
   
   if (!platformData) {
     return (
       <Card className="h-full">
         <CardContent className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">No content for this platform yet</p>
+          <p className="text-muted-foreground">No content for {platform} yet</p>
         </CardContent>
       </Card>
     )
@@ -75,7 +107,6 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
-            <AvatarImage src="/placeholder-avatar.jpg" />
             <AvatarFallback>U</AvatarFallback>
           </Avatar>
           <div>
@@ -91,14 +122,22 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
       </div>
 
       {/* Media */}
-      {content.thumbnailUrl && (
+      {(content.thumbnailUrl || (content.mediaUrls?.length ?? 0) > 0) && (
         <div className="relative aspect-square bg-muted">
-          <Image 
-            src={content.thumbnailUrl} 
-            alt={content.title}
-            fill
-            className="object-cover"
-          />
+          {content.thumbnailUrl || content.mediaUrls?.[0] ? (
+            <img 
+              src={content.thumbnailUrl || content.mediaUrls?.[0] || ''} 
+              alt={content.title}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgdmlld0JveD0iMCAwIDQwMCA0MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIiBmaWxsPSIjRTVFN0VCIi8+CjxwYXRoIGQ9Ik0yMDAgMTYwQzE3Ny45MDkgMTYwIDE2MCAxNzcuOTA5IDE2MCAyMDBDMTYwIDIyMi4wOTEgMTc3LjkwOSAyNDAgMjAwIDI0MEMyMjIuMDkxIDI0MCAyNDAgMjIyLjA5MSAyNDAgMjAwQzI0MCAxNzcuOTA5IDIyMi4wOTEgMTYwIDIwMCAxNjBaTTIwMCAyMjBDMTg4Ljk1NCAyMjAgMTgwIDIxMS4wNDYgMTgwIDIwMEMxODAgMTg4Ljk1NCAxODguOTU0IDE4MCAyMDAgMTgwQzIxMS4wNDYgMTgwIDIyMCAxODguOTU0IDIyMCAyMDBDMjIwIDIxMS4wNDYgMjExLjA0NiAyMjAgMjAwIDIyMFoiIGZpbGw9IiM5Q0E0QUYiLz4KPC9zdmc+'
+              }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+              <IconPhoto className="h-16 w-16 text-gray-400" />
+            </div>
+          )}
           {content.type === 'clip' && (
             <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
               {content.duration ? `${Math.floor(content.duration / 60)}:${(content.duration % 60).toString().padStart(2, '0')}` : 'Video'}
@@ -151,13 +190,19 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
     <div className="max-w-[350px] mx-auto">
       {/* Video Container */}
       <div className="relative aspect-[9/16] bg-black rounded-lg overflow-hidden">
-        {content.thumbnailUrl && (
-          <Image 
-            src={content.thumbnailUrl} 
+        {(content.thumbnailUrl || (content.mediaUrls?.length ?? 0) > 0) ? (
+          <img 
+            src={content.thumbnailUrl || content.mediaUrls?.[0]} 
             alt={content.title}
-            fill
-            className="object-cover"
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjcxMSIgdmlld0JveD0iMCAwIDQwMCA3MTEiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iNzExIiBmaWxsPSIjMUYyMDI3Ii8+CjxwYXRoIGQ9Ik0yMDAgMjg1LjVDMTc3LjkwOSAyODUuNSAxNjAgMzAzLjQwOSAxNjAgMzI1LjVDMTYwIDM0Ny41OTEgMTc3LjkwOSAzNjUuNSAyMDAgMzY1LjVDMjIyLjA5MSAzNjUuNSAyNDAgMzQ3LjU5MSAyNDAgMzI1LjVDMjQwIDMwMy40MDkgMjIyLjA5MSAyODUuNSAyMDAgMjg1LjVaTTIwMCAzNDUuNUMxODguOTU0IDM0NS41IDE4MCAzMzYuNTQ2IDE4MCAzMjUuNUMxODAgMzE0LjQ1NCAxODguOTU0IDMwNS41IDIwMCAzMDUuNUMyMTEuMDQ2IDMwNS41IDIyMCAzMTQuNDU0IDIyMCAzMjUuNUMyMjAgMzM2LjU0NiAyMTEuMDQ2IDM0NS41IDIwMCAzNDUuNVoiIGZpbGw9IiM2NjY2NjYiLz4KPC9zdmc+'
+            }}
           />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-900">
+            <IconBrandTiktok className="h-20 w-20 text-gray-700" />
+          </div>
         )}
         
         {/* Overlay UI */}
@@ -508,23 +553,31 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
       case 'tiktok':
         return renderTikTokPreview()
       case 'youtube':
+      case 'youtube-short':
+      case 'youtube-shorts':
         return renderYouTubePreview()
       case 'linkedin':
         return renderLinkedInPreview()
       case 'x':
+      case 'twitter':
         return renderXPreview()
       case 'facebook':
         return renderFacebookPreview()
+      case 'threads':
+        return renderInstagramPreview() // Threads uses similar layout to Instagram
       default:
+        console.warn(`Preview not available for platform: ${platform}`)
         return (
           <div className="text-center py-8 text-muted-foreground">
-            Preview not available for this platform
+            <p>Preview not available for {platform}</p>
+            <p className="text-sm mt-2">Platform content will be shown here</p>
           </div>
         )
     }
   }
 
-  const Icon = platformIcons[platform]
+  const Icon = platformIcons[platform] || IconBrandInstagram // Fallback to Instagram icon if platform not found
+  const bgColor = platformColors[platform] || 'from-gray-500 to-gray-600' // Fallback color
 
   return (
     <Card className="h-full">
@@ -532,9 +585,9 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
         <div className="flex items-center gap-2">
           <div className={cn(
             "p-2 rounded-lg text-white bg-gradient-to-br",
-            platformColors[platform]
+            bgColor
           )}>
-            <Icon className="h-4 w-4" />
+            {Icon && <Icon className="h-4 w-4" />}
           </div>
           <CardTitle className="text-lg">Preview</CardTitle>
           {platformData.characterCount && (

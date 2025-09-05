@@ -100,6 +100,23 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', personaId)
 
+    // Update user profile with default persona if this is their first one
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('default_persona_id')
+      .eq('clerk_user_id', userId)
+      .single()
+    
+    if (!userProfile?.default_persona_id) {
+      await supabase
+        .from('user_profiles')
+        .update({ 
+          default_persona_id: personaId,
+          persona_photo_count: uploadedPhotos.length
+        })
+        .eq('clerk_user_id', userId)
+    }
+
     return NextResponse.json({
       success: true,
       personaId,

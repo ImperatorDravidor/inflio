@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { 
   Sparkles, RefreshCw, Download, Star, Wand2, 
   ThumbsUp, ThumbsDown, History, Upload, Zap,
-  BarChart3, GitBranch, Target, Magic, Brain,
+  BarChart3, GitBranch, Target, Brain,
   ChevronRight, Copy, ExternalLink, AlertCircle,
-  Palette, Image as ImageIcon, Clock, TrendingUp
+  Palette, Image as ImageIcon, Clock, TrendingUp, Plus
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -106,7 +106,7 @@ const STYLE_PRESETS = {
   },
   dramatic: { 
     label: 'Dramatic', 
-    icon: Magic, 
+    icon: Sparkles, 
     desc: 'Cinematic, emotional impact',
     params: { contrast: 1.5, saturation: 1.0 }
   },
@@ -451,65 +451,67 @@ export function EnhancedThumbnailGenerator({
   }
 
   // Performance analytics view
-  const PerformanceAnalytics = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5" />
-          Performance Analytics
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold">87%</div>
-            <p className="text-xs text-muted-foreground">Avg. CTR</p>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold">4.2</div>
-            <p className="text-xs text-muted-foreground">Avg. Rating</p>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">Total Generated</p>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Used in Posts</p>
-          </div>
-        </div>
-        
-        <Separator />
-        
-        <div>
-          <Label>Best Performing Styles</Label>
-          <div className="flex gap-2 mt-2">
-            <Badge variant="default">Bold (45% CTR)</Badge>
-            <Badge variant="secondary">Vibrant (38% CTR)</Badge>
-            <Badge variant="outline">Modern (32% CTR)</Badge>
-          </div>
-        </div>
-        
-        <div>
-          <Label>Platform Performance</Label>
-          <div className="space-y-2 mt-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">YouTube</span>
-              <Progress value={78} className="w-32" />
+  const PerformanceAnalytics = () => {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Performance Analytics
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold">87%</div>
+              <p className="text-xs text-muted-foreground">Avg. CTR</p>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Instagram</span>
-              <Progress value={65} className="w-32" />
+            <div className="text-center">
+              <div className="text-2xl font-bold">4.2</div>
+              <p className="text-xs text-muted-foreground">Avg. Rating</p>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">LinkedIn</span>
-              <Progress value={52} className="w-32" />
+            <div className="text-center">
+              <div className="text-2xl font-bold">12</div>
+              <p className="text-xs text-muted-foreground">Total Generated</p>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">3</div>
+              <p className="text-xs text-muted-foreground">Used in Posts</p>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
+          
+          <Separator />
+          
+          <div>
+            <Label>Best Performing Styles</Label>
+            <div className="flex gap-2 mt-2">
+              <Badge variant="default">Bold (45% CTR)</Badge>
+              <Badge variant="secondary">Vibrant (38% CTR)</Badge>
+              <Badge variant="outline">Modern (32% CTR)</Badge>
+            </div>
+          </div>
+          
+          <div>
+            <Label>Platform Performance</Label>
+            <div className="space-y-2 mt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">YouTube</span>
+                <Progress value={78} className="w-32" />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Instagram</span>
+                <Progress value={65} className="w-32" />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">LinkedIn</span>
+                <Progress value={52} className="w-32" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -537,7 +539,7 @@ export function EnhancedThumbnailGenerator({
             <BarChart3 className="h-4 w-4 mr-2" />
             Analytics
           </TabsTrigger>
-        </Tabs>
+        </TabsList>
 
         {/* Generate Tab */}
         <TabsContent value="generate" className="space-y-6">
@@ -782,7 +784,7 @@ export function EnhancedThumbnailGenerator({
                     onClick={magicEnhance}
                     disabled={isGenerating}
                   >
-                    <Magic className="h-4 w-4 mr-2" />
+                    <Wand2 className="h-4 w-4 mr-2" />
                     Magic Enhance
                   </Button>
                 )}
@@ -1076,5 +1078,3 @@ export function EnhancedThumbnailGenerator({
   )
 }
 
-// Add this for proper Next.js imports
-import { Plus } from 'lucide-react'

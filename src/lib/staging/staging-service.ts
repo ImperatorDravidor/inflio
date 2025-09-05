@@ -1175,6 +1175,9 @@ Return JSON array of optimal times:
   ): Promise<void> {
     const supabase = createSupabaseBrowserClient()
     
+    // Skip project validation for demo purposes - just use the ID if provided
+    const validProjectId = projectId && projectId !== 'undefined' ? projectId : null
+    
     // First, check if user has connected social accounts (optional for demo)
     const { data: integrations } = await supabase
       .from('social_integrations')
@@ -1219,7 +1222,7 @@ Return JSON array of optimal times:
           
           // Original content reference
           originalData: {
-            projectId,
+            projectId: validProjectId,
             ...stagedContent.originalData
           },
           
@@ -1237,7 +1240,7 @@ Return JSON array of optimal times:
         // Build the social post record
         const postRecord: any = {
           user_id: userId,
-          project_id: projectId,
+          project_id: validProjectId, // Use validated project ID
           content: platformContent.caption || platformContent.title || platformContent.description || '',
           media_urls: stagedContent.mediaUrls || [],
           publish_date: scheduledPost.scheduledDate.toISOString(),

@@ -76,6 +76,7 @@ export default function ProjectStagePage() {
   const [showExitDialog, setShowExitDialog] = useState(false)
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
+  const [contentLoaded, setContentLoaded] = useState(false)
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const steps: StagingStep[] = [
@@ -102,9 +103,13 @@ export default function ProjectStagePage() {
     }
   ]
 
+  // Track if we've already loaded content to prevent re-runs
+  const hasLoadedContent = useRef(false)
+  
   // Load draft on mount
   useEffect(() => {
-    if (projectId && user?.id) {
+    if (projectId && user?.id && !hasLoadedContent.current) {
+      hasLoadedContent.current = true
       checkForDraft()
       loadProjectAndContent()
     }
@@ -194,6 +199,7 @@ export default function ProjectStagePage() {
     setCurrentStep(draft.currentStep)
     setStagedContent(draft.stagedContent)
     setScheduledPosts(draft.scheduledPosts)
+    setContentLoaded(true)
     setIsDirty(false)
     toast.success('Draft loaded successfully')
   }
@@ -282,25 +288,38 @@ export default function ProjectStagePage() {
     try {
       setLoading(true)
       
-      // Load project data
-      const projectData = await ProjectService.getProject(projectId)
-      
-      if (!projectData) {
-        toast.error('Project not found')
+      // Load project data with better error handling
+      let projectData = null
+      try {
+        projectData = await ProjectService.getProject(projectId)
+        
+        if (!projectData) {
+          console.error('Project not found for ID:', projectId)
+          toast.error('Project not found. Please try again from the projects page.')
+          router.push(`/projects`)
+          return
+        }
+        
+        setProject(projectData)
+        console.log('Project loaded successfully:', projectData.title || projectData.id)
+      } catch (projectError) {
+        console.error('Error loading project:', projectError)
+        toast.error('Failed to load project. Please try again.')
         router.push(`/projects`)
         return
       }
       
-      setProject(projectData)
-      
       // Check if we have selected content from PublishingWorkflow
       const selectedContentData = sessionStorage.getItem('selectedContent')
-      console.log('Staging page - selectedContentData from sessionStorage:', selectedContentData)
+      console.log('Staging page - checking for selectedContent in sessionStorage')
+      console.log('Available sessionStorage keys:', Object.keys(sessionStorage))
+      console.log('selectedContent data:', selectedContentData)
       
       if (selectedContentData) {
         try {
           const parsedContent = JSON.parse(selectedContentData)
           console.log('Staging page - parsed content:', parsedContent)
+          console.log('Number of items:', parsedContent.length)
         
           // Initialize staged content from selected items
           const content = parsedContent.map((item: any) => {
@@ -383,9 +402,10 @@ export default function ProjectStagePage() {
         })
         
         setStagedContent(content)
+          setContentLoaded(true)
           
-          // Clear the session storage
-          sessionStorage.removeItem('selectedContent')
+          // Keep sessionStorage available for the entire session
+          // Only clear when user navigates away or publishes successfully
         } catch (error) {
           console.error('Error parsing selected content:', error)
           toast.error('Failed to load selected content')
@@ -393,10 +413,20 @@ export default function ProjectStagePage() {
           return
         }
       } else {
-        // No content selected
-        toast.error('No content selected. Please select content to publish.')
-        router.push(`/projects/${projectId}`)
-        return
+        // Only redirect if we're certain there's no content and we're not still loading
+        if (!stagedContent.length && !contentLoaded && !loading) {
+          console.log('No content in sessionStorage and no staged content')
+          
+          // Give a bit more time for any pending state updates
+          setTimeout(() => {
+            // Double-check before redirecting
+            if (!stagedContent.length && !contentLoaded) {
+              toast.error('No content selected. Please select content to publish.')
+              router.push(`/projects/${projectId}`)
+            }
+          }, 500)
+          return
+        }
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -411,11 +441,13 @@ export default function ProjectStagePage() {
 
   // Helper function to determine platforms based on content type
   const determinePlatformsForContent = (item: any) => {
-    switch (item.type) {
-      case 'clip':
-        return ['instagram', 'tiktok', 'youtube-short']
-      case 'longform':
-        return ['youtube', 'facebook']
+          switch (item.type) {
+        case 'clip':
+          // YouTube Shorts are still under 'youtube' platform
+          return ['instagram', 'tiktok', 'youtube']
+        case 'longform':
+          // Long form videos are for full-length platforms
+          return ['youtube', 'facebook']
       case 'blog':
         return ['linkedin', 'x', 'facebook']
       case 'image':
@@ -451,8 +483,10 @@ export default function ProjectStagePage() {
         scheduledPosts
       )
       
-      // Clear draft after successful publish
+      // Clear draft and sessionStorage after successful publish
       clearDraft()
+      sessionStorage.removeItem('selectedContent')
+      sessionStorage.removeItem('selectedContentIds')
       
       toast.success('Content scheduled successfully!')
       
@@ -495,6 +529,8 @@ export default function ProjectStagePage() {
 
   const handleExitWithoutSave = () => {
     clearDraft()
+    sessionStorage.removeItem('selectedContent')
+    sessionStorage.removeItem('selectedContentIds')
     router.push(`/projects/${projectId}`)
   }
 
@@ -503,7 +539,7 @@ export default function ProjectStagePage() {
     router.push(`/projects/${projectId}`)
   }
 
-  if (loading) {
+  if (loading && !contentLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <LoadingSpinner size="lg" />
