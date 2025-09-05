@@ -490,53 +490,39 @@ export function EnhancedPostsGenerator({
     setGenerationProgress(0)
     setShowGenerateDialog(false)
 
-    // Celebration effect
-    const duration = 3000
-    const animationEnd = Date.now() + duration
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
-
-    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
-
-    const interval = setInterval(() => {
-      const timeLeft = animationEnd - Date.now()
-      if (timeLeft <= 0) return clearInterval(interval)
-
-      const particleCount = 50 * (timeLeft / duration)
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
-      })
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
-      })
-    }, 250)
-
     try {
-      const response = await fetch('/api/posts/generate-smart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          projectTitle,
-          contentAnalysis,
-          transcript: transcript?.substring(0, 3000),
-          settings: {
-            ...generationSettings,
-            selectedPersonaId: selectedPersonaForGeneration,
-            contentTypes: selectedContentTypes,
-            platforms: selectedPlatforms,
-            targetAudience: contentAnalysis?.targetDemographics?.primary || 'General audience',
-            contentGoal: generationSettings.contentGoal || 'engagement'
-          }
-        })
-      })
-
-      if (!response.ok) throw new Error('Failed to generate suggestions')
 
       const data = await response.json()
+
+      if (!response.ok) {
+        // Log the full error response for debugging
+        console.error('API Error Response:', data)
+        throw new Error(data.error || 'Failed to generate suggestions')
+      }
+
+      // Celebration effect only on success
+      const duration = 3000
+      const animationEnd = Date.now() + duration
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+
+      const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now()
+        if (timeLeft <= 0) return clearInterval(interval)
+
+        const particleCount = 50 * (timeLeft / duration)
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+        })
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+        })
+      }, 250)
       
       if (data.jobId) {
         await pollGenerationProgress(data.jobId)
@@ -546,7 +532,8 @@ export function EnhancedPostsGenerator({
       toast.success('🎉 AI Posts generated successfully!')
     } catch (error) {
       console.error('Generation error:', error)
-      toast.error('Failed to generate suggestions')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate suggestions'
+      toast.error(errorMessage)
     } finally {
       setIsGenerating(false)
       setGenerationProgress(0) // Reset to 0 instead of leaving at 100

@@ -17,8 +17,19 @@ export async function POST(request: NextRequest) {
       transcript,
       personaId,
       contentTypes,
-      platforms
+      platforms,
+      settings
     } = body
+
+    console.log('[API] Posts generation request:', {
+      projectId,
+      projectTitle,
+      contentTypes,
+      platforms,
+      hasContentAnalysis: !!contentAnalysis,
+      hasTranscript: !!transcript,
+      personaId
+    })
 
     if (!projectId || !projectTitle) {
       return NextResponse.json(
@@ -34,14 +45,32 @@ export async function POST(request: NextRequest) {
       projectTitle,
       personaId,
       contentTypes,
-      platforms
+      platforms,
+      settings
     })
 
+    console.log('[API] Posts generation successful:', result)
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Posts generation error:', error)
+    console.error('[API] Posts generation error details:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    
+    // Return more detailed error information
+    const errorMessage = error instanceof Error ? error.message : 'Failed to generate post suggestions'
+    const isSupabaseError = errorMessage.includes('post_generation_jobs') || errorMessage.includes('post_suggestions')
+    
+    if (isSupabaseError) {
+      return NextResponse.json(
+        { error: 'Database tables not found. Please run the posts feature migration.' },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to generate post suggestions' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
