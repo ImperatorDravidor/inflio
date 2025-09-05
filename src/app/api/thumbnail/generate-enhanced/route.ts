@@ -4,7 +4,7 @@ import { fal } from '@fal-ai/client'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getOpenAI } from '@/lib/openai'
 import { v4 as uuidv4 } from 'uuid'
-import sharp from 'sharp'
+// import sharp from 'sharp' // Commented out - not compatible with edge runtime
 
 // Configure FAL AI
 fal.config({
@@ -254,13 +254,17 @@ export async function POST(req: NextRequest) {
             style: 'vivid'
           })
           
-          result = {
-            images: [{
-              url: openaiResponse.data[0].url,
-              content_type: 'image/png',
-              width: platform === 'instagram' ? 1024 : 1792,
-              height: platform === 'instagram' ? 1024 : 1024
+          if (openaiResponse.data && openaiResponse.data[0]?.url) {
+            result = {
+              images: [{
+                url: openaiResponse.data[0].url,
+                content_type: 'image/png',
+                width: platform === 'instagram' ? 1024 : 1792,
+                height: platform === 'instagram' ? 1024 : 1024
             }]
+          }
+          } else {
+            throw new Error('No image URL in OpenAI response')
           }
         } catch (openaiError) {
           console.error('OpenAI fallback failed:', openaiError)
@@ -293,14 +297,15 @@ export async function POST(req: NextRequest) {
     const imageResponse = await fetch(generatedImageUrl)
     const imageBuffer = await imageResponse.arrayBuffer()
     
-    // Optimize with sharp if needed
-    let optimizedBuffer = Buffer.from(imageBuffer)
-    if (platform !== 'universal') {
-      optimizedBuffer = await sharp(Buffer.from(imageBuffer))
-        .resize(platformConfig.width, platformConfig.height, { fit: 'cover' })
-        .png({ quality: 90 })
-        .toBuffer()
-    }
+    // Convert to buffer (sharp optimization commented out due to edge runtime compatibility)
+    const optimizedBuffer = Buffer.from(imageBuffer)
+    // Note: Image resizing would need to be done via a separate API or service
+    // if (platform !== 'universal') {
+    //   optimizedBuffer = await sharp(Buffer.from(imageBuffer))
+    //     .resize(platformConfig.width, platformConfig.height, { fit: 'cover' })
+    //     .png({ quality: 90 })
+    //     .toBuffer()
+    // }
 
     // Upload to Supabase storage
     const fileName = `thumbnails/${projectId}/${generationId}.png`

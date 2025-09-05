@@ -10,9 +10,18 @@ export const designSystem = {
     portal: {
       enter: {
         initial: { opacity: 0, scale: 0.95, y: 20 },
-        animate: { opacity: 1, scale: 1, y: 0 },
-        exit: { opacity: 0, scale: 0.95, y: 20 },
-        transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] }
+        animate: { 
+          opacity: 1, 
+          scale: 1, 
+          y: 0,
+          transition: { duration: 0.2, ease: "easeInOut" }
+        },
+        exit: { 
+          opacity: 0, 
+          scale: 0.95, 
+          y: 20,
+          transition: { duration: 0.2, ease: "easeInOut" }
+        }
       },
       // Backdrop fade
       backdrop: {
@@ -54,7 +63,7 @@ export const designSystem = {
           transition: {
             delay: i * 0.05,
             duration: 0.3,
-            ease: [0.4, 0, 0.2, 1]
+            ease: "easeInOut"
           }
         })
       }

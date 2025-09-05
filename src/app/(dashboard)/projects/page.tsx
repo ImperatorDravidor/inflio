@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { VideoThumbnailFallback } from "@/components/video-thumbnail-fallback"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -70,7 +71,7 @@ type ViewMode = 'grid' | 'list'
 type SortOption = 'recent' | 'name' | 'duration' | 'status'
 type FilterStatus = 'all' | 'draft' | 'processing' | 'ready' | 'published'
 
-const MotionCard = motion(Card)
+const MotionCard = motion.create(Card)
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -181,26 +182,12 @@ function ProjectCard({
             className="relative w-full sm:w-32 h-48 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 cursor-pointer group"
             onClick={handleProjectClick}
           >
-            {project.thumbnail_url ? (
-              project.thumbnail_url.startsWith('http') ? (
-                <img
-                  src={project.thumbnail_url}
-                  alt={project.title}
-                  className="object-cover w-full h-full group-hover:scale-105 transition-transform"
-                />
-              ) : (
-                <Image 
-                  src={project.thumbnail_url} 
-                  alt={project.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform"
-                />
-              )
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <IconVideo className="h-8 w-8 text-muted-foreground" />
-              </div>
-            )}
+            <VideoThumbnailFallback
+              videoUrl={project.video_url}
+              thumbnailUrl={project.thumbnail_url}
+              title={project.title}
+              className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+            />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
               {isProcessing ? (
                 <div className="flex items-center gap-2 bg-black/60 px-3 py-1 rounded-full">
@@ -340,26 +327,12 @@ function ProjectCard({
         className="relative aspect-video overflow-hidden bg-muted cursor-pointer"
         onClick={handleProjectClick}
       >
-        {project.thumbnail_url ? (
-          project.thumbnail_url.startsWith('http') ? (
-            <img
-              src={project.thumbnail_url}
-              alt={project.title}
-              className="object-cover w-full h-full group-hover:scale-105 transition-transform"
-            />
-          ) : (
-            <Image 
-              src={project.thumbnail_url} 
-              alt={project.title}
-              fill
-              className="object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          )
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <IconVideo className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
-          </div>
-        )}
+        <VideoThumbnailFallback
+          videoUrl={project.video_url}
+          thumbnailUrl={project.thumbnail_url}
+          title={project.title}
+          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-3 sm:right-4">
             <p className="text-white text-xs sm:text-sm font-medium">{formatDuration(project.metadata.duration)}</p>

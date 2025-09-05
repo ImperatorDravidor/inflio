@@ -152,6 +152,16 @@ const contentTypeConfig = {
     description: 'Short-form video content',
     gridCols: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
   },
+  longform: {
+    icon: IconPlayerPlay,
+    color: 'text-cyan-600',
+    bgColor: 'bg-cyan-50 dark:bg-cyan-950/20',
+    borderColor: 'border-cyan-200 dark:border-cyan-800',
+    hoverBg: 'hover:bg-cyan-100 dark:hover:bg-cyan-950/30',
+    label: 'Long Form Video',
+    description: 'Full-length video with subtitles',
+    gridCols: 'grid-cols-1 md:grid-cols-2'
+  },
   blog: {
     icon: IconFileText,
     color: 'text-blue-600',
@@ -460,6 +470,7 @@ const ContentTypeSection = ({
 
   const sectionIcons = {
     clip: IconPlaylist,
+    longform: IconPlayerPlay,
     blog: IconArticle,
     image: IconPhotoScan,
     social: IconHash,
@@ -756,6 +767,26 @@ export function EnhancedPublishingWorkflowV3({
       })
     }
     
+    // Add long form content (when subtitles are available)
+    const folders = project.folders as any
+    if (folders?.longform?.length) {
+      folders.longform.forEach((video: any) => {
+        items.push({
+          id: `longform-${video.id}`,
+          type: 'longform',
+          title: video.title || 'Full Video',
+          description: video.description || 'Full-length video with subtitles',
+          thumbnail: video.thumbnail,
+          duration: video.duration,
+          videoUrl: video.videoUrl,
+          hasSubtitles: video.hasSubtitles,
+          createdAt: video.createdAt || new Date().toISOString(),
+          ready: true,
+          metadata: video
+        })
+      })
+    }
+    
     return items
   }, [project])
 
@@ -836,10 +867,14 @@ export function EnhancedPublishingWorkflowV3({
     }
     
     setIsNavigating(true)
+    toast.success(`Moving ${selectedIds.size} items to staging...`)
     
     if (onPublish) {
-      onPublish(Array.from(selectedIds))
-      setIsNavigating(false)
+      // Give visual feedback before calling the callback
+      setTimeout(() => {
+        onPublish(Array.from(selectedIds))
+        setIsNavigating(false)
+      }, 300)
     } else {
       sessionStorage.setItem('selectedContentIds', JSON.stringify(Array.from(selectedIds)))
       sessionStorage.setItem('projectData', JSON.stringify(project))
@@ -854,6 +889,8 @@ export function EnhancedPublishingWorkflowV3({
     switch (item.type) {
       case 'clip':
         return <ClipPreview item={item} />
+      case 'longform':
+        return <ClipPreview item={item} /> // Reuse ClipPreview for longform videos
       case 'blog':
         return <BlogPreview item={item} />
       case 'image':
@@ -946,9 +983,10 @@ export function EnhancedPublishingWorkflowV3({
   })
 
   return (
-    <div className={cn("space-y-6", className)}>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className={cn("flex flex-col h-full", className)}>
+      <div className="flex-1 overflow-auto space-y-6 pb-20">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             Select Content to Publish
@@ -1202,38 +1240,61 @@ export function EnhancedPublishingWorkflowV3({
           </div>
         )}
       </ScrollArea>
+      </div>
 
-      {/* Actions */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {selectedIds.size > 0 ? (
-                <>Selected {selectedIds.size} items to publish</>
-              ) : (
-                <>Select content to continue</>
-              )}
+      {/* Sticky Actions at Bottom */}
+      <div className="sticky bottom-0 bg-background border-t mt-auto">
+        <Card className="rounded-none border-0 shadow-lg">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                {selectedIds.size > 0 ? (
+                  <span className="flex items-center gap-2">
+                    <IconChecks className="h-4 w-4 text-primary" />
+                    <span>Selected <strong>{selectedIds.size}</strong> items to publish</span>
+                  </span>
+                ) : (
+                  <>Select content to continue</>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={deselectAll}
+                    className="gap-2"
+                  >
+                    <IconX className="h-4 w-4" />
+                    Clear Selection
+                  </Button>
+                )}
+                <Button
+                  onClick={handleContinue}
+                  disabled={selectedIds.size === 0 || isNavigating}
+                  size="lg"
+                  className={cn(
+                    "gap-2 min-w-[200px] transition-all",
+                    selectedIds.size > 0 && "shadow-md scale-105"
+                  )}
+                >
+                  {isNavigating ? (
+                    <>
+                      <IconLoader2 className="h-4 w-4 animate-spin" />
+                      Preparing...
+                    </>
+                  ) : (
+                    <>
+                      Continue to Staging
+                      <IconArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-            <Button
-              onClick={handleContinue}
-              disabled={selectedIds.size === 0 || isNavigating}
-              className="gap-2"
-            >
-              {isNavigating ? (
-                <>
-                  <IconLoader2 className="h-4 w-4 animate-spin" />
-                  Preparing...
-                </>
-              ) : (
-                <>
-                  Continue to Staging
-                  <IconArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 } 

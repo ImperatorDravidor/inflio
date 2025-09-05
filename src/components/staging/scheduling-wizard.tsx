@@ -114,6 +114,63 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [hoveredDate, setHoveredDate] = useState<Date | null>(null)
 
+  // Post Card Component - Define early to avoid hoisting issues
+  const PostCard = ({ post }: { post: ScheduledContent }) => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:shadow-md transition-all"
+      >
+        <div className="flex -space-x-2">
+          {post.platforms.map((platform, idx) => {
+            const Icon = platformIcons[platform] || IconShare2
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br text-white shadow-sm",
+                  platformColors[platform] || 'from-gray-500 to-gray-600'
+                )}
+                style={{ zIndex: post.platforms.length - idx }}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+            )
+          })}
+        </div>
+        
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium text-sm">{post.stagedContent.title}</h4>
+            <Badge variant="outline" className="text-xs">
+              {post.stagedContent.type}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+            <div className="flex items-center gap-1">
+              <IconClock className="h-3 w-3" />
+              {format(post.scheduledDate, 'h:mm a')}
+            </div>
+            {post.engagementPrediction && (
+              <div className="flex items-center gap-1">
+                <IconChartBar className="h-3 w-3" />
+                {post.engagementPrediction.score}% reach
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {post.suggestedHashtags && post.suggestedHashtags.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <IconHash className="h-3 w-3" />
+            {post.suggestedHashtags.length}
+          </div>
+        )}
+      </motion.div>
+    )
+  }
+
   // Calendar helpers
   const getWeekDays = () => {
     const start = startOfWeek(selectedDate, { weekStartsOn: 0 })
@@ -471,63 +528,6 @@ export function SchedulingWizard({ content, onComplete, onBack }: SchedulingWiza
           </CardContent>
         </Card>
       </div>
-    )
-  }
-
-  // Post Card Component
-  const PostCard = ({ post }: { post: ScheduledContent }) => {
-    return (
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:shadow-md transition-all"
-      >
-        <div className="flex -space-x-2">
-          {post.platforms.map((platform, idx) => {
-            const Icon = platformIcons[platform] || IconShare2
-            return (
-              <div
-                key={idx}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br text-white shadow-sm",
-                  platformColors[platform] || 'from-gray-500 to-gray-600'
-                )}
-                style={{ zIndex: post.platforms.length - idx }}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-            )
-          })}
-        </div>
-        
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h4 className="font-medium text-sm">{post.stagedContent.title}</h4>
-            <Badge variant="outline" className="text-xs">
-              {post.stagedContent.type}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-            <div className="flex items-center gap-1">
-              <IconClock className="h-3 w-3" />
-              {format(post.scheduledDate, 'h:mm a')}
-            </div>
-            {post.engagementPrediction && (
-              <div className="flex items-center gap-1">
-                <IconChartBar className="h-3 w-3" />
-                {post.engagementPrediction.score}% reach
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {post.suggestedHashtags && post.suggestedHashtags.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <IconHash className="h-3 w-3" />
-            {post.suggestedHashtags.length}
-          </div>
-        )}
-      </motion.div>
     )
   }
 

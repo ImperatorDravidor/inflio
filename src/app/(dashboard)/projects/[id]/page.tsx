@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useClerkUser } from "@/hooks/use-clerk-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -71,7 +71,7 @@ import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/empty-state"
-import { formatDuration, generateVideoThumbnailFromUrl } from "@/lib/video-utils"
+import { formatDuration, generateVideoThumbnailFromUrl, createPlaceholderThumbnail } from "@/lib/video-utils"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { motion, AnimatePresence } from "framer-motion"
@@ -120,18 +120,18 @@ import type { StagedContent } from "@/lib/staging/staging-service"
 import { ThreadGeneratorComponent } from "@/components/thread-generator"
 import { VideoChapters } from "@/components/video-chapters"
 import { QuoteCardsGenerator } from "@/components/quote-cards-generator"
+import { EnhancedVideoPlayer } from "@/components/video-player-enhanced"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
-import type { Persona } from "@/lib/types/persona"
-import { PersonaConfigureDialog } from "@/components/persona-configure-dialog"
+import type { Persona } from "@/lib/services/persona-service"
 import { SocialGraphicsGenerator } from "@/components/social-graphics-generator"
 import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
-import { UserGuideTooltip } from "@/components/user-guide-tooltip"
 import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 import { UnifiedContentGenerator } from "@/components/unified-content-generator"
+import { SimplifiedGraphicsTab } from "@/components/simplified-graphics-tab"
 
 
 const platformIcons = {
@@ -153,6 +153,7 @@ const platformColors = {
 function ProjectDetailPageContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useClerkUser()
   const projectId = params.id as string
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -163,7 +164,11 @@ function ProjectDetailPageContent() {
   // Access control check
   const isOwner = project?.user_id === user?.id
   const hasAccess = !project?.user_id || isOwner // Allow access if no user_id (legacy) or is owner
-  const [activeTab, setActiveTab] = useState<string>("overview")
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    // Check for tab query parameter
+    const tabParam = searchParams.get('tab')
+    return tabParam || "overview"
+  })
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false)
   const [showBlogDialog, setShowBlogDialog] = useState(false)
@@ -197,10 +202,11 @@ function ProjectDetailPageContent() {
   const [streamingProgress, setStreamingProgress] = useState(0)
   const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
-  const [hasSubtitles, setHasSubtitles] = useState(false)
-  const [videoLoading, setVideoLoading] = useState(true)
+  const [hasSubtitles, setHasSubtitles] = useState<boolean>(false)
+  const [videoLoading, setVideoLoading] = useState(false)
   const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
   const [usePersonaForGraphics, setUsePersonaForGraphics] = useState(true)
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   
   const [isActivelyProcessing, setIsActivelyProcessing] = useState(false)
   
@@ -228,10 +234,22 @@ function ProjectDetailPageContent() {
     async function generateDefaultThumbnail() {
       if (project?.video_url && !project.thumbnail_url && !defaultThumbnail) {
         try {
+          // This will always return something, either actual thumbnail or placeholder
           const thumbnail = await generateVideoThumbnailFromUrl(project.video_url, 2)
           setDefaultThumbnail(thumbnail)
         } catch (error) {
           console.error("Failed to generate default thumbnail:", error)
+          // If even the safe method fails, create a placeholder directly
+          const placeholder = createPlaceholderThumbnail()
+          if (placeholder) {
+            setDefaultThumbnail(placeholder)
+          }
+        }
+      } else if (!project?.video_url && !project?.thumbnail_url && !defaultThumbnail) {
+        // No video URL, create a placeholder
+        const placeholder = createPlaceholderThumbnail()
+        if (placeholder) {
+          setDefaultThumbnail(placeholder)
         }
       }
     }
@@ -1185,12 +1203,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               
               {/* Primary Actions - Better Organized */}
               <div className="flex flex-col gap-3 min-w-[280px]">
+                {/* Demo: Quick toggle for long form content */}
+                {process.env.NODE_ENV === 'development' && !hasSubtitles && (
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setHasSubtitles(true)
+                      toast.success('Long form content enabled for demo!')
+                    }}
+                    className="w-full gap-2 border-dashed"
+                  >
+                    <IconVideo className="h-4 w-4" />
+                    Enable Long Form (Demo)
+                  </Button>
+                )}
+                
                 {/* Main CTA */}
                 <Button 
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
                   onClick={() => setShowContentSelectionDialog(true)}
-                  disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
+                  disabled={!hasSubtitles && stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
                   Publish Content
@@ -1233,31 +1267,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Button>
                   )
                 })()}
-                
-                {/* Configure Persona Button */}
-                                    <UserGuideTooltip
-                      id="configure-persona"
-                      title="Add your persona"
-                      content="Create a professional persona to feature in all your AI-generated content"
-                      side="left"
-                      delay={2000}
-                    >
-                      <PersonaConfigureDialog
-                        onPersonaCreated={(persona) => {
-                          setSelectedPersona(persona)
-                          toast.success(`Persona "${persona.name}" created successfully!`)
-                        }}
-                      >
-                        <Button 
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-center gap-2"
-                        >
-                          <IconUsers className="h-4 w-4" />
-                          Configure Persona
-                        </Button>
-                      </PersonaConfigureDialog>
-                    </UserGuideTooltip>
               </div>
             </div>
           </div>
@@ -1452,44 +1461,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   </CardContent>
                 </Card>
                 
-                {/* AI Images */}
-                <Card className={cn(
-                  "border transition-all cursor-pointer hover:shadow-md",
-                  totalImages > 0 
-                    ? "border-pink-500/20 bg-pink-500/5 hover:border-pink-500/40" 
-                    : "border-muted hover:border-primary/20"
-                )}
-                onClick={() => setActiveTab('graphics')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                        totalImages > 0 ? "bg-pink-500/20" : "bg-muted"
-                  )}>
-                    <IconPhoto className={cn(
-                          "h-4 w-4",
-                          totalImages > 0 ? "text-pink-600" : "text-muted-foreground"
-                    )} />
-                  </div>
-                      {totalImages > 0 ? (
-                        <span className="text-lg font-bold text-pink-600">{totalImages}</span>
-                      ) : (
-                        <IconPlus className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <p className="font-semibold text-sm">AI Images</p>
-                    <p className="text-xs text-muted-foreground">
-                      {totalImages > 0 ? "Created" : "Generate"}
-                    </p>
-                  </CardContent>
-                </Card>
-                
-                {/* Social Posts */}
+                {/* Posts */}
                 <Card className={cn(
                   "border transition-all cursor-pointer hover:shadow-md",
                   stats.totalSocialPosts > 0 
-                    ? "border-orange-500/20 bg-orange-500/5 hover:border-orange-500/40" 
+                    ? "border-pink-500/20 bg-pink-500/5 hover:border-pink-500/40" 
                     : "border-muted hover:border-primary/20"
                 )}
                 onClick={() => router.push(`/projects/${projectId}/stage`)}
@@ -1498,22 +1474,53 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <div className="flex items-center justify-between mb-2">
                   <div className={cn(
                     "p-2 rounded-lg",
-                        stats.totalSocialPosts > 0 ? "bg-orange-500/20" : "bg-muted"
+                        stats.totalSocialPosts > 0 ? "bg-pink-500/20" : "bg-muted"
                   )}>
                     <IconShare2 className={cn(
                           "h-4 w-4",
-                          stats.totalSocialPosts > 0 ? "text-orange-600" : "text-muted-foreground"
+                          stats.totalSocialPosts > 0 ? "text-pink-600" : "text-muted-foreground"
                     )} />
                   </div>
                       {stats.totalSocialPosts > 0 ? (
-                        <span className="text-lg font-bold text-orange-600">{stats.totalSocialPosts}</span>
+                        <span className="text-lg font-bold text-pink-600">{stats.totalSocialPosts}</span>
                       ) : (
                         <IconPlus className="h-4 w-4 text-muted-foreground" />
                       )}
                     </div>
-                    <p className="font-semibold text-sm">Social Posts</p>
+                    <p className="font-semibold text-sm">Posts</p>
                     <p className="text-xs text-muted-foreground">
-                      {stats.totalSocialPosts > 0 ? "Staged" : "Create"}
+                      {stats.totalSocialPosts > 0 ? "Scheduled" : "Create"}
+                    </p>
+                  </CardContent>
+                </Card>
+                
+                {/* Long Form Content */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  hasSubtitles 
+                    ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40" 
+                    : "border-muted hover:border-primary/20"
+                )}
+                onClick={() => hasSubtitles && setActiveTab('overview')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                        hasSubtitles ? "bg-green-500/20" : "bg-muted"
+                  )}>
+                    <IconVideo className={cn(
+                          "h-4 w-4",
+                          hasSubtitles ? "text-green-600" : "text-muted-foreground"
+                    )} />
+                  </div>
+                      {hasSubtitles && (
+                        <IconCheck className="h-4 w-4 text-green-600" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Long Form Content</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasSubtitles ? "Complete" : "Incomplete"}
                     </p>
                   </CardContent>
                 </Card>
@@ -1604,92 +1611,23 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               </div>
               
               {/* Video Container */}
-              <div className="relative bg-black rounded-lg overflow-hidden">
-                {project.video_url ? (
-                  <>
-                    {/* Loading Overlay */}
-                    {videoLoading && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 pointer-events-none">
-                        <div className="text-center">
-                          <IconLoader2 className="h-10 w-10 animate-spin text-white/70 mx-auto" />
-                          <p className="text-white/60 text-sm mt-2">Loading video...</p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Thumbnail Display (when video is not playing) */}
-                    {(project.thumbnail_url || defaultThumbnail) && !videoLoading && (
-                      <div className="absolute inset-0 z-5 group cursor-pointer"
-                        onClick={() => {
-                          if (videoRef.current) {
-                            videoRef.current.play()
-                            setVideoLoading(false)
-                          }
-                        }}
-                        style={{ display: videoRef.current?.paused === false ? 'none' : 'flex' }}
-                      >
-                        <img 
-                          src={project.thumbnail_url || defaultThumbnail} 
-                          alt="Video thumbnail" 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors flex items-center justify-center">
-                          <div className="bg-white/90 backdrop-blur-sm rounded-full p-6 shadow-xl group-hover:scale-110 transition-transform">
-                            <IconPlayerPlay className="h-12 w-12 text-black" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Video Element */}
-                    <video
-                      ref={videoRef}
-                      src={project.video_url}
-                      poster={project.thumbnail_url || thumbnailUrl || defaultThumbnail || undefined}
-                      className="w-full aspect-video bg-black"
-                      controls
-                      playsInline
-                      preload="metadata"
-                      onLoadedMetadata={(e) => {
-                        const video = e.currentTarget
-                        if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
-                          setProject(prev => prev ? {
-                            ...prev,
-                            metadata: {
-                              ...prev.metadata,
-                              duration: video.duration
-                            }
-                          } : null)
-                        }
-                      }}
-                      onError={(e) => {
-                        console.error("Video error:", e)
-                        setVideoLoading(false)
-                        toast.error("Failed to load video")
-                      }}
-                      onLoadStart={() => {
-                        setVideoLoading(true)
-                      }}
-                      onCanPlay={() => {
-                        setVideoLoading(false)
-                      }}
-                      onLoadedData={() => {
-                        setVideoLoading(false)
-                      }}
-                    >
-                      <source src={project.video_url} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  </>
-                ) : (
-                  <div className="relative aspect-video bg-black flex items-center justify-center">
-                    <div className="text-center">
-                      <IconVideo className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                      <p className="text-muted-foreground">No video uploaded</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <EnhancedVideoPlayer
+                ref={videoRef}
+                videoUrl={project.video_url}
+                thumbnailUrl={project.thumbnail_url || thumbnailUrl || defaultThumbnail}
+                onLoadedMetadata={(duration) => {
+                  if (!project.metadata?.duration || project.metadata.duration !== duration) {
+                    setProject(prev => prev ? {
+                      ...prev,
+                      metadata: {
+                        ...prev.metadata,
+                        duration: duration
+                      }
+                    } : null)
+                  }
+                }}
+                onPlayingStateChange={setIsVideoPlaying}
+              />
               
               
               {/* Video Info Bar */}
@@ -1971,7 +1909,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                         className="absolute inset-0 w-full h-full object-cover"
                                             muted
                                             playsInline
-                                            preload="metadata"
+                                            preload="auto"
                                             controls={false}
                                         crossOrigin="anonymous"
                                         onLoadedMetadata={(e) => {
@@ -2048,6 +1986,13 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                                 <IconSparkles className="h-5 w-5 text-primary" />
                                 AI Content Analysis
+                                {project.content_analysis.modelVersion && (
+                                  <Badge variant="secondary" className="ml-auto text-xs">
+                                    {project.content_analysis.modelVersion === 'gpt-5' ? 'GPT-5' : 
+                                     project.content_analysis.modelVersion === 'fallback' ? 'Fallback Mode' :
+                                     project.content_analysis.modelVersion?.toUpperCase() || 'AI Generated'}
+                                  </Badge>
+                                )}
                               </h3>
                               
                               {/* Keywords and Topics */}
@@ -2319,7 +2264,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           className="absolute inset-0 w-full h-full object-cover"
                                           muted
                                           playsInline
-                                          preload="metadata"
+                                          preload="auto"
                                           controls={false}
                                           crossOrigin="anonymous"
 
@@ -2956,397 +2901,12 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </TabsContent>
 
                     <TabsContent value="graphics" className="mt-0">
-                      <div className="space-y-6">
-                        {/* Header */}
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h2 className="text-2xl font-bold">AI Social Graphics</h2>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Generate stunning visuals for social media using AI
-                            </p>
-                          </div>
-                          {!loadingSuggestions && imageSuggestions.length === 0 && (
-                            <Button 
-                              onClick={loadImageSuggestions}
-                              disabled={!project.content_analysis?.keywords}
-                            >
-                              <IconWand className="h-4 w-4 mr-2" />
-                              Get AI Suggestions
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Image Generation Controls */}
-                        <Card>
-                          <CardHeader>
-                            <div className="flex items-center justify-between">
-                              <CardTitle className="text-lg">Create New Image</CardTitle>
-                              {selectedPersona && (
-                                <div className="flex items-center gap-3">
-                                  <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={usePersonaForGraphics}
-                                      onChange={(e) => setUsePersonaForGraphics(e.target.checked)}
-                                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                    />
-                                    <span className="text-sm font-medium">Use Persona</span>
-                                  </label>
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <div className="p-1 rounded-full bg-primary/10">
-                                      <IconUser className="h-3 w-3 text-primary" />
-                                    </div>
-                                    <span>{selectedPersona.name}</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="prompt">Prompt</Label>
-                              <Textarea
-                                id="prompt"
-                                placeholder="Describe the image you want to generate..."
-                                value={customPrompt}
-                                onChange={(e) => setCustomPrompt(e.target.value)}
-                                className="min-h-[100px]"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="style">Style</Label>
-                                <Select value={selectedStyle} onValueChange={setSelectedStyle}>
-                                  <SelectTrigger id="style">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {predefinedStyles.map(style => (
-                                      <SelectItem key={style.id} value={style.id}>
-                                        {style.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label htmlFor="quality">Quality</Label>
-                                <Select value={selectedQuality} onValueChange={setSelectedQuality}>
-                                  <SelectTrigger id="quality">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="low">Low (Fast)</SelectItem>
-                                    <SelectItem value="medium">Medium</SelectItem>
-                                    <SelectItem value="high">High (Slow)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label htmlFor="size">Size</Label>
-                                <Select value={selectedSize} onValueChange={setSelectedSize}>
-                                  <SelectTrigger id="size">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="1024x1024">Square (1:1)</SelectItem>
-                                    <SelectItem value="1536x1024">Landscape (3:2)</SelectItem>
-                                    <SelectItem value="1024x1536">Portrait (2:3)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={handleGenerateCustom}
-                                disabled={isGeneratingImage || !customPrompt.trim()}
-                                className="flex-1"
-                              >
-                                {isGeneratingImage ? (
-                                  <>
-                                    <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Generating... {streamingProgress > 0 && `(${streamingProgress}%)`}
-                                  </>
-                                ) : (
-                                  <>
-                                    <IconSparkles className="h-4 w-4 mr-2" />
-                                    Generate Image
-                                  </>
-                                )}
-                              </Button>
-                              <SocialGraphicsGenerator
-                                projectId={project.id}
-                                projectTitle={project.title}
-                                contentAnalysis={project.content_analysis}
-                                selectedPersona={selectedPersona}
-                                onGraphicsGenerated={(graphics) => {
-                                  loadProject() // Reload to show new graphics
-                                  toast.success(`Generated ${graphics.length} social graphics!`)
-                                }}
-                              />
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        {/* AI Suggestions */}
-                        {loadingSuggestions ? (
-                          <Card>
-                            <CardContent className="p-12 text-center">
-                              <IconLoader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-                              <p className="text-muted-foreground">Analyzing your content...</p>
-                            </CardContent>
-                          </Card>
-                        ) : imageSuggestions.length > 0 ? (
-                          <div>
-                            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                              <IconSticker className="h-5 w-5 text-primary" />
-                              AI Suggestions
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {imageSuggestions.map((suggestion) => {
-                                const typeConfig = {
-                                  quote: { 
-                                    icon: IconQuote, 
-                                    color: 'from-purple-500 to-pink-500',
-                                    bgColor: 'bg-purple-100 dark:bg-purple-900/20',
-                                    iconColor: 'text-purple-600 dark:text-purple-400',
-                                    emoji: '💬'
-                                  },
-                                  visual: { 
-                                    icon: IconEye, 
-                                    color: 'from-blue-500 to-cyan-500',
-                                    bgColor: 'bg-blue-100 dark:bg-blue-900/20',
-                                    iconColor: 'text-blue-600 dark:text-blue-400',
-                                    emoji: '🎨'
-                                  },
-                                  carousel: { 
-                                    icon: IconLayoutGrid, 
-                                    color: 'from-green-500 to-emerald-500',
-                                    bgColor: 'bg-green-100 dark:bg-green-900/20',
-                                    iconColor: 'text-green-600 dark:text-green-400',
-                                    emoji: '🎠'
-                                  },
-                                  infographic: { 
-                                    icon: IconInfoCircle, 
-                                    color: 'from-amber-500 to-orange-500',
-                                    bgColor: 'bg-amber-100 dark:bg-amber-900/20',
-                                    iconColor: 'text-amber-600 dark:text-amber-400',
-                                    emoji: '📊'
-                                  },
-                                  thumbnail: { 
-                                    icon: IconCamera, 
-                                    color: 'from-red-500 to-rose-500',
-                                    bgColor: 'bg-red-100 dark:bg-red-900/20',
-                                    iconColor: 'text-red-600 dark:text-red-400',
-                                    emoji: '🎬'
-                                  },
-                                  concept: { 
-                                    icon: IconSparkles, 
-                                    color: 'from-indigo-500 to-purple-500',
-                                    bgColor: 'bg-indigo-100 dark:bg-indigo-900/20',
-                                    iconColor: 'text-indigo-600 dark:text-indigo-400',
-                                    emoji: '💡'
-                                  },
-                                  hook: { 
-                                    icon: IconRocket, 
-                                    color: 'from-pink-500 to-rose-500',
-                                    bgColor: 'bg-pink-100 dark:bg-pink-900/20',
-                                    iconColor: 'text-pink-600 dark:text-pink-400',
-                                    emoji: '🪝'
-                                  }
-                                }[suggestion.type] || { 
-                                  icon: IconPhoto, 
-                                  color: 'from-gray-500 to-gray-600',
-                                  bgColor: 'bg-gray-100 dark:bg-gray-900/20',
-                                  iconColor: 'text-gray-600 dark:text-gray-400',
-                                  emoji: '🖼️'
-                                }
-                                
-                                const TypeIcon = typeConfig.icon
-                                
-                                return (
-                                  <Card 
-                                    key={suggestion.id}
-                                    className={cn(
-                                      "cursor-pointer transition-all hover:shadow-xl group relative",
-                                      selectedSuggestion?.id === suggestion.id && "ring-2 ring-primary"
-                                    )}
-                                    onClick={() => handleGenerateFromSuggestion(suggestion)}
-                                  >
-                                    <div className={cn(
-                                      "absolute inset-x-0 top-0 h-2 bg-gradient-to-r",
-                                      typeConfig.color
-                                    )} />
-                                    <CardHeader className="pb-3 pt-4">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                          <div className={cn(
-                                            "p-2 rounded-lg",
-                                            typeConfig.bgColor
-                                          )}>
-                                            <TypeIcon className={cn("h-5 w-5", typeConfig.iconColor)} />
-                                          </div>
-                                          <div>
-                                            <Badge variant="secondary" className="font-semibold capitalize">
-                                              {typeConfig.emoji} {suggestion.type}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                        {suggestion.type === 'carousel' && (
-                                          <Select 
-                                            value={(carouselSlides[suggestion.id] || 3).toString()}
-                                            onValueChange={(value) => {
-                                              setCarouselSlides(prev => ({ ...prev, [suggestion.id]: parseInt(value) }))
-                                            }}
-                                          >
-                                            <SelectTrigger className="h-7 w-20" onClick={(e) => e.stopPropagation()}>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="3">3 slides</SelectItem>
-                                              <SelectItem value="5">5 slides</SelectItem>
-                                              <SelectItem value="7">7 slides</SelectItem>
-                                              <SelectItem value="10">10 slides</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        )}
-                                      </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                      <p className="text-sm font-semibold line-clamp-2">{suggestion.description}</p>
-                                      <p className="text-xs text-muted-foreground line-clamp-2 italic">
-                                        "{suggestion.prompt}"
-                                      </p>
-                                      <div className="flex items-center justify-between pt-2">
-                                        <Badge variant="outline" className="text-xs">
-                                          <IconWand className="h-3 w-3 mr-1" />
-                                          {suggestion.style}
-                                        </Badge>
-                                        <Button 
-                                          size="sm" 
-                                          variant="ghost" 
-                                          className="group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-                                        >
-                                          Generate
-                                          <IconSparkles className="h-3 w-3 ml-1" />
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {/* Generated Images Gallery */}
-                        {generatedImages.length > 0 && (
-                          <div>
-                            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                              <IconPhoto className="h-5 w-5 text-primary" />
-                              Generated Images
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {(() => {
-                                // Group images by carousel
-                                const carousels = new Map<string, any[]>()
-                                const singleImages: any[] = []
-                                
-                                generatedImages.forEach(image => {
-                                  if (image.carouselId) {
-                                    const existing = carousels.get(image.carouselId) || []
-                                    carousels.set(image.carouselId, [...existing, image])
-                                  } else {
-                                    singleImages.push(image)
-                                  }
-                                })
-                                
-                                return (
-                                  <>
-                                    {/* Render carousels */}
-                                    {Array.from(carousels.entries()).map(([carouselId, images]) => (
-                                      <ImageCarousel
-                                        key={carouselId}
-                                        carouselId={carouselId}
-                                        images={images}
-                                        onCopy={copyToClipboard}
-                                        copiedId={copiedId}
-                                      />
-                                    ))}
-                                    
-                                    {/* Render single images */}
-                                    {singleImages.map((image) => (
-                                      <Card key={image.id} className="overflow-hidden">
-                                        <div className="aspect-square relative bg-muted">
-                                          <img
-                                            src={image.url}
-                                            alt={image.prompt}
-                                            className="w-full h-full object-cover"
-                                          />
-                                        </div>
-                                        <CardContent className="p-4">
-                                          <p className="text-sm font-medium line-clamp-2 mb-2">
-                                            {image.prompt}
-                                          </p>
-                                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Badge variant="outline">{image.style}</Badge>
-                                            <span>•</span>
-                                            <span>{image.size}</span>
-                                            <span>•</span>
-                                            <span>{image.quality}</span>
-                                          </div>
-                                          <div className="mt-3 flex gap-2">
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => {
-                                                const link = document.createElement('a')
-                                                link.href = image.url
-                                                link.download = `ai-image-${image.id}.png`
-                                                link.click()
-                                              }}
-                                            >
-                                              <IconDownload className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => copyToClipboard(image.url, image.id)}
-                                            >
-                                              {copiedId === image.id ? (
-                                                <IconCheck className="h-4 w-4 text-green-600" />
-                                              ) : (
-                                                <IconCopy className="h-4 w-4" />
-                                              )}
-                                            </Button>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-                                    ))}
-                                  </>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Empty State */}
-                        {!loadingSuggestions && imageSuggestions.length === 0 && generatedImages.length === 0 && (
-                          <EmptyState
-                            icon={<IconSparkles className="h-16 w-16 text-primary/50" />}
-                            title="No images yet"
-                            description="Get AI suggestions or create your own custom images"
-                            action={project.content_analysis?.keywords ? {
-                              label: "Get AI Suggestions",
-                              onClick: loadImageSuggestions
-                            } : undefined}
-                          />
-                        )}
-                      </div>
+                      <SimplifiedGraphicsTab
+                        project={project}
+                        selectedPersona={selectedPersona}
+                        contentAnalysis={project.content_analysis}
+                        onUpdate={loadProject}
+                      />
                     </TabsContent>
 
                     <TabsContent value="quotes" className="mt-0">
@@ -3899,21 +3459,132 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
       {/* Enhanced Content Selection Dialog */}
       <Dialog open={showContentSelectionDialog} onOpenChange={setShowContentSelectionDialog}>
-        <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Select Content to Publish</DialogTitle>
           </DialogHeader>
-          <div className="h-full overflow-auto p-6">
+          <div className="flex-1 overflow-hidden p-6">
             <EnhancedPublishingWorkflowV3 
-              project={project}
+              project={{
+                ...project,
+                // Add long form content to folders when subtitles are available
+                folders: {
+                  ...project.folders,
+                  longform: (hasSubtitles === true) ? [{
+                    id: 'longform-main',
+                    type: 'longform',
+                    title: project.title + ' (Full Video)',
+                    description: 'Full-length video with subtitles for YouTube/Facebook',
+                    videoUrl: project.video_url,
+                    thumbnail: project.thumbnail_url,
+                    duration: project.metadata?.duration,
+                    hasSubtitles: true
+                  }] : []
+                } as any
+              }}
               onPublish={(selectedIds) => {
-                setShowContentSelectionDialog(false)
+                // Get the actual content objects based on selected IDs
+                const selectedContent: any[] = []
                 
-                // Store selected content IDs
+                // Extract clips
+                if (project.folders?.clips?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('clip-')) {
+                      const clipId = id.replace('clip-', '')
+                      const clip = project.folders.clips.find((c: any) => c.id === clipId)
+                      if (clip) {
+                        selectedContent.push({
+                          ...clip,
+                          type: 'clip',
+                          exportUrl: clip.exportUrl || clip.previewUrl
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract blog posts
+                if (project.folders?.blog?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('blog-')) {
+                      const blogId = id.replace('blog-', '')
+                      const blog = project.folders.blog.find((b: any) => b.id === blogId)
+                      if (blog) {
+                        selectedContent.push({
+                          ...blog,
+                          type: 'blog'
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract social posts
+                if (project.folders?.social?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('social-')) {
+                      const socialId = id.replace('social-', '')
+                      const social = project.folders.social.find((s: any) => s.id === socialId)
+                      if (social) {
+                        selectedContent.push({
+                          ...social,
+                          type: 'social'
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract long form content (when subtitles are burned)
+                if (hasSubtitles === true) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('longform-')) {
+                      selectedContent.push({
+                        id: 'longform-main',
+                        type: 'longform',
+                        title: project.title + ' (Full Video)',
+                        description: 'Full-length video with subtitles',
+                        videoUrl: project.video_url,
+                        thumbnail: project.thumbnail_url,
+                        duration: project.metadata?.duration,
+                        hasSubtitles: true,
+                        exportUrl: project.video_url // The video with burned subtitles
+                      })
+                    }
+                  })
+                }
+                
+                // Extract images
+                if (project.folders?.images?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('image-')) {
+                      const imageId = id.replace('image-', '')
+                      const image = project.folders.images?.find((i: any) => i.id === imageId)
+                      if (image) {
+                        selectedContent.push({
+                          ...image,
+                          type: 'image',
+                          url: image.url || image.imageData
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Store the full content objects with the correct key
+                sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
+                
+                // Also store IDs for fallback
                 sessionStorage.setItem('selectedContentIds', JSON.stringify(selectedIds))
                 
                 // Navigate to staging page
                 router.push(`/projects/${project.id}/stage`)
+                
+                // Keep dialog open for a moment to show the loading state
+                // This prevents the button from disappearing immediately
+                setTimeout(() => {
+                  setShowContentSelectionDialog(false)
+                }, 1000) // Give user visual feedback before closing
               }}
             />
           </div>

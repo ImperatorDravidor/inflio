@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
+import { usePersonas } from '@/contexts/persona-context'
+import { 
+  PLATFORMS, 
+  getPlatformsForContent, 
+  isContentReadyForPlatform,
+  type Platform,
+  type ContentType 
+} from '@/lib/platform-config'
 import {
   Card,
   CardContent,
@@ -23,6 +31,7 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Dialog,
   DialogContent,
@@ -218,31 +227,75 @@ const contentTypeConfig = {
     bgColor: 'bg-orange-100 dark:bg-orange-900/20',
     minImages: 1,
     maxImages: 3
+  },
+  reel: {
+    icon: Zap,
+    name: 'Reel/Short',
+    description: '15-60 second vertical video',
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-100 dark:bg-pink-900/20',
+    video: true
+  },
+  story: {
+    icon: Clock,
+    name: 'Story',
+    description: '24-hour ephemeral content',
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-100 dark:bg-indigo-900/20',
+    images: 1,
+    ephemeral: true
   }
 }
 
 interface PostSuggestion {
   id: string
-  content_type: 'carousel' | 'quote' | 'single' | 'thread'
+  content_type: 'carousel' | 'quote' | 'single' | 'thread' | 'story'
   title: string
   description?: string
+  primary_goal?: string
   images: Array<{
     id: string
-    url: string
+    url?: string
+    type?: 'hero' | 'supporting'
+    prompt?: string
+    text_overlay?: string
+    dimensions?: string
     position: number
   }>
+  visual_style?: string
+  persona_integration?: string
   copy_variants: Record<string, {
     caption: string
     hashtags: string[]
     cta?: string
+    first_comment?: string
     title?: string
     description?: string
+    format_notes?: string
+    optimal_length?: number
+    algorithm_optimization?: string
+  }>
+  platform_readiness?: Record<string, {
+    is_ready: boolean
+    missing_elements?: string[]
+    optimization_tips?: string[]
+    compliance_check?: boolean
   }>
   eligible_platforms: string[]
+  hook_variations?: string[]
+  engagement_triggers?: string[]
+  shareability_factors?: string[]
+  comment_starters?: string[]
+  engagement_prediction?: number
+  viral_potential?: 'low' | 'medium' | 'high'
+  predicted_reach?: number
+  best_posting_times?: Record<string, string[]>
+  production_checklist?: any
+  required_assets?: string[]
   status: string
   persona_used: boolean
+  persona_id?: string
   rating?: number
-  engagement_prediction?: number
 }
 
 interface EnhancedPostsGeneratorProps {
@@ -260,6 +313,9 @@ export function EnhancedPostsGenerator({
   transcript,
   personaId
 }: EnhancedPostsGeneratorProps) {
+  // Persona context
+  const { personas, activePersona, setActivePersona, isLoading: personasLoading } = usePersonas()
+  
   // State
   const [suggestions, setSuggestions] = useState<PostSuggestion[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -272,19 +328,44 @@ export function EnhancedPostsGenerator({
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [sortBy, setSortBy] = useState<'recent' | 'score' | 'engagement'>('recent')
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState<string[]>([])
+  const [selectedPersonaForGeneration, setSelectedPersonaForGeneration] = useState<string | null>(personaId || activePersona?.id || null)
   const [generationSettings, setGenerationSettings] = useState({
     creativity: 0.7,
-    usePersona: true,
+    usePersona: !!personaId || !!activePersona,
     autoHashtags: true,
     includeCTA: true,
-    optimizeForEngagement: true
+    optimizeForEngagement: true,
+    tone: 'professional',
+    contentGoal: 'engagement',
+    visualStyle: 'modern'
   })
+
+  // State to track if we've attempted auto-generation for this project
+  const [hasAttemptedAutoGeneration, setHasAttemptedAutoGeneration] = useState(false)
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
 
   // Load suggestions on mount
   useEffect(() => {
     loadSuggestions()
   }, [projectId])
+
+  // Watch for content analysis changes and auto-generate if needed
+  useEffect(() => {
+    if (!suggestionsLoaded) return // Wait for initial load
+    
+    const shouldAutoGenerate = 
+      contentAnalysis && 
+      suggestions.length === 0 && 
+      !hasAttemptedAutoGeneration &&
+      !isGenerating
+    
+    if (shouldAutoGenerate) {
+      console.log('[EnhancedPostsGenerator] Auto-generating posts with content analysis:', contentAnalysis)
+      autoGeneratePostsIfNeeded()
+    }
+  }, [contentAnalysis, suggestions.length, suggestionsLoaded, hasAttemptedAutoGeneration, isGenerating])
 
   const loadSuggestions = async () => {
     try {
@@ -292,10 +373,115 @@ export function EnhancedPostsGenerator({
       if (response.ok) {
         const data = await response.json()
         setSuggestions(data.suggestions || [])
+        setSuggestionsLoaded(true)
+        return data.suggestions || []
       }
     } catch (error) {
       console.error('Failed to load suggestions:', error)
       toast.error('Failed to load post suggestions')
+    }
+    setSuggestionsLoaded(true)
+    return []
+  }
+
+  const autoGeneratePostsIfNeeded = async () => {
+    // Mark that we've attempted auto-generation for this project
+    setHasAttemptedAutoGeneration(true)
+    
+    // Show a toast that we're auto-generating
+    toast.info('🎨 Generating AI posts based on your content...', {
+      duration: 3000,
+      icon: <Sparkles className="h-4 w-4" />
+    })
+    
+    // Auto-trigger generation with default settings
+    await generateSuggestionsWithDefaults()
+  }
+
+  const generateSuggestionsWithDefaults = async () => {
+    setIsGenerating(true)
+    setGenerationProgress(0)
+    
+    // Use smart defaults for automatic generation
+    const defaultSettings = {
+      contentTypes: ['carousel', 'quote', 'single'], // Most popular types
+      platforms: ['instagram', 'twitter', 'linkedin'], // Most common platforms
+      creativity: 0.7,
+      tone: 'professional',
+      includeEmojis: true,
+      includeHashtags: true,
+      optimizeForEngagement: true,
+      usePersona: !!personaId,
+      selectedPersonaId: personaId
+    }
+
+    // Track progress interval to ensure cleanup
+    let progressInterval: NodeJS.Timeout | null = null
+    
+    try {
+      // Simulate progress
+      progressInterval = setInterval(() => {
+        setGenerationProgress(prev => Math.min(prev + 10, 90))
+      }, 500)
+
+      const response = await fetch('/api/posts/generate-smart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectTitle,
+          contentAnalysis,
+          transcript: transcript?.substring(0, 3000),
+          settings: defaultSettings
+        })
+      })
+
+      // Clear interval immediately after response
+      if (progressInterval) {
+        clearInterval(progressInterval)
+        progressInterval = null
+      }
+      
+      setGenerationProgress(100)
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        console.error('Failed to generate posts:', errorData)
+        throw new Error(`Failed to generate posts: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('[EnhancedPostsGenerator] Generated posts:', result)
+
+      // Wait a moment for database to be updated
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Reload suggestions
+      await loadSuggestions()
+      
+      // Subtle success notification
+      toast.success('✨ AI posts ready!', {
+        duration: 2000
+      })
+      
+      // Small celebration
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.8 },
+        colors: ['#8B5CF6', '#EC4899', '#10B981']
+      })
+    } catch (error) {
+      console.error('Auto-generation error:', error)
+      // Show error toast for debugging
+      toast.error('Failed to auto-generate posts. You can manually generate them.')
+    } finally {
+      // Always cleanup interval if still running
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
+      setIsGenerating(false)
+      setGenerationProgress(0) // Reset to 0 instead of leaving at 100
     }
   }
 
@@ -305,25 +491,6 @@ export function EnhancedPostsGenerator({
     setShowGenerateDialog(false)
 
     try {
-      // Log the request payload for debugging
-      const requestPayload = {
-        projectId,
-        projectTitle,
-        contentAnalysis,
-        transcript: transcript?.substring(0, 2000),
-        personaId: generationSettings.usePersona ? personaId : undefined,
-        contentTypes: selectedContentTypes,
-        platforms: selectedPlatforms,
-        settings: generationSettings
-      }
-      
-      console.log('Generating posts with payload:', requestPayload)
-
-      const response = await fetch('/api/posts/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload)
-      })
 
       const data = await response.json()
 
@@ -369,7 +536,7 @@ export function EnhancedPostsGenerator({
       toast.error(errorMessage)
     } finally {
       setIsGenerating(false)
-      setGenerationProgress(100)
+      setGenerationProgress(0) // Reset to 0 instead of leaving at 100
     }
   }
 
@@ -458,9 +625,21 @@ export function EnhancedPostsGenerator({
     })
 
   const SuggestionCard = ({ suggestion }: { suggestion: PostSuggestion }) => {
-    const TypeIcon = contentTypeConfig[suggestion.content_type].icon
-    const typeConfig = contentTypeConfig[suggestion.content_type]
+    const TypeIcon = contentTypeConfig[suggestion.content_type]?.icon || Layers
+    const typeConfig = contentTypeConfig[suggestion.content_type] || {
+      icon: Layers,
+      name: suggestion.content_type,
+      color: 'text-gray-600',
+      bgColor: 'bg-gray-100 dark:bg-gray-900/20'
+    }
     const isSelected = selectedBatch.includes(suggestion.id)
+    
+    // Calculate overall platform readiness
+    const platformReadinessCount = suggestion.platform_readiness 
+      ? Object.values(suggestion.platform_readiness).filter((p: any) => p.is_ready).length
+      : suggestion.eligible_platforms.length
+    
+    const allPlatformsReady = platformReadinessCount === suggestion.eligible_platforms.length
     
     return (
       <motion.div
@@ -472,9 +651,10 @@ export function EnhancedPostsGenerator({
         transition={{ duration: 0.2 }}
       >
         <Card className={cn(
-          "overflow-hidden hover:shadow-xl transition-all cursor-pointer",
+          "overflow-hidden hover:shadow-xl transition-all cursor-pointer group",
           isSelected && "ring-2 ring-primary",
-          suggestion.status === 'approved' && "border-green-500/30 bg-green-50/5"
+          suggestion.status === 'approved' && "border-green-500/30 bg-green-50/5",
+          allPlatformsReady && "border-green-500/20"
         )}>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
@@ -484,11 +664,19 @@ export function EnhancedPostsGenerator({
                 </div>
                 <div>
                   <CardTitle className="text-base line-clamp-1">{suggestion.title}</CardTitle>
-                  {suggestion.description && (
-                    <CardDescription className="text-xs mt-0.5 line-clamp-1">
-                      {suggestion.description}
-                    </CardDescription>
-                  )}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {suggestion.description && (
+                      <CardDescription className="text-xs line-clamp-1">
+                        {suggestion.description}
+                      </CardDescription>
+                    )}
+                    {suggestion.primary_goal && (
+                      <Badge variant="outline" className="text-xs px-1.5 py-0">
+                        <Target className="h-2.5 w-2.5 mr-1" />
+                        {suggestion.primary_goal}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -546,6 +734,13 @@ export function EnhancedPostsGenerator({
                 <Badge className="text-xs bg-gradient-to-r from-yellow-500 to-orange-500">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   High Impact
+                </Badge>
+              )}
+              
+              {suggestion.viral_potential === 'high' && (
+                <Badge className="text-xs bg-gradient-to-r from-purple-500 to-pink-500">
+                  <Zap className="h-3 w-3 mr-1" />
+                  Viral
                 </Badge>
               )}
             </div>
@@ -610,31 +805,66 @@ export function EnhancedPostsGenerator({
               )}
             </div>
 
-            {/* Platform eligibility with visual indicators */}
+            {/* Platform readiness - AI Posts are for Instagram, Twitter, LinkedIn, Facebook */}
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Optimized for</Label>
+              <Label className="text-xs text-muted-foreground">Platform Status</Label>
               <div className="flex gap-1.5">
-                {Object.entries(platformConfig).map(([platform, config]) => {
-                  const Icon = config.icon
-                  const isEligible = suggestion.eligible_platforms.includes(platform)
+                {['instagram', 'twitter', 'linkedin', 'facebook'].map(platformId => {
+                  const platform = PLATFORMS[platformId]
+                  if (!platform) return null
+                  
+                  const Icon = platform.icon
+                  const isEligible = suggestion.eligible_platforms.includes(platformId)
+                  const readiness = suggestion.platform_readiness?.[platformId]
+                  const isReady = readiness?.is_ready ?? isEligible
+                  const hasIssues = readiness?.missing_elements && readiness.missing_elements.length > 0
+                  
+                  if (!isEligible) return null
                   
                   return (
-                    <TooltipProvider key={platform}>
+                    <TooltipProvider key={platformId}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className={cn(
-                            "p-1.5 rounded-md transition-all",
-                            isEligible 
-                              ? `bg-gradient-to-br ${config.color} shadow-sm` 
+                            "relative p-1.5 rounded-md transition-all",
+                            isReady && !hasIssues
+                              ? `bg-gradient-to-br ${platform.gradientColor} shadow-sm` 
+                              : hasIssues
+                              ? "bg-yellow-500/20 border border-yellow-500/30"
                               : "bg-muted opacity-30"
                           )}>
-                            <Icon className="h-3.5 w-3.5 text-white" />
+                            <Icon className={cn(
+                              "h-3.5 w-3.5",
+                              isReady && !hasIssues ? "text-white" : 
+                              hasIssues ? "text-yellow-600 dark:text-yellow-400" :
+                              "text-muted-foreground"
+                            )} />
+                            {hasIssues && (
+                              <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                            )}
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="text-xs">
-                            {config.name}: {isEligible ? 'Ready' : 'Not eligible'}
-                          </p>
+                        <TooltipContent className="max-w-xs">
+                          <div className="space-y-1">
+                            <p className="font-medium text-xs">
+                              {platform.name}: {isReady ? (hasIssues ? 'Needs Optimization' : 'Ready') : 'Not Configured'}
+                            </p>
+                            {readiness?.missing_elements && readiness.missing_elements.length > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                <p className="font-medium">Missing:</p>
+                                <ul className="list-disc list-inside">
+                                  {readiness.missing_elements.slice(0, 3).map((element, idx) => (
+                                    <li key={idx}>{element}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {readiness?.optimization_tips && readiness.optimization_tips.length > 0 && (
+                              <p className="text-xs text-muted-foreground italic">
+                                Tip: {readiness.optimization_tips[0]}
+                              </p>
+                            )}
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -796,7 +1026,7 @@ export function EnhancedPostsGenerator({
             </Select>
 
             {/* Sort */}
-            <Select value={sortBy} onValueChange={setSortBy}>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'recent' | 'score' | 'engagement')}>
               <SelectTrigger className="w-32 h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -1018,6 +1248,75 @@ export function EnhancedPostsGenerator({
               </div>
             </div>
 
+            {/* Persona Selection */}
+            {personas && personas.length > 0 && (
+              <div className="space-y-3">
+                <Label className="text-base font-medium">Brand Persona</Label>
+                <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-sm">Use Persona in Content</Label>
+                    </div>
+                    <Switch
+                      checked={generationSettings.usePersona}
+                      onCheckedChange={(checked) => {
+                        setGenerationSettings(prev => ({ ...prev, usePersona: checked }))
+                        if (!checked) {
+                          setSelectedPersonaForGeneration(null)
+                        }
+                      }}
+                    />
+                  </div>
+                  
+                  {generationSettings.usePersona && (
+                    <div className="space-y-3">
+                      <Label className="text-sm">Select Persona</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {personas.map(persona => (
+                          <Card
+                            key={persona.id}
+                            className={cn(
+                              "cursor-pointer transition-all p-3",
+                              selectedPersonaForGeneration === persona.id && "ring-2 ring-primary border-primary"
+                            )}
+                            onClick={() => setSelectedPersonaForGeneration(persona.id)}
+                          >
+                            <div className="flex items-center gap-2">
+                              {persona.photos && persona.photos.length > 0 && (
+                                <img
+                                  src={persona.photos[0].url}
+                                  alt={persona.name}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{persona.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {persona.photos?.length || 0} photos
+                                </p>
+                              </div>
+                              {selectedPersonaForGeneration === persona.id && (
+                                <CheckCircle2 className="h-4 w-4 text-primary" />
+                              )}
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                      {selectedPersonaForGeneration && (
+                        <Alert>
+                          <Info className="h-4 w-4" />
+                          <AlertDescription className="text-xs">
+                            Your persona will be integrated into generated visuals and the content will be tailored to match your brand voice.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Advanced Settings */}
             <div className="space-y-4">
               <Label className="text-base font-medium">Generation Settings</Label>
@@ -1050,20 +1349,6 @@ export function EnhancedPostsGenerator({
 
                 {/* Toggle settings */}
                 <div className="space-y-3">
-                  {personaId && (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <Label className="text-sm">Use Persona in Images</Label>
-                      </div>
-                      <Switch
-                        checked={generationSettings.usePersona}
-                        onCheckedChange={(checked) =>
-                          setGenerationSettings(prev => ({ ...prev, usePersona: checked }))
-                        }
-                      />
-                    </div>
-                  )}
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1217,7 +1502,7 @@ export function EnhancedPostsGenerator({
                               <CardTitle className="text-base">{config.name}</CardTitle>
                             </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span>{copy.caption.length}/{config.maxCaption}</span>
+                              <span>{copy.caption.length}/{(config as any).maxCaption || 280}</span>
                             </div>
                           </div>
                         </CardHeader>

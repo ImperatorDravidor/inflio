@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
       customText,
       needsTransparency = false,
       batchGenerate = false,
-      variations = 1
+      variations = 1,
+      style,
+      background,
+      metadata = {}
     } = body
 
     // Validate project ownership
@@ -49,6 +52,20 @@ export async function POST(req: NextRequest) {
     
     // Build enhanced prompt with platform-specific styling
     let enhancedPrompt = prompt
+    
+    // Add style modifiers
+    if (style) {
+      const styleModifiers = {
+        photorealistic: 'Photorealistic, high-quality photography style',
+        illustration: 'Professional illustration style with clean vector graphics',
+        minimal: 'Minimal, clean design with plenty of white space',
+        bold: 'Bold, high-impact design with strong colors and typography',
+        gradient: 'Modern gradient backgrounds with smooth color transitions'
+      }
+      if (styleModifiers[style as keyof typeof styleModifiers]) {
+        enhancedPrompt += `. ${styleModifiers[style as keyof typeof styleModifiers]}.`
+      }
+    }
     
     // Add platform-specific styling cues
     const platformSpec = PLATFORM_SPECS[platform]
@@ -88,7 +105,7 @@ export async function POST(req: NextRequest) {
           n: 1,
           size: determineOptimalSize(width, height) as any,
           quality: quality as any,
-          background: needsTransparency ? 'transparent' : 'auto',
+          background: background || (needsTransparency ? 'transparent' : 'auto'),
           response_format: 'url' // Get URL for faster processing
         })
         
@@ -133,7 +150,9 @@ export async function POST(req: NextRequest) {
                 needsTransparency,
                 generatedWith: 'gpt-image-1',
                 quality,
-                variation: variations > 1 ? i + 1 : null
+                style,
+                variation: variations > 1 ? i + 1 : null,
+                ...metadata // Include suggestion metadata (priority, engagement, etc.)
               }
             })
             .select()

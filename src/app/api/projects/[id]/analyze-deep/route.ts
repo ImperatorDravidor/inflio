@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { auth } from '@clerk/nextjs/server'
+import { createClient } from '@supabase/supabase-js'
 import { AIContentService } from '@/lib/ai-content-service'
 import { TranscriptionData } from '@/lib/project-types'
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const params = await context.params
     
-    // Verify user authentication
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    // Verify user authentication with Clerk
+    const { userId } = await auth()
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -24,7 +29,7 @@ export async function POST(
       .from('projects')
       .select('*')
       .eq('id', projectId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (projectError || !project) {
@@ -115,14 +120,14 @@ export async function POST(
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const params = await context.params
     
-    // Verify user authentication
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    // Verify user authentication with Clerk
+    const { userId } = await auth()
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -133,7 +138,7 @@ export async function GET(
       .from('projects')
       .select('content_analysis')
       .eq('id', projectId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (error || !project) {

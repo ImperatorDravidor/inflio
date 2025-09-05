@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
-import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils"
+import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize, generateVideoThumbnailAlternative } from "@/lib/video-utils"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { VideoMetadata } from "@/lib/project-types"
@@ -19,6 +19,7 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
+import { VideoPlaceholder } from "@/components/video-placeholder"
 
 export default function UploadPage() {
   const router = useRouter()
@@ -38,6 +39,7 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false)
   const [showMetadata, setShowMetadata] = useState(false)
   const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
+  const [videoLoading, setVideoLoading] = useState(false)
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
     transcription: true,
     clips: true,  // Changed from false to true
@@ -81,6 +83,7 @@ export default function UploadPage() {
       // Create preview URL
       const url = URL.createObjectURL(file)
       setVideoPreview(url)
+      setVideoLoading(true) // Start loading state
       
       // Extract video metadata
       toast.info("Extracting video metadata...")
@@ -100,10 +103,44 @@ export default function UploadPage() {
       
       setVideoMetadata(formattedMetadata)
       
-      // Generate thumbnail
+      // Generate thumbnail with error handling and fallback
       toast.info("Generating thumbnail...")
-      const thumbnailUrl = await generateVideoThumbnail(file)
-      setThumbnail(thumbnailUrl)
+      let thumbnailGenerated = false
+      
+      try {
+        const thumbnailUrl = await generateVideoThumbnail(file)
+        
+        // Verify thumbnail is not empty or invalid
+        if (thumbnailUrl && thumbnailUrl !== 'data:,' && thumbnailUrl.length > 100) {
+          setThumbnail(thumbnailUrl)
+          thumbnailGenerated = true
+          console.log('Thumbnail generated successfully')
+        } else {
+          console.warn('Generated thumbnail is empty, trying alternative method')
+        }
+      } catch (thumbnailError) {
+        console.error('Primary thumbnail generation failed:', thumbnailError)
+      }
+      
+      // Try alternative method if primary failed
+      if (!thumbnailGenerated) {
+        try {
+          const altThumbnail = await generateVideoThumbnailAlternative(file)
+          if (altThumbnail && altThumbnail.length > 100) {
+            setThumbnail(altThumbnail)
+            thumbnailGenerated = true
+            console.log('Alternative thumbnail generation successful')
+          }
+        } catch (altError) {
+          console.error('Alternative thumbnail generation also failed:', altError)
+        }
+      }
+      
+      // If still no thumbnail, set empty string to indicate failure
+      if (!thumbnailGenerated) {
+        setThumbnail("")
+        console.warn('All thumbnail generation methods failed')
+      }
       
       toast.success("Video processed successfully!")
       setShowMetadata(true)
@@ -144,6 +181,7 @@ export default function UploadPage() {
     setProjectTitle("")
     setShowMetadata(false)
     setShowWorkflowSelection(false)
+    setVideoLoading(false)
     setWorkflowOptions({
       transcription: true,
       clips: true,  // Changed from false to true
@@ -152,6 +190,10 @@ export default function UploadPage() {
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
+    }
+    // Clean up video preview URL to prevent memory leaks
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview)
     }
   }
 
@@ -269,22 +311,22 @@ export default function UploadPage() {
         toast.warning(`You have ${remaining} video${remaining !== 1 ? 's' : ''} remaining this month.`);
       }
       
-      // Step 3: Start the processing workflows
+      // Step 3: Start the processing workflows (without awaiting)
       const processingWorkflows = [];
       if (workflowOptions.transcription) processingWorkflows.push('transcript');
       if (workflowOptions.clips) processingWorkflows.push('clips');
       
-      setSubmissionStatus(`Starting AI processing: ${processingWorkflows.join(' & ')}...`);
-      toast.info(`Starting AI processing: ${processingWorkflows.join(' & ')}...`);
-      await ProjectService.startProcessing(project.id);
+      setSubmissionStatus("Redirecting to processing page...");
+      toast.success("Project created! Starting processing...");
       
-      setSubmissionStatus("Processing started! Redirecting you to track progress...");
-      toast.success("Processing started! You'll be redirected to see the progress.");
+      // Start processing in background (don't await)
+      ProjectService.startProcessing(project.id).catch(error => {
+        console.error('Error starting processing:', error);
+        // User is already on processing page, they'll see the error there
+      });
       
-      // Redirect to processing page
-      setTimeout(() => {
-        router.push(`/studio/processing/${project.id}`);
-      }, 1000);
+      // Redirect immediately to processing page
+      router.push(`/studio/processing/${project.id}`);
 
     } catch (err) {
       console.error('Upload error:', err);
@@ -370,14 +412,46 @@ export default function UploadPage() {
                     <div className="relative mx-auto max-w-3xl">
                       <div className="grid gap-4">
                         {/* Video */}
-                        <div className="relative group">
+                        <div className="relative group aspect-video rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                          {/* Video Loading Overlay */}
+                          {videoLoading && (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                              <div className="text-center">
+                                <LoadingSpinner size="lg" />
+                                <p className="text-sm text-muted-foreground mt-2">Loading video preview...</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Fallback placeholder - shows when no thumbnail */}
+                          {!thumbnail && !videoLoading && (
+                            <div className="absolute inset-0 z-10">
+                              <VideoPlaceholder message="" />
+                            </div>
+                          )}
+                          
                           <video
                             ref={videoRef}
                             src={videoPreview}
-                            className="w-full rounded-xl bg-black shadow-2xl"
+                            poster={thumbnail || undefined}
+                            className="absolute inset-0 w-full h-full object-contain"
                             controls
                             controlsList="nodownload"
+                            crossOrigin="anonymous"
+                            preload="metadata"
+                            playsInline
+                            muted
+                            onLoadStart={() => setVideoLoading(true)}
+                            onLoadedData={() => setVideoLoading(false)}
+                            onCanPlay={() => setVideoLoading(false)}
+                            onError={(e) => {
+                              setVideoLoading(false)
+                              console.error("Video error:", e)
+                              toast.error("Failed to load video preview")
+                            }}
                           />
+                          
+                          {/* Remove button */}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -429,7 +503,7 @@ export default function UploadPage() {
                         )}
                         
                         {/* Thumbnail Preview */}
-                        {thumbnail && (
+                        {thumbnail && thumbnail !== 'data:,' && thumbnail.length > 100 ? (
                           <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-white/80 dark:bg-background rounded-2xl border border-primary/10 shadow-lg">
                             <div className="flex-shrink-0">
                               <Image 
@@ -438,6 +512,10 @@ export default function UploadPage() {
                                 width={120}
                                 height={80}
                                 className="w-28 h-20 object-cover rounded-xl border border-border shadow-md"
+                                onError={() => {
+                                  console.error('Failed to display thumbnail')
+                                  setThumbnail("")
+                                }}
                               />
                             </div>
                             <div className="flex flex-col items-center sm:items-start text-center sm:text-left mt-2 sm:mt-0">
@@ -448,7 +526,21 @@ export default function UploadPage() {
                               <span className="text-base text-muted-foreground font-medium">This will be used as your project thumbnail</span>
                             </div>
                           </div>
-                        )}
+                        ) : videoMetadata ? (
+                          <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl border border-yellow-200 dark:border-yellow-800 shadow-sm">
+                            <div className="flex-shrink-0">
+                              <IconVideo className="h-8 w-8 text-yellow-600 dark:text-yellow-500" />
+                            </div>
+                            <div className="flex-1 text-center sm:text-left">
+                              <p className="font-semibold text-base text-yellow-700 dark:text-yellow-400">
+                                Thumbnail generation skipped
+                              </p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                A thumbnail will be generated during processing
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
                         
                         {/* Processing indicator */}
                         {processing && (

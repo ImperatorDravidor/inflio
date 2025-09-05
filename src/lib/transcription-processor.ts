@@ -229,18 +229,39 @@ export async function processTranscription(params: {
         const transcript = await withRetry(
           () => assembly.transcripts.transcribe(params),
           {
-            maxAttempts: 3,
-            initialDelay: 5000,
+            maxAttempts: 5, // Increased attempts for reliability
+            initialDelay: 10000, // 10 seconds initial delay for 502 errors
+            maxDelay: 60000, // Max 1 minute between retries
+            backoffMultiplier: 1.5, // Less aggressive backoff
             shouldRetry: (error) => {
+              // Log detailed error info
+              console.log('[TranscriptionProcessor] AssemblyAI error details:', {
+                message: error.message,
+                status: error.status,
+                code: error.code,
+                type: error.constructor.name
+              })
+              
               // Retry on network errors or specific AssemblyAI errors
               if (error.message?.includes('network')) return true
               if (error.message?.includes('timeout')) return true
+              if (error.message?.includes('502 Bad Gateway')) return true
+              if (error.message?.includes('503 Service Unavailable')) return true
+              if (error.message?.includes('504 Gateway Timeout')) return true
               if (error.status === 429) return true // Rate limit
               if (error.status >= 500) return true // Server errors
+              if (error.code === 'ECONNRESET') return true
+              if (error.code === 'ETIMEDOUT') return true
               return false
             },
             onRetry: (error, attempt) => {
-              console.log(`[TranscriptionProcessor] Retry attempt ${attempt} for AssemblyAI submission:`, error.message)
+              console.log(`[TranscriptionProcessor] Retry attempt ${attempt}/5 for AssemblyAI:`, {
+                error: error.message,
+                projectId,
+                nextRetryIn: Math.min(10000 * Math.pow(1.5, attempt - 1), 60000) / 1000 + ' seconds'
+              })
+              // Update progress to show we're retrying
+              ProjectService.updateTaskProgress(projectId, 'transcription', 15 + (attempt * 5), 'processing').catch(console.error)
             }
           }
         )
@@ -279,21 +300,31 @@ export async function processTranscription(params: {
           duration: transcript.audio_duration || 0
         }
       } catch (assemblyError) {
-        console.error('[TranscriptionProcessor] AssemblyAI transcription failed:', {
+        console.error('[TranscriptionProcessor] AssemblyAI transcription failed after all retries:', {
           error: assemblyError instanceof Error ? assemblyError.message : 'Unknown error',
           stack: assemblyError instanceof Error ? assemblyError.stack : undefined,
           type: typeof assemblyError,
           projectId,
           videoUrl
         })
-        console.log('[TranscriptionProcessor] Falling back to mock transcription')
-        transcription = mockTranscription // Fallback
-        isMock = true
+        
+        // In development, fall back to mock; in production, fail properly
+        if (process.env.NODE_ENV === 'development' && process.env.FORCE_MOCK_TRANSCRIPTION === 'true') {
+          console.log('[TranscriptionProcessor] Development mode with FORCE_MOCK_TRANSCRIPTION=true, using mock transcription')
+          transcription = mockTranscription
+          isMock = true
+        } else {
+          // Update task status to failed
+          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+          // Throw the error to properly fail the task
+          throw new Error(`Transcription failed: ${assemblyError instanceof Error ? assemblyError.message : 'Unknown error'}`)
+        }
       }
     } else {
-      console.log('[TranscriptionProcessor] AssemblyAI API key not configured, using mock transcription')
-      transcription = mockTranscription
-      isMock = true
+      console.error('[TranscriptionProcessor] AssemblyAI API key not configured')
+      // Update task status to failed
+      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+      throw new Error('Transcription service not configured. Please add ASSEMBLYAI_API_KEY to environment variables.')
     }
 
     // --- Step 2: AI Content Analysis ---
@@ -382,6 +413,68 @@ export async function processTranscription(params: {
     console.log('[TranscriptionProcessor] Marking task as completed...')
     await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
     console.log('[TranscriptionProcessor] Task marked as completed')
+
+    // --- Step 4: Auto-generate AI Posts if content analysis is available ---
+    if (contentAnalysis && !analysisError) {
+      console.log('[TranscriptionProcessor] Triggering automatic AI post generation...')
+      try {
+        // Check if there are already posts generated for this project
+        const { data: existingPosts, error: checkError } = await supabaseAdmin
+          .from('post_suggestions')
+          .select('id')
+          .eq('project_id', projectId)
+          .limit(1)
+        
+        if (!checkError && (!existingPosts || existingPosts.length === 0)) {
+          console.log('[TranscriptionProcessor] No existing posts found, generating AI posts...')
+          
+          // Trigger post generation with default settings
+          const postGenerationPayload = {
+            projectId,
+            projectTitle: project.title,
+            contentAnalysis,
+            transcript: transcription.text?.substring(0, 3000), // Limit transcript size
+            settings: {
+              contentTypes: ['carousel', 'quote', 'single'], // Default content types
+              platforms: ['instagram', 'twitter', 'linkedin'], // Default platforms
+              creativity: 0.7,
+              tone: 'professional',
+              includeEmojis: true,
+              includeHashtags: true,
+              optimizeForEngagement: true,
+              usePersona: false // Will be false unless a persona is set up
+            }
+          }
+          
+          // Call the smart posts generation endpoint internally
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                         'http://localhost:3000')
+          
+          const response = await fetch(`${baseUrl}/api/posts/generate-smart`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Include internal API key if available for authentication
+              ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {})
+            },
+            body: JSON.stringify(postGenerationPayload)
+          })
+          
+          if (response.ok) {
+            const result = await response.json()
+            console.log(`[TranscriptionProcessor] Successfully generated ${result.suggestions?.length || 0} AI posts`)
+          } else {
+            console.error('[TranscriptionProcessor] Failed to generate AI posts:', await response.text())
+          }
+        } else {
+          console.log('[TranscriptionProcessor] Posts already exist for this project, skipping auto-generation')
+        }
+      } catch (postGenError) {
+        // Don't fail the transcription if post generation fails
+        console.error('[TranscriptionProcessor] Error generating AI posts (non-fatal):', postGenError)
+      }
+    }
 
     console.log(`[TranscriptionProcessor] Transcription completed for project ${projectId}${analysisError ? ' (with AI analysis fallback)' : ''}`)
 

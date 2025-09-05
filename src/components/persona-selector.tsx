@@ -25,8 +25,7 @@ import {
 } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { PersonaService } from '@/lib/services/persona-service'
-import { Persona, PersonaPhoto } from '@/lib/types/persona'
+import { PersonaService, type Persona, type PersonaPhoto } from '@/lib/services/persona-service'
 import { motion } from 'framer-motion'
 
 interface PersonaSelectorProps {
@@ -59,8 +58,6 @@ export function PersonaSelector({
   const [photos, setPhotos] = useState<PersonaPhoto[]>([])
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
-  const personaService = new PersonaService()
-
   useEffect(() => {
     if (open) {
       loadPersonas()
@@ -70,8 +67,16 @@ export function PersonaSelector({
   const loadPersonas = async () => {
     setLoading(true)
     try {
-      const data = await personaService.getPersonas(userId, projectId)
+      const data = await PersonaService.getUserPersonas(userId)
       setPersonas(data)
+      
+      // Auto-select default persona if none selected
+      if (!selectedPersonaId && data.length > 0) {
+        const defaultPersona = await PersonaService.getDefaultPersona(userId)
+        if (defaultPersona) {
+          onSelect(defaultPersona)
+        }
+      }
     } catch (error) {
       console.error('Error loading personas:', error)
       toast.error('Failed to load personas')
@@ -101,14 +106,18 @@ export function PersonaSelector({
 
     setUploadingPhoto(true)
     try {
-      const photo = await personaService.uploadPersonaPhoto(file, '')
-      if (photo) {
-        setPhotos([...photos, photo])
-        toast.success('Photo uploaded')
+      // Convert file to base64 or URL for preview
+      const url = URL.createObjectURL(file)
+      const photo: PersonaPhoto = {
+        id: `photo-${Date.now()}`,
+        url,
+        file
       }
+      setPhotos([...photos, photo])
+      toast.success('Photo added')
     } catch (error) {
-      console.error('Error uploading photo:', error)
-      toast.error('Failed to upload photo')
+      console.error('Error adding photo:', error)
+      toast.error('Failed to add photo')
     } finally {
       setUploadingPhoto(false)
     }
@@ -131,13 +140,12 @@ export function PersonaSelector({
 
     setCreating(true)
     try {
-      const persona = await personaService.createPersona(userId, {
+      const persona = await PersonaService.createPersona(
+        userId,
         name,
         description,
-        photos,
-        isGlobal: allowGlobalCreation && isGlobal,
-        projectId: !isGlobal ? projectId : undefined
-      })
+        photos
+      )
 
       if (persona) {
         toast.success('Persona created successfully')
@@ -158,7 +166,7 @@ export function PersonaSelector({
     if (!confirm('Are you sure you want to delete this persona?')) return
 
     try {
-      const success = await personaService.deletePersona(personaId)
+      const success = await PersonaService.deletePersona(personaId, userId)
       if (success) {
         toast.success('Persona deleted')
         await loadPersonas()
@@ -176,11 +184,10 @@ export function PersonaSelector({
     if (!projectId) return
 
     try {
-      const cloned = await personaService.cloneToProject(persona.id, projectId, userId)
-      if (cloned) {
-        toast.success('Persona cloned to project')
-        await loadPersonas()
-      }
+      // For now, we'll just select the persona for the project
+      // Clone functionality can be added later if needed
+      onSelect(persona)
+      toast.success('Persona selected for project')
     } catch (error) {
       console.error('Error cloning persona:', error)
       toast.error('Failed to clone persona')
@@ -289,7 +296,7 @@ export function PersonaSelector({
                         <div key={photo.id} className="relative group">
                           <img
                             src={photo.url}
-                            alt={photo.name}
+                            alt=""
                             className="w-full aspect-square object-cover rounded-lg"
                           />
                           <Button
@@ -390,15 +397,15 @@ export function PersonaSelector({
                     </div>
                   ) : (
                     <>
-                      {/* Global Personas */}
-                      {personas.filter(p => p.isGlobal).length > 0 && (
+                      {/* All Personas */}
+                      {personas.length > 0 && (
                         <div>
                           <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                            <IconGlobe className="h-4 w-4" />
-                            Global Personas
+                            <IconUser className="h-4 w-4" />
+                            Your Personas
                           </h3>
                           <div className="grid grid-cols-2 gap-3">
-                            {personas.filter(p => p.isGlobal).map((persona) => (
+                            {personas.map((persona) => (
                               <PersonaCard
                                 key={persona.id}
                                 persona={persona}
@@ -409,30 +416,6 @@ export function PersonaSelector({
                                 }}
                                 onDelete={() => handleDelete(persona.id)}
                                 onClone={projectId ? () => handleClone(persona) : undefined}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Project Personas */}
-                      {personas.filter(p => !p.isGlobal).length > 0 && (
-                        <div>
-                          <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                            <IconFolder className="h-4 w-4" />
-                            Project Personas
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            {personas.filter(p => !p.isGlobal).map((persona) => (
-                              <PersonaCard
-                                key={persona.id}
-                                persona={persona}
-                                isSelected={selectedPersonaId === persona.id}
-                                onSelect={() => {
-                                  onSelect(persona)
-                                  setOpen(false)
-                                }}
-                                onDelete={() => handleDelete(persona.id)}
                               />
                             ))}
                           </div>
@@ -494,21 +477,21 @@ function PersonaCard({
           <div className="space-y-3">
             {/* Photos */}
             <div className="flex gap-2">
-              {persona.photos.slice(0, 3).map((photo, idx) => (
+              {persona.metadata?.photoUrls && persona.metadata.photoUrls.slice(0, 3).map((url: string, idx: number) => (
                 <div
-                  key={photo.id}
+                  key={idx}
                   className="w-12 h-12 rounded-lg overflow-hidden"
                 >
                   <img
-                    src={photo.url}
+                    src={url}
                     alt={`${persona.name} ${idx + 1}`}
                     className="w-full h-full object-cover"
                   />
                 </div>
               ))}
-              {persona.photos.length > 3 && (
+              {persona.metadata?.photoUrls && persona.metadata.photoUrls.length > 3 && (
                 <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-xs font-medium">
-                  +{persona.photos.length - 3}
+                  +{persona.metadata.photoUrls.length - 3}
                 </div>
               )}
             </div>
@@ -526,7 +509,7 @@ function PersonaCard({
             {/* Actions */}
             <div className="flex items-center justify-between pt-2">
               <Badge variant="outline" className="text-xs">
-                {persona.photos.length} photos
+                {persona.metadata?.photoCount || 0} photos
               </Badge>
               <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                 {onClone && (

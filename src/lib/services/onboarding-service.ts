@@ -29,7 +29,7 @@ export class OnboardingService {
       // Use browser client for client-side operations
       const supabase = createSupabaseBrowserClient()
       
-      // Get existing profile
+      // Get existing profile from user_profiles table
       const { data: existingProfile } = await supabase
         .from('user_profiles')
         .select('onboarding_progress')
@@ -51,25 +51,43 @@ export class OnboardingService {
         lastSaved: new Date().toISOString()
       }
       
-      // Save to database
+      // Save to database - using user_profiles table
       const { error } = await supabase
         .from('user_profiles')
         .upsert({
           clerk_user_id: userId,
           onboarding_progress: updatedProgress,
           onboarding_step: step,
+          onboarding_completed: false,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'clerk_user_id'
         })
       
       if (error) {
-        console.error('Error saving progress:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        })
+        // Only log meaningful error details, not empty objects
+        const errorDetails: any = {
+          message: error.message || 'Unknown error',
+          code: error.code,
+          table: 'user_profiles',
+          userId,
+          step,
+          stepId
+        }
+        
+        // Add additional details only if they exist
+        if (error.details) errorDetails.details = error.details
+        if (error.hint) errorDetails.hint = error.hint
+        
+        console.error('Error saving onboarding progress:', errorDetails)
+        
+        // Provide specific guidance based on error code
+        if (error.code === '42P01') {
+          console.error('Database migration needed: Run the migration in /migrations/fix-onboarding-errors.sql')
+        } else if (error.code === '42703') {
+          console.error('Missing column in user_profiles table. Run the migration to add onboarding_progress column.')
+        }
+        
         return false
       }
       
@@ -372,8 +390,20 @@ export class OnboardingService {
       })
       
       if (!response.ok) {
-        const error = await response.json()
-        console.error('Complete onboarding error:', error)
+        let errorDetails
+        try {
+          errorDetails = await response.json()
+        } catch {
+          errorDetails = { message: 'Failed to parse error response' }
+        }
+        
+        // Only log if there's actual error content
+        if (errorDetails && Object.keys(errorDetails).length > 0) {
+          console.error('Complete onboarding error:', errorDetails)
+        } else {
+          console.error('Complete onboarding failed with status:', response.status)
+        }
+        
         return false
       }
       

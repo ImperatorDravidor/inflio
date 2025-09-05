@@ -1,5 +1,6 @@
 import { getOpenAI } from './openai'
 import { ContentAnalysis } from './ai-content-service'
+import { FALService, FluxGenerationParams } from './services/fal-ai-service'
 
 export interface ImageSuggestion {
   id: string
@@ -123,13 +124,13 @@ Return as JSON:
 }`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4.1',
+        model: 'gpt-5',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.85,
-        max_tokens: 2500,
+        // GPT-5 only supports default temperature (1.0)
+        max_completion_tokens: 2500,
         response_format: { type: 'json_object' }
       })
 
@@ -324,5 +325,82 @@ Return as JSON:
     }
     
     return prompts
+  }
+
+  /**
+   * Generate image using Flux model with optional persona LoRA
+   */
+  static async generateWithFlux(params: {
+    prompt: string
+    model?: 'flux-pro-1.1' | 'flux-dev' | 'flux-schnell' | 'flux-lora'
+    aspectRatio?: string
+    personaId?: string
+    style?: string
+    quality?: 'low' | 'medium' | 'high'
+  }): Promise<string> {
+    const { prompt, model = 'flux-lora', aspectRatio = '4:5', personaId, style, quality = 'high' } = params
+
+    // Get persona LoRA URL if personaId is provided
+    let loraUrl: string | undefined
+    if (personaId) {
+      try {
+        // Fetch persona from database to get LoRA URL
+        const { createClient } = await import('@supabase/supabase-js')
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+        
+        const { data: persona } = await supabase
+          .from('personas')
+          .select('lora_model_url')
+          .eq('id', personaId)
+          .single()
+        
+        if (persona?.lora_model_url) {
+          loraUrl = persona.lora_model_url
+        }
+      } catch (error) {
+        console.warn('Could not fetch persona LoRA:', error)
+      }
+    }
+
+    // Enhance prompt with style if provided
+    const enhancedPrompt = style 
+      ? this.enhancePromptWithStyle(prompt, style, quality)
+      : prompt
+
+    // Configure generation parameters
+    const generationParams: Partial<FluxGenerationParams> = {
+      prompt: enhancedPrompt,
+      model,
+      aspectRatio,
+      numInferenceSteps: quality === 'high' ? 35 : quality === 'medium' ? 28 : 20,
+      guidanceScale: 3.5,
+      outputFormat: 'jpeg',
+      enableSafetyChecker: true
+    }
+
+    // Add LoRA if available
+    if (loraUrl) {
+      generationParams.loras = [{
+        path: loraUrl,
+        scale: 1.0
+      }]
+    }
+
+    try {
+      const result = await FALService.generateImage(generationParams as FluxGenerationParams)
+      
+      if (!result.images || result.images.length === 0) {
+        throw new Error('No images generated')
+      }
+
+      return result.images[0].url
+    } catch (error) {
+      console.error('Flux generation error:', error)
+      // Fallback to a placeholder or throw
+      throw new Error(`Failed to generate image: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 } 

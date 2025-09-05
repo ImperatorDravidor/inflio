@@ -23,17 +23,21 @@ import {
   IconDownload,
   IconTrash,
   IconSparkles,
-  IconRefresh
+  IconRefresh,
+  IconCode
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { UsageService } from "@/lib/services"
 import type { UsageData } from "@/lib/usage-service"
 import { useUser } from "@clerk/nextjs"
+import { useProfile } from "@/hooks/use-user-profile"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function SettingsPage() {
   const { user } = useUser()
+  const { refetch } = useProfile()
   const [loading, setLoading] = useState(false)
   const [usageData, setUsageData] = useState<UsageData>({
     used: 0,
@@ -69,6 +73,7 @@ export default function SettingsPage() {
     billingEmail: user?.primaryEmailAddress?.emailAddress || "",
     autoRenew: true
   })
+  const router = useRouter()
 
   useEffect(() => {
     // Load usage data
@@ -226,6 +231,64 @@ export default function SettingsPage() {
                     {loading ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
+                
+                {/* Dev Tools */}
+                {process.env.NODE_ENV === "development" && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <IconCode className="h-4 w-4 text-blue-600" />
+                        <h4 className="text-sm font-medium text-blue-600">Development Tools</h4>
+                      </div>
+                      <div className="grid gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              setLoading(true)
+                              const response = await fetch('/api/reset-onboarding', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                              })
+                              
+                              if (!response.ok) {
+                                throw new Error('Failed to reset onboarding')
+                              }
+                              
+                              const data = await response.json()
+                              console.log('[Reset Onboarding] API Response:', data)
+                              toast.success(data.message || 'Onboarding reset successfully!')
+                              
+                              // Clear cached profile data
+                              console.log('[Reset Onboarding] Clearing profile cache...')
+                              await refetch()
+                              console.log('[Reset Onboarding] Profile cache cleared')
+                              
+                              // Redirect to onboarding page
+                              // Use hard refresh to ensure clean state
+                              window.location.href = '/onboarding'
+                              
+                            } catch (error) {
+                              console.error('Reset onboarding error:', error)
+                              toast.error('Failed to reset onboarding')
+                            } finally {
+                              setLoading(false)
+                            }
+                          }}
+                          disabled={loading}
+                          className="justify-start border-blue-200 text-blue-700 hover:bg-blue-50"
+                        >
+                          <IconRefresh className="h-4 w-4 mr-2" />
+                          {loading ? "Resetting..." : "Reset Onboarding Status"}
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -265,6 +328,60 @@ export default function SettingsPage() {
                     <IconRefresh className="h-5 w-5 text-orange-600" />
                   </div>
                 </Link>
+                
+                {/* Dev: Reset Onboarding */}
+                {process.env.NODE_ENV === "development" && (
+                  <div className="flex items-center justify-between p-4 rounded-lg border border-blue-500/50 hover:border-blue-500 transition-colors">
+                    <div>
+                      <h4 className="font-medium text-blue-600">Reset Onboarding (Dev)</h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Reset onboarding status for development testing
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          setLoading(true)
+                          const response = await fetch('/api/reset-onboarding', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                          })
+                          
+                          if (!response.ok) {
+                            throw new Error('Failed to reset onboarding')
+                          }
+                          
+                          const data = await response.json()
+                          console.log('[Reset Onboarding] API Response:', data)
+                          toast.success(data.message || 'Onboarding reset successfully!')
+                          
+                          // Clear cached profile data
+                          console.log('[Reset Onboarding] Clearing profile cache...')
+                          await refetch()
+                          console.log('[Reset Onboarding] Profile cache cleared')
+                          
+                          // Redirect to onboarding page
+                          // Use hard refresh to ensure clean state
+                          window.location.href = '/onboarding'
+                          
+                        } catch (error) {
+                          console.error('Reset onboarding error:', error)
+                          toast.error('Failed to reset onboarding')
+                        } finally {
+                          setLoading(false)
+                        }
+                      }}
+                      disabled={loading}
+                      className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      {loading ? "Resetting..." : "Reset"}
+                    </Button>
+                  </div>
+                )}
                 
                 <div className="flex items-center justify-between p-4 rounded-lg border border-destructive/50">
                   <div>
