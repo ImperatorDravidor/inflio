@@ -33,6 +33,7 @@ import { AnimatedBackground } from "@/components/animated-background"
 import { useUser } from "@clerk/nextjs"
 import { ProjectService, UsageService } from "@/lib/services"
 import { Project } from "@/lib/project-types"
+import { PersonaManager } from "@/components/profile/persona-manager"
 
 export default function ProfilePage() {
   const { user } = useUser()
@@ -350,6 +351,7 @@ export default function ProfilePage() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="stats">Statistics</TabsTrigger>
             <TabsTrigger value="achievements">Achievements</TabsTrigger>
+            <TabsTrigger value="personas">AI Personas</TabsTrigger>
             {isEditing && <TabsTrigger value="edit">Edit Details</TabsTrigger>}
           </TabsList>
 
@@ -551,6 +553,11 @@ export default function ProfilePage() {
                 )
               })}
             </div>
+          </TabsContent>
+
+          {/* Personas Tab */}
+          <TabsContent value="personas" className="space-y-6">
+            <PersonaManager />
           </TabsContent>
 
           {/* Edit Details Tab */}

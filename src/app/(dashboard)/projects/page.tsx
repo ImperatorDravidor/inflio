@@ -71,7 +71,7 @@ type ViewMode = 'grid' | 'list'
 type SortOption = 'recent' | 'name' | 'duration' | 'status'
 type FilterStatus = 'all' | 'draft' | 'processing' | 'ready' | 'published'
 
-const MotionCard = motion(Card)
+const MotionCard = motion.create(Card)
 
 const containerVariants = {
   hidden: { opacity: 0 },

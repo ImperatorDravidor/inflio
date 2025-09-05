@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { useTheme } from 'next-themes'
+import { PersonaPhotoCapture } from './persona-photo-capture'
 import { 
   Sparkles, ChevronRight, ChevronLeft, Check, Upload,
   Twitter, Instagram, Linkedin, Youtube, Facebook, Globe,
@@ -26,7 +27,8 @@ import {
   Wind, CloudRain, Activity, Zap as Lightning, Package,
   ShieldCheck, Lock, Unlock, Key, Database, Server,
   Cpu, HardDrive, Wifi, WifiOff, Signal, Battery,
-  BatteryCharging, Volume2, VolumeX, Headphones, Speaker
+  BatteryCharging, Volume2, VolumeX, Headphones, Speaker,
+  Smile
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1413,8 +1415,52 @@ export function IntelligentOnboarding({ userId, onComplete }: IntelligentOnboard
                 </div>
               )}
 
-              {/* Persona Training Step */}
+              {/* Persona Training Step - Enhanced */}
               {currentStep === 3 && (
+                <div className="w-full">
+                  <PersonaPhotoCapture
+                    userId={userId}
+                    personaName="Professional Persona"
+                    personaDescription="AI persona for professional content creation"
+                    showNameInput={true}
+                    onComplete={(photos, personaId) => {
+                      // Store the photos and persona ID
+                      setCapturedPhotos(photos.map(p => p.url))
+                      
+                      // Update user profile with persona ID
+                      if (personaId) {
+                        localStorage.setItem('userPersonaId', personaId)
+                      }
+                      
+                      // Start training process
+                      if (photos.length >= 5) {
+                        setIsTrainingModel(true)
+                        // Simulate training progress
+                        const interval = setInterval(() => {
+                          setModelTrainingProgress(prev => {
+                            if (prev >= 100) {
+                              clearInterval(interval)
+                              setIsTrainingModel(false)
+                              return 100
+                            }
+                            return prev + 5
+                          })
+                        }, 500)
+                      }
+                      
+                      // Move to next step
+                      handleNext()
+                    }}
+                    onSkip={() => {
+                      // Skip persona training  
+                      handleNext()
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Old implementation removed - using EnhancedAIAvatarTraining instead */}
+              {false && false && currentStep === 3 && (
                 <div className="max-w-6xl w-full">
                   {currentSubstep === 0 && (
                     <motion.div

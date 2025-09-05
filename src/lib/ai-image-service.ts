@@ -129,8 +129,8 @@ Return as JSON:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.85,
-        max_tokens: 2500,
+        // GPT-5 only supports default temperature (1.0)
+        max_completion_tokens: 2500,
         response_format: { type: 'json_object' }
       })
 

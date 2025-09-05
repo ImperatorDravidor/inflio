@@ -53,7 +53,7 @@ type ViewMode = 'grid' | 'list'
 type FilterStatus = 'all' | 'processing' | 'ready' | 'published'
 type SortOption = 'recent' | 'name' | 'duration'
 
-const MotionCard = motion(Card)
+const MotionCard = motion.create(Card)
 
 const containerVariants = {
   hidden: { opacity: 0 },

@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { useTheme } from 'next-themes'
 import confetti from 'canvas-confetti'
+import { InflioLogo } from '@/components/inflio-logo'
+import { AIAvatarTraining } from '@/components/onboarding/ai-avatar-training'
 import { 
   Sparkles, ChevronRight, ChevronLeft, Check, Upload,
   Twitter, Instagram, Linkedin, Youtube, Facebook, Globe,
@@ -99,6 +100,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { OnboardingService } from '@/lib/services/onboarding-service'
 import { PersonaUploadService } from '@/lib/services/persona-upload-service'
+import { PersonaService } from '@/lib/services/persona-service'
 import { designSystem } from '@/lib/design-system'
 import { toast } from 'sonner'
 
@@ -331,18 +333,14 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
   
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Video and canvas refs moved to AIAvatarTraining component
   
   // State for brand analysis
   const [brandFile, setBrandFile] = useState<File | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [brandAnalysis, setBrandAnalysis] = useState<any>(null)
   
-  // State for persona training
-  const [cameraActive, setCameraActive] = useState(false)
-  const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
-  const [photoQuality, setPhotoQuality] = useState<Record<string, any>>({})
+  // State for persona training - handled by AIAvatarTraining component
   const [isTraining, setIsTraining] = useState(false)
   
   // Progress calculation
@@ -443,6 +441,43 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     setIsLoading(true)
     
     try {
+      // Create persona and start training if photos were collected
+      if (formData.personaPhotos && formData.personaPhotos.length >= 5) {
+        toast.info('Creating your AI persona...')
+        
+        const personaPhotosFormatted = formData.personaPhotos.map((url: string, idx: number) => ({
+          id: `photo-${idx}`,
+          url
+        }))
+        
+        const persona = await PersonaService.createPersona(
+          userId,
+          formData.fullName || 'Professional',
+          'AI Avatar for personalized content generation',
+          personaPhotosFormatted
+        )
+        
+        if (persona) {
+          toast.success('AI persona created! Training will begin shortly.')
+          
+          // Monitor training progress in the background
+          if (persona.trainingJobId) {
+            PersonaService.monitorTrainingProgress(
+              persona.trainingJobId,
+              (status, progress) => {
+                console.log(`Training progress: ${progress}%`)
+              },
+              () => {
+                toast.success('🎉 Your AI avatar is ready! You can now generate personalized content.')
+              },
+              (error) => {
+                console.error('Training error:', error)
+              }
+            )
+          }
+        }
+      }
+      
       await OnboardingService.completeOnboarding(userId, {
         ...formData,
         completedAt: new Date().toISOString()
@@ -529,47 +564,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     }
   }
 
-  // Camera management for persona training
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          facingMode: 'user'
-        }
-      })
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraActive(true)
-      }
-    } catch (error) {
-      console.error('Camera access failed:', error)
-      toast.error('Unable to access camera. Please check permissions.')
-    }
-  }
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d')
-      if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth
-        canvasRef.current.height = videoRef.current.videoHeight
-        context.drawImage(videoRef.current, 0, 0)
-        
-        const photoUrl = canvasRef.current.toDataURL('image/jpeg', 0.95)
-        setCapturedPhotos(prev => [...prev, photoUrl])
-        
-        // Haptic feedback on mobile
-        if (navigator.vibrate) {
-          navigator.vibrate(50)
-        }
-        
-        toast.success(`Photo ${capturedPhotos.length + 1} captured!`)
-      }
-    }
-  }
+  // Camera management moved to AIAvatarTraining component
 
   const updateFormData = (key: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [key]: value }))
@@ -578,34 +573,34 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-        {/* Animated background elements */}
+      <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-muted/10">
+        {/* Animated background elements - matching dashboard */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <motion.div
-            className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl"
+            className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"
             animate={{
               x: [0, 50, 0],
               y: [0, 30, 0],
               scale: [1, 1.1, 1],
             }}
-            transition={{ duration: 20, repeat: Infinity }}
+            transition={{ duration: 20, repeat: Number.POSITIVE_INFINITY }}
           />
           <motion.div
-            className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl"
+            className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/10 rounded-full blur-3xl"
             animate={{
               x: [0, -50, 0],
               y: [0, -30, 0],
               scale: [1, 1.2, 1],
             }}
-            transition={{ duration: 25, repeat: Infinity }}
+            transition={{ duration: 25, repeat: Number.POSITIVE_INFINITY }}
           />
         </div>
 
         {/* Top progress bar */}
         <div className="fixed top-0 left-0 right-0 z-50">
-          <div className="h-1 bg-gray-200 dark:bg-gray-800">
+          <div className="h-1 bg-border">
             <motion.div
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+              className="h-full bg-primary"
               initial={{ width: 0 }}
               animate={{ width: `${overallProgress}%` }}
               transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -613,18 +608,13 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
           </div>
           
           {/* Floating header */}
-          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b">
+          <div className="bg-background/80 backdrop-blur-xl border-b border-border">
             <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                    <Sparkles className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="font-semibold text-lg">Inflio</span>
-                </div>
+                <InflioLogo size="sm" />
                 
                 {/* Step breadcrumb */}
-                <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                   <span>{currentStepData.title}</span>
                   {currentStepData.sections.length > 1 && (
                     <>
@@ -640,7 +630,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="flex items-center gap-2 text-xs text-gray-500"
+                    className="flex items-center gap-2 text-xs text-muted-foreground"
                   >
                     <Loader2 className="h-3 w-3 animate-spin" />
                     <span>Saving...</span>
@@ -687,16 +677,16 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                     >
                       <div className="relative">
                         <motion.div
-                          className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 blur-3xl opacity-20"
+                          className="absolute inset-0 bg-primary/20 blur-3xl"
                           animate={{ scale: [1, 1.2, 1] }}
-                          transition={{ duration: 3, repeat: Infinity }}
+                          transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY }}
                         />
-                        <h1 className="relative text-5xl md:text-7xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                        <h1 className="relative text-5xl md:text-7xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
                           Welcome to Inflio
                         </h1>
                       </div>
                       
-                      <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+                      <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
                         Your AI-powered content studio that transforms one video into 50+ pieces of content
                       </p>
                       
@@ -723,13 +713,13 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 + i * 0.1 }}
-                            className="p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all"
+                            className="p-6 rounded-2xl bg-card border border-border shadow-lg hover:shadow-xl transition-all"
                           >
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mb-4">
-                              <item.icon className="h-6 w-6 text-white" />
+                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
+                              <item.icon className="h-6 w-6 text-primary" />
                             </div>
                             <h3 className="font-semibold mb-2">{item.title}</h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{item.description}</p>
+                            <p className="text-sm text-muted-foreground">{item.description}</p>
                           </motion.div>
                         ))}
                       </div>
@@ -744,11 +734,11 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           {[...Array(5)].map((_, i) => (
                             <div
                               key={i}
-                              className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 border-2 border-white dark:border-gray-900"
+                              className="w-8 h-8 rounded-full bg-gradient-to-r from-primary to-primary/60 border-2 border-background"
                             />
                           ))}
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           Join 50,000+ creators
                         </p>
                       </motion.div>
@@ -761,7 +751,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   <div className="space-y-8">
                     <div className="text-center space-y-2">
                       <h2 className="text-3xl font-bold">Let's get you started</h2>
-                      <p className="text-gray-600 dark:text-gray-400">
+                      <p className="text-muted-foreground">
                         Just a few quick questions to personalize your experience
                       </p>
                     </div>
@@ -776,7 +766,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           onChange={(e) => updateFormData('name', e.target.value)}
                           className={cn(
                             "transition-all",
-                            touchedFields.has('name') && !formData.name && "border-red-500"
+                            touchedFields.has('name') && !formData.name && "border-destructive"
                           )}
                         />
                       </div>
@@ -808,15 +798,15 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="p-4 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800"
+                        className="p-4 rounded-xl bg-primary/5 border border-primary/20"
                       >
                         <div className="flex items-start gap-3">
-                          <Wand2 className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                          <Wand2 className="h-5 w-5 text-primary mt-0.5" />
                           <div>
                             <p className="font-medium text-sm">
                               Smart template applied!
                             </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               We've configured optimal settings for {formData.selectedTemplate}. 
                               You can customize everything in the next steps.
                             </p>
@@ -844,20 +834,20 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                               className={cn(
                                 "flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all",
                                 formData.goal === option.value
-                                  ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20"
-                                  : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border hover:border-muted-foreground/50"
                               )}
                             >
                               <RadioGroupItem value={option.value} id={option.value} className="sr-only" />
                               <option.icon className={cn(
                                 "h-5 w-5",
                                 formData.goal === option.value
-                                  ? "text-purple-600 dark:text-purple-400"
-                                  : "text-gray-400"
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
                               )} />
                               <span className={cn(
                                 "font-medium",
-                                formData.goal === option.value && "text-purple-900 dark:text-purple-100"
+                                formData.goal === option.value && "text-foreground"
                               )}>
                                 {option.label}
                               </span>
@@ -877,14 +867,14 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                       <>
                         <div className="text-center space-y-2">
                           <h2 className="text-3xl font-bold">Brand Identity</h2>
-                          <p className="text-gray-600 dark:text-gray-400">
+                          <p className="text-muted-foreground">
                             Upload your brand materials or create from scratch
                           </p>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <Card
-                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-purple-500"
+                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-primary"
                             onClick={() => fileInputRef.current?.click()}
                           >
                             <input
@@ -899,20 +889,20 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             />
                             
                             <div className="text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mx-auto">
-                                <Upload className="h-8 w-8 text-white" />
+                              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto">
+                                <Upload className="h-8 w-8 text-primary" />
                               </div>
                               <div>
                                 <h3 className="font-semibold">Upload Brand Book</h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                <p className="text-sm text-muted-foreground mt-1">
                                   PDF, PPT, or images
                                 </p>
                               </div>
                               
                               {brandFile && (
-                                <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20">
+                                <div className="p-3 rounded-lg bg-primary/5">
                                   <p className="text-sm font-medium">{brandFile.name}</p>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                                  <p className="text-xs text-muted-foreground">
                                     {(brandFile.size / 1024 / 1024).toFixed(2)} MB
                                   </p>
                                 </div>
@@ -920,8 +910,8 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                               
                               {isAnalyzing && (
                                 <div className="space-y-2">
-                                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-purple-600" />
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+                                  <p className="text-sm text-muted-foreground">
                                     Analyzing with GPT-5...
                                   </p>
                                 </div>
@@ -930,16 +920,16 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           </Card>
                           
                           <Card
-                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-500"
+                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-primary"
                             onClick={() => setCurrentSection(1)}
                           >
                             <div className="text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center mx-auto">
-                                <Palette className="h-8 w-8 text-white" />
+                              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto">
+                                <Palette className="h-8 w-8 text-primary" />
                               </div>
                               <div>
                                 <h3 className="font-semibold">Create Manually</h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                <p className="text-sm text-muted-foreground mt-1">
                                   Define your brand step by step
                                 </p>
                               </div>
@@ -951,7 +941,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="p-6 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20"
+                            className="p-6 rounded-2xl bg-primary/5 border border-primary/20"
                           >
                             <h3 className="font-semibold mb-4 flex items-center gap-2">
                               <CheckCircle className="h-5 w-5 text-green-500" />
@@ -959,7 +949,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             </h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Colors</p>
+                                <p className="text-xs text-muted-foreground">Colors</p>
                                 <div className="flex gap-1 mt-1">
                                   {brandAnalysis.colors?.primary?.slice(0, 3).map((color: string, i: number) => (
                                     <div
@@ -971,15 +961,15 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                                 </div>
                               </div>
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Voice</p>
+                                <p className="text-xs text-muted-foreground">Voice</p>
                                 <p className="text-sm font-medium">{brandAnalysis.voice?.tone?.[0]}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Audience</p>
+                                <p className="text-xs text-muted-foreground">Audience</p>
                                 <p className="text-sm font-medium">{brandAnalysis.audience?.primary}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Style</p>
+                                <p className="text-xs text-muted-foreground">Style</p>
                                 <p className="text-sm font-medium">{brandAnalysis.style?.visual}</p>
                               </div>
                             </div>
@@ -991,7 +981,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                       <>
                         <div className="text-center space-y-2">
                           <h2 className="text-3xl font-bold">Customize Your Brand</h2>
-                          <p className="text-gray-600 dark:text-gray-400">
+                          <p className="text-muted-foreground">
                             Define your visual identity and voice
                           </p>
                         </div>
@@ -1010,7 +1000,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                                   onClick={() => updateFormData('primaryColor', color)}
                                   className={cn(
                                     "w-full aspect-square rounded-xl transition-all",
-                                    formData.primaryColor === color && "ring-2 ring-offset-2 ring-purple-500"
+                                    formData.primaryColor === color && "ring-2 ring-offset-2 ring-primary"
                                   )}
                                   style={{ backgroundColor: color }}
                                 />
@@ -1055,95 +1045,48 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
 
                 {/* Persona Step */}
                 {currentStep === 3 && (
-                  <div className="space-y-8">
-                    <div className="text-center space-y-2">
-                      <h2 className="text-3xl font-bold">Train Your AI Avatar</h2>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Create professional thumbnails with your face using AI
-                      </p>
-                    </div>
-                    
-                    <Card className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <div className="aspect-video bg-black rounded-xl overflow-hidden relative">
-                            {cameraActive ? (
-                              <>
-                                <video
-                                  ref={videoRef}
-                                  autoPlay
-                                  playsInline
-                                  muted
-                                  className="w-full h-full object-cover"
-                                />
-                                <canvas ref={canvasRef} className="hidden" />
-                                
-                                <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                                  <Button
-                                    onClick={capturePhoto}
-                                    className="bg-white text-black hover:bg-gray-100"
-                                  >
-                                    <Camera className="h-5 w-5 mr-2" />
-                                    Capture
-                                  </Button>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Button onClick={startCamera}>
-                                  <Camera className="h-5 w-5 mr-2" />
-                                  Start Camera
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                          
-                          <Alert className="mt-4">
-                            <Lightbulb className="h-4 w-4" />
-                            <AlertDescription>
-                              Take 10-20 photos with different angles and expressions for best results
-                            </AlertDescription>
-                          </Alert>
-                        </div>
-                        
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-semibold">Photos ({capturedPhotos.length}/20)</h3>
-                            {capturedPhotos.length >= 10 && (
-                              <Badge className="bg-green-500">Ready</Badge>
-                            )}
-                          </div>
-                          
-                          <div className="grid grid-cols-4 gap-2">
-                            {capturedPhotos.slice(0, 12).map((photo, i) => (
-                              <div key={i} className="aspect-square rounded-lg overflow-hidden">
-                                <img src={photo} alt="" className="w-full h-full object-cover" />
-                              </div>
-                            ))}
-                            {[...Array(Math.max(0, 12 - capturedPhotos.length))].map((_, i) => (
-                              <div
-                                key={`empty-${i}`}
-                                className="aspect-square rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700"
-                              />
-                            ))}
-                          </div>
-                          
-                          {capturedPhotos.length >= 10 && (
-                            <Button
-                              className="w-full mt-4"
-                              onClick={() => {
-                                setIsTraining(true)
-                                toast.success('Training started! This will take 5-10 minutes.')
-                              }}
-                            >
-                              <Wand2 className="h-5 w-5 mr-2" />
-                              Train AI Model
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
+                  <AIAvatarTraining
+                    onComplete={(photos) => {
+                      // Convert AvatarPhoto[] to string[] URLs for formData
+                      const photoUrls = photos.map(p => p.url)
+                      updateFormData('personaPhotos', photoUrls)
+                      setIsTraining(true)
+                      toast.success('Photos saved! Training will start after onboarding.')
+                      // Auto-advance to next step after saving photos
+                      setTimeout(() => {
+                        if (currentSection < totalSections - 1) {
+                          setCurrentSection(currentSection + 1)
+                        } else if (currentStep < totalSteps - 1) {
+                          setCurrentStep(currentStep + 1)
+                          setCurrentSection(0)
+                        } else {
+                          handleComplete()
+                        }
+                      }, 2000)
+                    }}
+                    onBack={() => {
+                      if (currentSection > 0) {
+                        setCurrentSection(currentSection - 1)
+                      } else if (currentStep > 0) {
+                        setCurrentStep(currentStep - 1)
+                        setCurrentSection(ONBOARDING_FLOW[currentStep - 1].sections.length - 1)
+                      }
+                    }}
+                    onSkip={() => {
+                      updateFormData('personaPhotosSkipped', true)
+                      if (currentSection < totalSections - 1) {
+                        setCurrentSection(currentSection + 1)
+                      } else if (currentStep < totalSteps - 1) {
+                        setCurrentStep(currentStep + 1)
+                        setCurrentSection(0)
+                      } else {
+                        handleComplete()
+                      }
+                    }}
+                    minPhotos={5}
+                    recommendedPhotos={10}
+                    maxPhotos={20}
+                  />
                 )}
 
                 {/* Platforms Step */}
@@ -1151,7 +1094,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   <div className="space-y-8">
                     <div className="text-center space-y-2">
                       <h2 className="text-3xl font-bold">Connect Your Platforms</h2>
-                      <p className="text-gray-600 dark:text-gray-400">
+                      <p className="text-muted-foreground">
                         Where will your content live?
                       </p>
                     </div>
@@ -1170,7 +1113,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             <Card
                               className={cn(
                                 "p-6 cursor-pointer transition-all",
-                                isSelected && "border-purple-500 shadow-lg"
+                                isSelected && "border-primary shadow-lg"
                               )}
                               onClick={() => {
                                 const platforms = formData.platforms || []
@@ -1190,17 +1133,17 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                                   </div>
                                   <div>
                                     <h3 className="font-semibold">{platform.name}</h3>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                                    <p className="text-xs text-muted-foreground">
                                       {platform.audienceSize}
                                     </p>
                                   </div>
                                 </div>
                                 {isSelected && (
-                                  <CheckCircle className="h-5 w-5 text-purple-500" />
+                                  <CheckCircle className="h-5 w-5 text-primary" />
                                 )}
                               </div>
                               
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                              <p className="text-xs text-muted-foreground mb-3">
                                 {platform.bestFor}
                               </p>
                               
@@ -1224,7 +1167,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   <div className="space-y-8">
                     <div className="text-center space-y-2">
                       <h2 className="text-3xl font-bold">AI Preferences</h2>
-                      <p className="text-gray-600 dark:text-gray-400">
+                      <p className="text-muted-foreground">
                         How should AI create content for you?
                       </p>
                     </div>
@@ -1249,14 +1192,14 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                                 className={cn(
                                   "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
                                   formData.captionStyle === style.value
-                                    ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20"
-                                    : "border-gray-200 dark:border-gray-800"
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border"
                                 )}
                               >
                                 <RadioGroupItem value={style.value} id={`caption-${style.value}`} />
                                 <div className="flex-1">
                                   <p className="font-medium">{style.label}</p>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                                  <p className="text-xs text-muted-foreground">
                                     {style.example}
                                   </p>
                                 </div>
@@ -1285,14 +1228,14 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                                 className={cn(
                                   "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
                                   formData.frequency === freq.value
-                                    ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20"
-                                    : "border-gray-200 dark:border-gray-800"
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border"
                                 )}
                               >
                                 <RadioGroupItem value={freq.value} id={`freq-${freq.value}`} />
                                 <div className="flex-1">
                                   <p className="font-medium">{freq.label}</p>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                                  <p className="text-xs text-muted-foreground">
                                     {freq.description}
                                   </p>
                                 </div>
@@ -1320,7 +1263,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           max={30}
                           step={5}
                         />
-                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <div className="flex justify-between text-xs text-muted-foreground">
                           <span>Minimal</span>
                           <span>Moderate</span>
                           <span>Maximum</span>
@@ -1349,7 +1292,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                       
                       <div>
                         <h1 className="text-4xl font-bold mb-2">You're all set!</h1>
-                        <p className="text-xl text-gray-600 dark:text-gray-400">
+                        <p className="text-xl text-muted-foreground">
                           Your AI content studio is ready to create amazing content
                         </p>
                       </div>
@@ -1357,7 +1300,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
                         {[
                           { label: 'Platforms', value: formData.platforms?.length || 0 },
-                          { label: 'AI Models', value: capturedPhotos.length > 0 ? 'Trained' : 'Ready' },
+                          { label: 'AI Models', value: formData.personaPhotos?.length > 0 ? 'Trained' : 'Ready' },
                           { label: 'Brand', value: 'Configured' }
                         ].map((stat, i) => (
                           <motion.div
@@ -1365,12 +1308,12 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 + i * 0.1 }}
-                            className="p-4 rounded-xl bg-white dark:bg-gray-800 shadow-lg"
+                            className="p-4 rounded-xl bg-card border border-border shadow-lg"
                           >
-                            <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                            <p className="text-3xl font-bold text-primary">
                               {stat.value}
                             </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                               {stat.label}
                             </p>
                           </motion.div>
@@ -1387,7 +1330,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           size="lg"
                           onClick={handleComplete}
                           disabled={isLoading}
-                          className="min-w-[200px] bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                          className="min-w-[200px]"
                         >
                           {isLoading ? (
                             <Loader2 className="h-5 w-5 animate-spin" />
@@ -1399,7 +1342,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                           )}
                         </Button>
                         
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           Ready to upload your first video?
                         </p>
                       </motion.div>
@@ -1412,7 +1355,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
         </div>
 
         {/* Bottom navigation */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-t">
+        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border">
           <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
             <Button
               variant="ghost"
@@ -1429,8 +1372,8 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   key={i}
                   className={cn(
                     "w-2 h-2 rounded-full transition-all",
-                    i === currentStep ? "w-8 bg-purple-500" :
-                    i < currentStep ? "bg-purple-300" : "bg-gray-300 dark:bg-gray-700"
+                    i === currentStep ? "w-8 bg-primary" :
+                    i < currentStep ? "bg-primary/50" : "bg-muted"
                   )}
                 />
               ))}

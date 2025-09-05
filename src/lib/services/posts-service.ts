@@ -336,8 +336,8 @@ Return a JSON object with:
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: creativity,
-      max_tokens: 1000,
+      // GPT-5 only supports default temperature (1.0)
+      max_completion_tokens: 1000,
       response_format: { type: 'json_object' }
     })
 
@@ -515,8 +515,8 @@ Return JSON:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
-          temperature: 0.7,
-          max_tokens: 800,
+          // GPT-5 only supports default temperature (1.0)
+          max_completion_tokens: 800,
           response_format: { type: 'json_object' }
         })
 

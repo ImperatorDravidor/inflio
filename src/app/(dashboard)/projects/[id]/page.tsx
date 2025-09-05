@@ -71,7 +71,7 @@ import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/empty-state"
-import { formatDuration, generateVideoThumbnailFromUrl } from "@/lib/video-utils"
+import { formatDuration, generateVideoThumbnailFromUrl, createPlaceholderThumbnail } from "@/lib/video-utils"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { motion, AnimatePresence } from "framer-motion"
@@ -120,16 +120,15 @@ import type { StagedContent } from "@/lib/staging/staging-service"
 import { ThreadGeneratorComponent } from "@/components/thread-generator"
 import { VideoChapters } from "@/components/video-chapters"
 import { QuoteCardsGenerator } from "@/components/quote-cards-generator"
+import { EnhancedVideoPlayer } from "@/components/video-player-enhanced"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
-import type { Persona } from "@/lib/types/persona"
-import { PersonaConfigureDialog } from "@/components/persona-configure-dialog"
+import type { Persona } from "@/lib/services/persona-service"
 import { SocialGraphicsGenerator } from "@/components/social-graphics-generator"
 import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
-import { UserGuideTooltip } from "@/components/user-guide-tooltip"
 import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 import { UnifiedContentGenerator } from "@/components/unified-content-generator"
 import { SimplifiedGraphicsTab } from "@/components/simplified-graphics-tab"
@@ -203,7 +202,7 @@ function ProjectDetailPageContent() {
   const [streamingProgress, setStreamingProgress] = useState(0)
   const [selectedSuggestion, setSelectedSuggestion] = useState<ImageSuggestion | null>(null)
   const [carouselSlides, setCarouselSlides] = useState<{ [key: string]: number }>({})
-  const [hasSubtitles, setHasSubtitles] = useState(false)
+  const [hasSubtitles, setHasSubtitles] = useState<boolean>(false)
   const [videoLoading, setVideoLoading] = useState(false)
   const [defaultThumbnail, setDefaultThumbnail] = useState<string>("")
   const [usePersonaForGraphics, setUsePersonaForGraphics] = useState(true)
@@ -235,10 +234,22 @@ function ProjectDetailPageContent() {
     async function generateDefaultThumbnail() {
       if (project?.video_url && !project.thumbnail_url && !defaultThumbnail) {
         try {
+          // This will always return something, either actual thumbnail or placeholder
           const thumbnail = await generateVideoThumbnailFromUrl(project.video_url, 2)
           setDefaultThumbnail(thumbnail)
         } catch (error) {
           console.error("Failed to generate default thumbnail:", error)
+          // If even the safe method fails, create a placeholder directly
+          const placeholder = createPlaceholderThumbnail()
+          if (placeholder) {
+            setDefaultThumbnail(placeholder)
+          }
+        }
+      } else if (!project?.video_url && !project?.thumbnail_url && !defaultThumbnail) {
+        // No video URL, create a placeholder
+        const placeholder = createPlaceholderThumbnail()
+        if (placeholder) {
+          setDefaultThumbnail(placeholder)
         }
       }
     }
@@ -1192,12 +1203,28 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               
               {/* Primary Actions - Better Organized */}
               <div className="flex flex-col gap-3 min-w-[280px]">
+                {/* Demo: Quick toggle for long form content */}
+                {process.env.NODE_ENV === 'development' && !hasSubtitles && (
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setHasSubtitles(true)
+                      toast.success('Long form content enabled for demo!')
+                    }}
+                    className="w-full gap-2 border-dashed"
+                  >
+                    <IconVideo className="h-4 w-4" />
+                    Enable Long Form (Demo)
+                  </Button>
+                )}
+                
                 {/* Main CTA */}
                 <Button 
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
                   onClick={() => setShowContentSelectionDialog(true)}
-                  disabled={stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
+                  disabled={!hasSubtitles && stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
                 >
                   <IconRocket className="h-5 w-5 mr-2" />
                   Publish Content
@@ -1240,31 +1267,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </Button>
                   )
                 })()}
-                
-                {/* Configure Persona Button */}
-                                    <UserGuideTooltip
-                      id="configure-persona"
-                      title="Add your persona"
-                      content="Create a professional persona to feature in all your AI-generated content"
-                      side="left"
-                      delay={2000}
-                    >
-                      <PersonaConfigureDialog
-                        onPersonaCreated={(persona) => {
-                          setSelectedPersona(persona)
-                          toast.success(`Persona "${persona.name}" created successfully!`)
-                        }}
-                      >
-                        <Button 
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-center gap-2"
-                        >
-                          <IconUsers className="h-4 w-4" />
-                          Configure Persona
-                        </Button>
-                      </PersonaConfigureDialog>
-                    </UserGuideTooltip>
               </div>
             </div>
           </div>
@@ -1459,44 +1461,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                   </CardContent>
                 </Card>
                 
-                {/* AI Images */}
-                <Card className={cn(
-                  "border transition-all cursor-pointer hover:shadow-md",
-                  totalImages > 0 
-                    ? "border-pink-500/20 bg-pink-500/5 hover:border-pink-500/40" 
-                    : "border-muted hover:border-primary/20"
-                )}
-                onClick={() => setActiveTab('graphics')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                        totalImages > 0 ? "bg-pink-500/20" : "bg-muted"
-                  )}>
-                    <IconPhoto className={cn(
-                          "h-4 w-4",
-                          totalImages > 0 ? "text-pink-600" : "text-muted-foreground"
-                    )} />
-                  </div>
-                      {totalImages > 0 ? (
-                        <span className="text-lg font-bold text-pink-600">{totalImages}</span>
-                      ) : (
-                        <IconPlus className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <p className="font-semibold text-sm">AI Images</p>
-                    <p className="text-xs text-muted-foreground">
-                      {totalImages > 0 ? "Created" : "Generate"}
-                    </p>
-                  </CardContent>
-                </Card>
-                
-                {/* Social Posts */}
+                {/* Posts */}
                 <Card className={cn(
                   "border transition-all cursor-pointer hover:shadow-md",
                   stats.totalSocialPosts > 0 
-                    ? "border-orange-500/20 bg-orange-500/5 hover:border-orange-500/40" 
+                    ? "border-pink-500/20 bg-pink-500/5 hover:border-pink-500/40" 
                     : "border-muted hover:border-primary/20"
                 )}
                 onClick={() => router.push(`/projects/${projectId}/stage`)}
@@ -1505,22 +1474,53 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <div className="flex items-center justify-between mb-2">
                   <div className={cn(
                     "p-2 rounded-lg",
-                        stats.totalSocialPosts > 0 ? "bg-orange-500/20" : "bg-muted"
+                        stats.totalSocialPosts > 0 ? "bg-pink-500/20" : "bg-muted"
                   )}>
                     <IconShare2 className={cn(
                           "h-4 w-4",
-                          stats.totalSocialPosts > 0 ? "text-orange-600" : "text-muted-foreground"
+                          stats.totalSocialPosts > 0 ? "text-pink-600" : "text-muted-foreground"
                     )} />
                   </div>
                       {stats.totalSocialPosts > 0 ? (
-                        <span className="text-lg font-bold text-orange-600">{stats.totalSocialPosts}</span>
+                        <span className="text-lg font-bold text-pink-600">{stats.totalSocialPosts}</span>
                       ) : (
                         <IconPlus className="h-4 w-4 text-muted-foreground" />
                       )}
                     </div>
-                    <p className="font-semibold text-sm">Social Posts</p>
+                    <p className="font-semibold text-sm">Posts</p>
                     <p className="text-xs text-muted-foreground">
-                      {stats.totalSocialPosts > 0 ? "Staged" : "Create"}
+                      {stats.totalSocialPosts > 0 ? "Scheduled" : "Create"}
+                    </p>
+                  </CardContent>
+                </Card>
+                
+                {/* Long Form Content */}
+                <Card className={cn(
+                  "border transition-all cursor-pointer hover:shadow-md",
+                  hasSubtitles 
+                    ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40" 
+                    : "border-muted hover:border-primary/20"
+                )}
+                onClick={() => hasSubtitles && setActiveTab('overview')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                        hasSubtitles ? "bg-green-500/20" : "bg-muted"
+                  )}>
+                    <IconVideo className={cn(
+                          "h-4 w-4",
+                          hasSubtitles ? "text-green-600" : "text-muted-foreground"
+                    )} />
+                  </div>
+                      {hasSubtitles && (
+                        <IconCheck className="h-4 w-4 text-green-600" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">Long Form Content</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasSubtitles ? "Complete" : "Incomplete"}
                     </p>
                   </CardContent>
                 </Card>
@@ -1611,101 +1611,23 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               </div>
               
               {/* Video Container */}
-              <div className="relative bg-black rounded-lg overflow-hidden">
-                {project.video_url ? (
-                  <>
-                    {/* Loading Overlay - Only show when actually loading */}
-                    {videoLoading && (
-                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80">
-                        <div className="text-center">
-                          <IconLoader2 className="h-10 w-10 animate-spin text-white/70 mx-auto" />
-                          <p className="text-white/60 text-sm mt-2">Loading video...</p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Thumbnail Display - Only show when video is paused and not playing */}
-                    {(project.thumbnail_url || defaultThumbnail) && !isVideoPlaying && !videoLoading && (
-                      <div className="absolute inset-0 z-10 group cursor-pointer"
-                        onClick={() => {
-                          if (videoRef.current) {
-                            videoRef.current.play()
-                            setIsVideoPlaying(true)
-                          }
-                        }}
-                      >
-                        <img 
-                          src={project.thumbnail_url || defaultThumbnail} 
-                          alt="Video thumbnail" 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors flex items-center justify-center">
-                          <div className="bg-white/90 backdrop-blur-sm rounded-full p-6 shadow-xl group-hover:scale-110 transition-transform">
-                            <IconPlayerPlay className="h-12 w-12 text-black" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Video Element */}
-                    <video
-                      ref={videoRef}
-                      src={project.video_url}
-                      poster={project.thumbnail_url || thumbnailUrl || defaultThumbnail || undefined}
-                      className="w-full aspect-video bg-black"
-                      controls
-                      playsInline
-                      preload="auto"  // Changed from "metadata" to "auto" for better preloading
-                      onLoadedMetadata={(e) => {
-                        const video = e.currentTarget
-                        if (!project.metadata?.duration || project.metadata.duration !== video.duration) {
-                          setProject(prev => prev ? {
-                            ...prev,
-                            metadata: {
-                              ...prev.metadata,
-                              duration: video.duration
-                            }
-                          } : null)
-                        }
-                      }}
-                      onError={(e) => {
-                        console.error("Video error:", e)
-                        setVideoLoading(false)
-                        toast.error("Failed to load video")
-                      }}
-                      onLoadStart={() => {
-                        setVideoLoading(true)
-                      }}
-                      onCanPlayThrough={() => {
-                        setVideoLoading(false)
-                      }}
-                      onWaiting={() => {
-                        setVideoLoading(true)
-                      }}
-                      onPlaying={() => {
-                        setVideoLoading(false)
-                        setIsVideoPlaying(true)
-                      }}
-                      onPause={() => {
-                        setIsVideoPlaying(false)
-                      }}
-                      onEnded={() => {
-                        setIsVideoPlaying(false)
-                      }}
-                    >
-                      <source src={project.video_url} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  </>
-                ) : (
-                  <div className="relative aspect-video bg-black flex items-center justify-center">
-                    <div className="text-center">
-                      <IconVideo className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                      <p className="text-muted-foreground">No video uploaded</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <EnhancedVideoPlayer
+                ref={videoRef}
+                videoUrl={project.video_url}
+                thumbnailUrl={project.thumbnail_url || thumbnailUrl || defaultThumbnail}
+                onLoadedMetadata={(duration) => {
+                  if (!project.metadata?.duration || project.metadata.duration !== duration) {
+                    setProject(prev => prev ? {
+                      ...prev,
+                      metadata: {
+                        ...prev.metadata,
+                        duration: duration
+                      }
+                    } : null)
+                  }
+                }}
+                onPlayingStateChange={setIsVideoPlaying}
+              />
               
               
               {/* Video Info Bar */}
@@ -3537,21 +3459,132 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
 
       {/* Enhanced Content Selection Dialog */}
       <Dialog open={showContentSelectionDialog} onOpenChange={setShowContentSelectionDialog}>
-        <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Select Content to Publish</DialogTitle>
           </DialogHeader>
-          <div className="h-full overflow-auto p-6">
+          <div className="flex-1 overflow-hidden p-6">
             <EnhancedPublishingWorkflowV3 
-              project={project}
+              project={{
+                ...project,
+                // Add long form content to folders when subtitles are available
+                folders: {
+                  ...project.folders,
+                  longform: (hasSubtitles === true) ? [{
+                    id: 'longform-main',
+                    type: 'longform',
+                    title: project.title + ' (Full Video)',
+                    description: 'Full-length video with subtitles for YouTube/Facebook',
+                    videoUrl: project.video_url,
+                    thumbnail: project.thumbnail_url,
+                    duration: project.metadata?.duration,
+                    hasSubtitles: true
+                  }] : []
+                } as any
+              }}
               onPublish={(selectedIds) => {
-                setShowContentSelectionDialog(false)
+                // Get the actual content objects based on selected IDs
+                const selectedContent: any[] = []
                 
-                // Store selected content IDs
+                // Extract clips
+                if (project.folders?.clips?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('clip-')) {
+                      const clipId = id.replace('clip-', '')
+                      const clip = project.folders.clips.find((c: any) => c.id === clipId)
+                      if (clip) {
+                        selectedContent.push({
+                          ...clip,
+                          type: 'clip',
+                          exportUrl: clip.exportUrl || clip.previewUrl
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract blog posts
+                if (project.folders?.blog?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('blog-')) {
+                      const blogId = id.replace('blog-', '')
+                      const blog = project.folders.blog.find((b: any) => b.id === blogId)
+                      if (blog) {
+                        selectedContent.push({
+                          ...blog,
+                          type: 'blog'
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract social posts
+                if (project.folders?.social?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('social-')) {
+                      const socialId = id.replace('social-', '')
+                      const social = project.folders.social.find((s: any) => s.id === socialId)
+                      if (social) {
+                        selectedContent.push({
+                          ...social,
+                          type: 'social'
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Extract long form content (when subtitles are burned)
+                if (hasSubtitles === true) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('longform-')) {
+                      selectedContent.push({
+                        id: 'longform-main',
+                        type: 'longform',
+                        title: project.title + ' (Full Video)',
+                        description: 'Full-length video with subtitles',
+                        videoUrl: project.video_url,
+                        thumbnail: project.thumbnail_url,
+                        duration: project.metadata?.duration,
+                        hasSubtitles: true,
+                        exportUrl: project.video_url // The video with burned subtitles
+                      })
+                    }
+                  })
+                }
+                
+                // Extract images
+                if (project.folders?.images?.length) {
+                  selectedIds.forEach(id => {
+                    if (id.startsWith('image-')) {
+                      const imageId = id.replace('image-', '')
+                      const image = project.folders.images?.find((i: any) => i.id === imageId)
+                      if (image) {
+                        selectedContent.push({
+                          ...image,
+                          type: 'image',
+                          url: image.url || image.imageData
+                        })
+                      }
+                    }
+                  })
+                }
+                
+                // Store the full content objects with the correct key
+                sessionStorage.setItem('selectedContent', JSON.stringify(selectedContent))
+                
+                // Also store IDs for fallback
                 sessionStorage.setItem('selectedContentIds', JSON.stringify(selectedIds))
                 
                 // Navigate to staging page
                 router.push(`/projects/${project.id}/stage`)
+                
+                // Keep dialog open for a moment to show the loading state
+                // This prevents the button from disappearing immediately
+                setTimeout(() => {
+                  setShowContentSelectionDialog(false)
+                }, 1000) // Give user visual feedback before closing
               }}
             />
           </div>

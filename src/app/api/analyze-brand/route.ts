@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 import pdf from 'pdf-parse'
+import mammoth from 'mammoth'
+import * as XLSX from 'xlsx'
 import { z } from 'zod'
 
 // Initialize OpenAI with GPT-5 [[memory:4799270]]
@@ -54,7 +56,7 @@ const BrandAnalysisSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -69,48 +71,139 @@ export async function POST(request: NextRequest) {
     // Extract text content based on file type
     let textContent = ''
     const fileType = file.type
+    const fileName = file.name.toLowerCase()
+    const buffer = await file.arrayBuffer()
     
-    if (fileType === 'application/pdf') {
-      // Extract text from PDF
-      const buffer = await file.arrayBuffer()
-      const data = await pdf(Buffer.from(buffer))
-      textContent = data.text
-    } else if (fileType.includes('image')) {
-      // For images, use OCR or image analysis
-      // For now, we'll use GPT-5 vision capabilities
-      const base64 = Buffer.from(await file.arrayBuffer()).toString('base64')
-      const imageUrl = `data:${fileType};base64,${base64}`
-      
-      const visionResponse = await openai.chat.completions.create({
-        model: 'gpt-5', // Using GPT-5 for vision analysis [[memory:4799270]]
-        messages: [
-          {
-            role: 'system',
-            content: 'Extract all text and brand elements from this image. Include colors (as hex codes), fonts, logos, taglines, and any brand guidelines visible.'
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Analyze this brand material and extract all information:'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl
+    try {
+      // Handle PDFs
+      if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+        const data = await pdf(Buffer.from(buffer))
+        textContent = data.text
+      }
+      // Handle Word documents (.docx)
+      else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+               fileName.endsWith('.docx')) {
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
+        textContent = result.value
+      }
+      // Handle older Word documents (.doc)
+      else if (fileType === 'application/msword' || fileName.endsWith('.doc')) {
+        try {
+          const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
+          textContent = result.value
+        } catch {
+          // Fallback for .doc files that mammoth can't handle
+          textContent = Buffer.from(buffer).toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, '')
+        }
+      }
+      // Handle Excel files (.xlsx, .xls)
+      else if (fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+               fileType === 'application/vnd.ms-excel' ||
+               fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const workbook = XLSX.read(buffer, { type: 'buffer' })
+        const texts: string[] = []
+        
+        // Extract text from all sheets
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName]
+          const csvText = XLSX.utils.sheet_to_csv(sheet)
+          texts.push(`Sheet: ${sheetName}\n${csvText}`)
+        }
+        textContent = texts.join('\n\n')
+      }
+      // Handle CSV files
+      else if (fileType === 'text/csv' || fileName.endsWith('.csv')) {
+        textContent = Buffer.from(buffer).toString('utf8')
+      }
+      // Handle PowerPoint files (.pptx)
+      else if (fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || 
+               fileName.endsWith('.pptx')) {
+        // For PowerPoint, we'll extract text using a basic approach
+        // Convert to text by looking for readable strings
+        const text = Buffer.from(buffer).toString('utf8')
+        // Extract readable text patterns
+        const matches = text.match(/[\x20-\x7E]{10,}/g) || []
+        textContent = matches.filter(s => !s.includes('xml') && !s.includes('=')).join(' ')
+      }
+      // Handle plain text files
+      else if (fileType.startsWith('text/') || 
+               fileName.endsWith('.txt') || fileName.endsWith('.md') || 
+               fileName.endsWith('.rtf') || fileName.endsWith('.log')) {
+        textContent = Buffer.from(buffer).toString('utf8')
+      }
+      // Handle images with GPT-5 vision
+      else if (fileType.startsWith('image/')) {
+        const base64 = Buffer.from(buffer).toString('base64')
+        const imageUrl = `data:${fileType};base64,${base64}`
+        
+        const visionResponse = await openai.chat.completions.create({
+          model: 'gpt-5', // Using GPT-5 for vision analysis [[memory:4799270]]
+          messages: [
+            {
+              role: 'system',
+              content: 'Extract all text and brand elements from this image. Include colors (as hex codes), fonts, logos, taglines, and any brand guidelines visible.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Analyze this brand material and extract all information:'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        max_tokens: 2000
-      })
-      
-      textContent = visionResponse.choices[0].message.content || ''
-    } else {
-      // For other document types (doc, ppt, etc.), extract as text
-      textContent = await file.text()
+              ]
+            }
+          ],
+          max_completion_tokens: 2000
+        })
+        
+        textContent = visionResponse.choices[0].message.content || ''
+      }
+      // Handle JSON files
+      else if (fileType === 'application/json' || fileName.endsWith('.json')) {
+        const jsonData = JSON.parse(Buffer.from(buffer).toString('utf8'))
+        textContent = JSON.stringify(jsonData, null, 2)
+      }
+      // Handle XML/HTML files
+      else if (fileType === 'text/html' || fileType === 'application/xml' || 
+               fileName.endsWith('.html') || fileName.endsWith('.xml')) {
+        const text = Buffer.from(buffer).toString('utf8')
+        // Strip HTML/XML tags
+        textContent = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      }
+      // Fallback for any other file type - attempt to extract readable text
+      else {
+        // Try to extract any readable text from the file
+        const text = Buffer.from(buffer).toString('utf8')
+        // Extract readable ASCII text
+        const matches = text.match(/[\x20-\x7E]{10,}/g) || []
+        textContent = matches.join(' ')
+        
+        // If no readable text found, inform the user
+        if (!textContent || textContent.length < 50) {
+          textContent = `File type '${fileType || 'unknown'}' with name '${fileName}'. Unable to extract meaningful text content. Please provide a PDF, Word document, Excel file, PowerPoint, text file, or image with brand information.`
+        }
+      }
+    } catch (extractionError) {
+      console.error('Text extraction error:', extractionError)
+      // Attempt basic text extraction as fallback
+      try {
+        textContent = Buffer.from(buffer).toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, '')
+      } catch {
+        textContent = `Unable to extract text from file '${fileName}'. The file may be corrupted or in an unsupported format.`
+      }
+    }
+    
+    // Ensure we have some content to analyze
+    if (!textContent || textContent.trim().length === 0) {
+      return NextResponse.json({ 
+        error: 'Could not extract any text content from the uploaded file. Please ensure the file contains readable text or brand information.' 
+      }, { status: 400 })
     }
 
     // Analyze brand content with GPT-5 [[memory:4799270]]
@@ -146,8 +239,8 @@ export async function POST(request: NextRequest) {
         }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.3,
-      max_tokens: 4000
+      // GPT-5 only supports default temperature (1.0)
+      max_completion_tokens: 4000
     })
 
     const analysisContent = analysisResponse.choices[0].message.content
@@ -160,16 +253,16 @@ export async function POST(request: NextRequest) {
     // Validate with schema
     const validatedAnalysis = BrandAnalysisSchema.parse(analysis)
     
-    // Save analysis to database
+    // Save analysis to database - user_profiles table
     const supabase = createSupabaseServerClient()
     const { error: dbError } = await supabase
       .from('user_profiles')
       .update({
         brand_analysis: validatedAnalysis,
-        brand_colors: validatedAnalysis.colors.primary,
+        brand_colors: { primary: validatedAnalysis.colors.primary },
         brand_voice: validatedAnalysis.voice.tone[0],
-        brand_personality: validatedAnalysis.voice.personality,
-        target_audience: validatedAnalysis.audience.primary,
+        brand_assets: { analysis: validatedAnalysis },
+        target_audience: { primary: validatedAnalysis.audience.primary, demographics: validatedAnalysis.audience.demographics },
         updated_at: new Date().toISOString()
       })
       .eq('clerk_user_id', userId)

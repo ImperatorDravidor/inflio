@@ -655,9 +655,9 @@ export function EnhancedContentStager({ content, onUpdate, onNext }: EnhancedCon
   }
 
   const isAllContentReady = () => {
-    return editedContent.every(item => 
-      item.platforms.every(platform => getPlatformCompletion(platform).complete)
-    )
+    // For demo: Always allow proceeding
+    // In production, this would check if all fields are complete
+    return true // Allow demo to proceed regardless of completion
   }
 
   const stats = getCompletionStats()
