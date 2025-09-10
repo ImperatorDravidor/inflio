@@ -44,10 +44,26 @@ export class MockPostsGenerator {
         key_message: 'Complete breakdown of the topic',
         hook: '🧵 Thread: Everything you need to know about this',
         prompt: 'Professional thread visuals with consistent branding'
+      },
+      reel: {
+        title: `Quick Tips: ${projectTitle}`,
+        description: 'Short-form vertical video content',
+        visual_elements: ['Hook scene', 'Main content', 'Call to action'],
+        key_message: 'Quick valuable insights in under 60 seconds',
+        hook: '⚡ Watch this before you scroll!',
+        prompt: 'Dynamic, fast-paced video with captions'
+      },
+      story: {
+        title: `Behind the Scenes: ${projectTitle}`,
+        description: 'Authentic, temporary content for stories',
+        visual_elements: ['Opening frame', 'Process shots', 'Result reveal'],
+        key_message: 'Raw, authentic behind-the-scenes content',
+        hook: '👀 Exclusive look inside...',
+        prompt: 'Casual, authentic story format with interactive elements'
       }
     }
     
-    return mockIdeas[contentType] || mockIdeas.single
+    return mockIdeas[contentType as keyof typeof mockIdeas] || mockIdeas.single
   }
 
   static generateMockPlatformCopy(params: {

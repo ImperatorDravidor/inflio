@@ -98,13 +98,14 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 
 interface ContentItem {
   id: string
-  type: 'clip' | 'blog' | 'image' | 'social' | 'caption' | 'thread' | 'quote'
+  type: 'clip' | 'blog' | 'image' | 'social' | 'caption' | 'thread' | 'quote' | 'longform'
   title: string
   description?: string
   content?: string
   thumbnail?: string
   duration?: number
   wordCount?: number
+  hasSubtitles?: boolean
   tags?: string[]
   platforms?: string[]
   createdAt: string

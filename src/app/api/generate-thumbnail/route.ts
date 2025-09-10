@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createFluxThumbnailService } from '@/lib/services/thumbnail-service'
+import { ThumbnailPromptService } from '@/lib/services/thumbnail-prompt-service'
 
 // Configure FAL AI client
 fal.config({
@@ -110,8 +111,8 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Optimize for YouTube thumbnails
-    const thumbnailPrompt = `Create a high-impact YouTube thumbnail. ${enhancedPrompt} 
+    // Optimize for YouTube thumbnails and integrate persona LoRA if available
+    let thumbnailPrompt = `Create a high-impact YouTube thumbnail. ${enhancedPrompt} 
     
     CRITICAL Requirements:
     - 1280x720 resolution, 16:9 aspect ratio
@@ -130,6 +131,47 @@ export async function POST(req: NextRequest) {
     ${videoSnippets.length > 0 ? 'Use the video frames as visual context or background. ' : ''}
     
     Style: ${style}, photorealistic, ultra HD quality, professional YouTube thumbnail`
+
+    // Try to load default persona and build GPT-5 smart prompt + LoRA config
+    let loraConfig: { path: string, scale: number } | null = null
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('default_persona_id')
+        .eq('clerk_user_id', userId)
+        .single()
+
+      if (profile?.default_persona_id) {
+        const { data: persona } = await supabaseAdmin
+          .from('personas')
+          .select('*')
+          .eq('id', profile.default_persona_id)
+          .single()
+        
+        if (persona?.lora_model_url) {
+          // Build smart prompt with GPT-5 and correct trigger phrase order
+          const smartPrompt = await ThumbnailPromptService.generateSmartPrompt(
+            {
+              id: persona.id,
+              userId: persona.user_id,
+              name: persona.name,
+              description: persona.description,
+              status: persona.status,
+              loraModelUrl: persona.lora_model_url,
+              loraConfigUrl: persona.lora_config_url,
+              loraTriggerPhrase: persona.lora_trigger_phrase,
+              createdAt: persona.created_at,
+              updatedAt: persona.updated_at
+            } as any,
+            project.content_analysis || {}
+          )
+          thumbnailPrompt = smartPrompt || thumbnailPrompt
+          loraConfig = { path: persona.lora_model_url, scale: 1.0 }
+        }
+      }
+    } catch (e) {
+      console.warn('Persona smart prompt/LoRA not applied:', e)
+    }
     
     let imageUrl: string
     
@@ -167,6 +209,9 @@ export async function POST(req: NextRequest) {
             guidance_scale: 8.0,
             output_format: 'png',
             enable_safety_checker: true
+          }
+          if (loraConfig) {
+            input.loras = [loraConfig]
           }
           
           // Add reference image if editing/iterating

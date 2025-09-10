@@ -100,6 +100,15 @@ export function ThumbnailCreatorV2({
   const [progress, setProgress] = useState(0)
   const [usePersona, setUsePersona] = useState(true)
   
+  // Detect if selected persona has a trained LoRA model
+  const loRAActive = !!(
+    (selectedPersona as any)?.lora_model_url ||
+    (selectedPersona as any)?.loraModelUrl ||
+    (selectedPersona as any)?.lora_training_status === 'trained' ||
+    (selectedPersona as any)?.loraTrainingStatus === 'trained' ||
+    (selectedPersona as any)?.status === 'trained'
+  )
+  
   // Video frame extraction states
   const [showVideoFrames, setShowVideoFrames] = useState(false)
   const [videoFrames, setVideoFrames] = useState<VideoFrame[]>([])
@@ -435,6 +444,17 @@ export function ThumbnailCreatorV2({
                     <IconUser className="h-3 w-3 text-primary" />
                   </div>
                   <span>{selectedPersona.name}</span>
+                  <span className="inline-flex items-center gap-1 ml-2">
+                    <span
+                      className={cn(
+                        "inline-block h-2 w-2 rounded-full",
+                        loRAActive ? "bg-green-500" : "bg-yellow-500"
+                      )}
+                    />
+                    <span className={cn("text-xs", loRAActive ? "text-green-600" : "text-yellow-600")}> 
+                      {loRAActive ? 'Model ready' : 'Training pending'}
+                    </span>
+                  </span>
                 </div>
               </div>
             )}
@@ -567,6 +587,14 @@ export function ThumbnailCreatorV2({
                         <p className="font-medium">Using {selectedPersona.name} persona</p>
                         <p className="text-xs text-muted-foreground">
                           AI will incorporate these photos into your thumbnail
+                        </p>
+                        <p className="text-xs mt-1">
+                          {loRAActive 
+                            ? (
+                              <span className="text-green-600">Trained AI model detected. Likeness will be preserved via LoRA.</span>
+                            ) : (
+                              <span className="text-yellow-700">Your AI model is still training. We will use your photos; results improve after training completes.</span>
+                            )}
                         </p>
                       </div>
                     </div>

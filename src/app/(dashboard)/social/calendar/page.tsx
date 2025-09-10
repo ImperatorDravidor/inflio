@@ -1001,7 +1001,7 @@ export default function SocialCalendarPage() {
                 {(selectedPost.thumbnail || selectedPost.media_urls?.[0]) && (
                   <div className="relative rounded-lg overflow-hidden">
                     <img 
-                      src={selectedPost.thumbnail || selectedPost.media_urls[0]} 
+                      src={selectedPost.thumbnail || selectedPost.media_urls?.[0] || ''} 
                       alt="" 
                       className="w-full h-64 object-cover"
                     />

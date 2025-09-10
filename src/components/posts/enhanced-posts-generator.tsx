@@ -491,6 +491,14 @@ export function EnhancedPostsGenerator({
     setShowGenerateDialog(false)
 
     try {
+      const response = await fetch('/api/posts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectTitle
+        })
+      })
 
       const data = await response.json()
 

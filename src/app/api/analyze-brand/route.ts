@@ -1,57 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
-import pdf from 'pdf-parse'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
-import { z } from 'zod'
 
-// Initialize OpenAI with GPT-5 [[memory:4799270]]
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
-
-// Brand analysis schema
-const BrandAnalysisSchema = z.object({
-  colors: z.object({
-    primary: z.array(z.string()),
-    secondary: z.array(z.string()),
-    accent: z.array(z.string())
-  }),
-  typography: z.object({
-    fonts: z.array(z.string()),
-    headings: z.array(z.string()),
-    body: z.array(z.string())
-  }),
-  voice: z.object({
-    tone: z.array(z.string()),
-    personality: z.array(z.string()),
-    values: z.array(z.string())
-  }),
-  visual_style: z.object({
-    photography: z.array(z.string()),
-    graphics: z.array(z.string()),
-    patterns: z.array(z.string())
-  }),
-  audience: z.object({
-    primary: z.string(),
-    demographics: z.array(z.string()),
-    psychographics: z.array(z.string()),
-    pain_points: z.array(z.string())
-  }),
-  competitors: z.array(z.string()),
-  content_themes: z.array(z.string()),
-  unique_value_proposition: z.string(),
-  mission_statement: z.string(),
-  brand_story: z.string(),
-  do_and_donts: z.object({
-    do: z.array(z.string()),
-    dont: z.array(z.string())
-  }),
-  strengths: z.array(z.string()).optional(),
-  opportunities: z.array(z.string()).optional(),
-  recommendations: z.array(z.string()).optional()
+  apiKey: process.env.OPENAI_API_KEY!
 })
 
 export async function POST(request: NextRequest) {
@@ -62,259 +14,239 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData()
-    const file = formData.get('file') as File
+    const files = formData.getAll('files') as File[]
     
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    if (files.length === 0) {
+      return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
-    // Extract text content based on file type
+    // Process files and extract content
+    const processedContent: any[] = []
     let textContent = ''
-    const fileType = file.type
-    const fileName = file.name.toLowerCase()
-    const buffer = await file.arrayBuffer()
     
-    try {
-      // Handle PDFs
-      if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-        const data = await pdf(Buffer.from(buffer))
-        textContent = data.text
-      }
-      // Handle Word documents (.docx)
-      else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
-               fileName.endsWith('.docx')) {
-        const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
-        textContent = result.value
-      }
-      // Handle older Word documents (.doc)
-      else if (fileType === 'application/msword' || fileName.endsWith('.doc')) {
+    for (const file of files) {
+      const buffer = await file.arrayBuffer()
+      
+      if (file.type === 'application/pdf') {
+        // Extract text from PDF
         try {
-          const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
-          textContent = result.value
-        } catch {
-          // Fallback for .doc files that mammoth can't handle
-          textContent = Buffer.from(buffer).toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, '')
+          const pdf = (await import('pdf-parse' as any)).default as any
+          const data = await pdf(Buffer.from(buffer))
+          const pdfText = data.text.substring(0, 10000) // Limit to first 10k chars
+          textContent += `\n\nContent from ${file.name}:\n${pdfText}`
+          
+          // Also include metadata if available
+          if (data.info) {
+            textContent += `\nPDF Metadata: Title: ${data.info.Title || 'N/A'}, Author: ${data.info.Author || 'N/A'}`
+          }
+        } catch (error) {
+          console.error('Error processing PDF:', error)
+          textContent += `\n\nPDF File: ${file.name} (unable to extract text)`
         }
-      }
-      // Handle Excel files (.xlsx, .xls)
-      else if (fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
-               fileType === 'application/vnd.ms-excel' ||
-               fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-        const workbook = XLSX.read(buffer, { type: 'buffer' })
-        const texts: string[] = []
-        
-        // Extract text from all sheets
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName]
-          const csvText = XLSX.utils.sheet_to_csv(sheet)
-          texts.push(`Sheet: ${sheetName}\n${csvText}`)
-        }
-        textContent = texts.join('\n\n')
-      }
-      // Handle CSV files
-      else if (fileType === 'text/csv' || fileName.endsWith('.csv')) {
-        textContent = Buffer.from(buffer).toString('utf8')
-      }
-      // Handle PowerPoint files (.pptx)
-      else if (fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || 
-               fileName.endsWith('.pptx')) {
-        // For PowerPoint, we'll extract text using a basic approach
-        // Convert to text by looking for readable strings
-        const text = Buffer.from(buffer).toString('utf8')
-        // Extract readable text patterns
-        const matches = text.match(/[\x20-\x7E]{10,}/g) || []
-        textContent = matches.filter(s => !s.includes('xml') && !s.includes('=')).join(' ')
-      }
-      // Handle plain text files
-      else if (fileType.startsWith('text/') || 
-               fileName.endsWith('.txt') || fileName.endsWith('.md') || 
-               fileName.endsWith('.rtf') || fileName.endsWith('.log')) {
-        textContent = Buffer.from(buffer).toString('utf8')
-      }
-      // Handle images with GPT-5 vision
-      else if (fileType.startsWith('image/')) {
+      } else if (file.type.startsWith('image/')) {
+        // For images, we'll use vision API
         const base64 = Buffer.from(buffer).toString('base64')
-        const imageUrl = `data:${fileType};base64,${base64}`
-        
-        const visionResponse = await openai.chat.completions.create({
-          model: 'gpt-5', // Using GPT-5 for vision analysis [[memory:4799270]]
-          messages: [
-            {
-              role: 'system',
-              content: 'Extract all text and brand elements from this image. Include colors (as hex codes), fonts, logos, taglines, and any brand guidelines visible.'
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Analyze this brand material and extract all information:'
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: imageUrl
-                  }
-                }
-              ]
-            }
-          ],
-          max_completion_tokens: 2000
+        processedContent.push({
+          type: 'image_url' as const,
+          image_url: {
+            url: `data:${file.type};base64,${base64}`,
+            detail: 'high' as const
+          }
         })
-        
-        textContent = visionResponse.choices[0].message.content || ''
-      }
-      // Handle JSON files
-      else if (fileType === 'application/json' || fileName.endsWith('.json')) {
-        const jsonData = JSON.parse(Buffer.from(buffer).toString('utf8'))
-        textContent = JSON.stringify(jsonData, null, 2)
-      }
-      // Handle XML/HTML files
-      else if (fileType === 'text/html' || fileType === 'application/xml' || 
-               fileName.endsWith('.html') || fileName.endsWith('.xml')) {
-        const text = Buffer.from(buffer).toString('utf8')
-        // Strip HTML/XML tags
-        textContent = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-      }
-      // Fallback for any other file type - attempt to extract readable text
-      else {
-        // Try to extract any readable text from the file
-        const text = Buffer.from(buffer).toString('utf8')
-        // Extract readable ASCII text
-        const matches = text.match(/[\x20-\x7E]{10,}/g) || []
-        textContent = matches.join(' ')
-        
-        // If no readable text found, inform the user
-        if (!textContent || textContent.length < 50) {
-          textContent = `File type '${fileType || 'unknown'}' with name '${fileName}'. Unable to extract meaningful text content. Please provide a PDF, Word document, Excel file, PowerPoint, text file, or image with brand information.`
+      } else if (file.type === 'image/svg+xml' || file.name.endsWith('.svg')) {
+        // SVG files can be read as text
+        try {
+          const svgText = new TextDecoder().decode(buffer)
+          textContent += `\n\nSVG from ${file.name} (first 2000 chars):\n${svgText.substring(0, 2000)}`
+        } catch (error) {
+          console.error('Error processing SVG:', error)
         }
+      } else if (file.type.includes('presentation') || file.name.match(/\.(ppt|pptx)$/i)) {
+        // PowerPoint files - note them for context
+        textContent += `\n\nPresentation file: ${file.name} - Contains brand presentation materials`
+      } else if (file.type.includes('document') || file.type.includes('msword') || file.name.match(/\.(doc|docx)$/i)) {
+        // Word documents - note them for context
+        textContent += `\n\nDocument file: ${file.name} - Contains brand documentation`
+      } else if (file.type === 'text/plain' || file.name.match(/\.(txt|md)$/i)) {
+        // Plain text files
+        try {
+          const text = new TextDecoder().decode(buffer)
+          textContent += `\n\nContent from ${file.name}:\n${text.substring(0, 5000)}` // Limit text length
+        } catch (error) {
+          console.error('Error processing text file:', error)
+        }
+      } else {
+        // Unknown file type
+        textContent += `\n\nFile: ${file.name} (type: ${file.type || 'unknown'})`
       }
-    } catch (extractionError) {
-      console.error('Text extraction error:', extractionError)
-      // Attempt basic text extraction as fallback
-      try {
-        textContent = Buffer.from(buffer).toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, '')
-      } catch {
-        textContent = `Unable to extract text from file '${fileName}'. The file may be corrupted or in an unsupported format.`
-      }
-    }
-    
-    // Ensure we have some content to analyze
-    if (!textContent || textContent.trim().length === 0) {
-      return NextResponse.json({ 
-        error: 'Could not extract any text content from the uploaded file. Please ensure the file contains readable text or brand information.' 
-      }, { status: 400 })
     }
 
-    // Analyze brand content with GPT-5 [[memory:4799270]]
-    const analysisResponse = await openai.chat.completions.create({
-      model: 'gpt-5', // Using GPT-5 for superior analysis
+    // Prepare the prompt for analysis
+    const prompt = `You are a brand identity expert. Analyze the following brand materials (images, documents, and text) and extract comprehensive brand identity information. 
+    Return a detailed JSON object with the following structure:
+    
+    {
+      "colors": {
+        "primary": ["#hex1", "#hex2", "#hex3"],
+        "secondary": ["#hex4", "#hex5"],
+        "accent": ["#hex6"],
+        "descriptions": {
+          "#hex1": "Description of how this color is used",
+          ...
+        }
+      },
+      "typography": {
+        "primaryFont": "Font name",
+        "secondaryFont": "Font name",
+        "headingStyle": "Style description",
+        "bodyStyle": "Style description",
+        "recommendations": ["Font pairing suggestion 1", "Font pairing suggestion 2"]
+      },
+      "voice": {
+        "tone": ["Professional", "Friendly", etc.],
+        "personality": ["Innovative", "Trustworthy", etc.],
+        "emotions": ["Confident", "Inspiring", etc.],
+        "keywords": ["Key phrase 1", "Key phrase 2"],
+        "examples": ["Example sentence 1", "Example sentence 2"]
+      },
+      "visualStyle": {
+        "aesthetic": ["Modern", "Minimalist", etc.],
+        "imagery": ["Photography style", "Illustration style"],
+        "composition": ["Layout principles"],
+        "mood": ["Visual mood descriptors"]
+      },
+      "targetAudience": {
+        "demographics": ["Age range", "Profession", "Location"],
+        "psychographics": ["Values", "Interests", "Lifestyle"],
+        "painPoints": ["Problem 1", "Problem 2"],
+        "aspirations": ["Goal 1", "Goal 2"]
+      },
+      "competitors": {
+        "direct": ["Competitor 1", "Competitor 2"],
+        "indirect": ["Alternative 1", "Alternative 2"],
+        "positioning": "How the brand differentiates",
+        "differentiators": ["Unique value 1", "Unique value 2"]
+      },
+      "mission": {
+        "statement": "Core mission statement",
+        "values": ["Value 1", "Value 2", "Value 3"],
+        "vision": "Long-term vision",
+        "purpose": "Why the brand exists"
+      }
+    }
+    
+    Be as detailed and specific as possible. Extract actual hex color codes from images, identify font families if visible, and extract specific brand information from any text or visual elements.
+    
+    ${textContent ? `Additional text content from documents:\n${textContent}` : ''}`
+
+    // Build the message content
+    const messageContent: any[] = [
+      { type: 'text', text: prompt },
+      ...processedContent
+    ]
+
+    // Call GPT-5 API for analysis [[memory:4799270]]
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5',
       messages: [
         {
           role: 'system',
-          content: `You are a brand strategist analyzing brand materials. Extract and structure all brand elements from the provided content. 
-          
-          Return a JSON object with these exact fields:
-          - colors: { primary: [hex codes], secondary: [hex codes], accent: [hex codes] }
-          - typography: { fonts: [font names], headings: [heading fonts], body: [body fonts] }
-          - voice: { tone: [tone descriptors], personality: [traits], values: [core values] }
-          - visual_style: { photography: [photo style], graphics: [graphic style], patterns: [patterns used] }
-          - audience: { primary: "target audience", demographics: [details], psychographics: [details], pain_points: [problems solved] }
-          - competitors: [competitor names]
-          - content_themes: [main topics/themes]
-          - unique_value_proposition: "main value prop"
-          - mission_statement: "mission"
-          - brand_story: "brand narrative"
-          - do_and_donts: { do: [brand dos], dont: [brand donts] }
-          - strengths: [brand strengths]
-          - opportunities: [growth opportunities]
-          - recommendations: [strategic recommendations]
-          
-          If information is not available, use reasonable defaults based on industry best practices.
-          Ensure all color values are valid hex codes.`
+          content: 'You are a brand identity expert analyzing brand materials to extract comprehensive brand information. Always return valid JSON.'
         },
         {
           role: 'user',
-          content: `Analyze this brand content and extract all brand elements:\n\n${textContent}`
+          content: messageContent
         }
       ],
-      response_format: { type: 'json_object' },
-      // GPT-5 only supports default temperature (1.0)
-      max_completion_tokens: 4000
+      max_completion_tokens: 3000, // GPT-5 uses max_completion_tokens instead of max_tokens
+      temperature: 1.0, // GPT-5 only supports default temperature
+      response_format: { type: 'json_object' }
     })
 
-    const analysisContent = analysisResponse.choices[0].message.content
-    if (!analysisContent) {
-      throw new Error('No analysis content received')
-    }
-
-    const analysis = JSON.parse(analysisContent)
-    
-    // Validate with schema
-    const validatedAnalysis = BrandAnalysisSchema.parse(analysis)
-    
-    // Save analysis to database - user_profiles table
-    const supabase = createSupabaseServerClient()
-    const { error: dbError } = await supabase
-      .from('user_profiles')
-      .update({
-        brand_analysis: validatedAnalysis,
-        brand_colors: { primary: validatedAnalysis.colors.primary },
-        brand_voice: validatedAnalysis.voice.tone[0],
-        brand_assets: { analysis: validatedAnalysis },
-        target_audience: { primary: validatedAnalysis.audience.primary, demographics: validatedAnalysis.audience.demographics },
-        updated_at: new Date().toISOString()
-      })
-      .eq('clerk_user_id', userId)
-    
-    if (dbError) {
-      console.error('Database error:', dbError)
+    const rawContent = response.choices[0]?.message?.content
+    if (!rawContent) {
+      throw new Error('No analysis content returned from AI')
     }
     
-    return NextResponse.json(validatedAnalysis)
-  } catch (error) {
-    console.error('Brand analysis error:', error)
+    let analysis
+    try {
+      analysis = JSON.parse(rawContent)
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError)
+      throw new Error('Invalid response format from AI')
+    }
     
-    // Return a default analysis if something goes wrong
-    return NextResponse.json({
+    // Ensure all required fields exist with defaults
+    const completeAnalysis = {
       colors: {
-        primary: ['#8B5CF6', '#EC4899', '#3B82F6'],
-        secondary: ['#10B981', '#F59E0B'],
-        accent: ['#EF4444']
+        primary: analysis.colors?.primary || ['#8B5CF6', '#EC4899', '#3B82F6'],
+        secondary: analysis.colors?.secondary || ['#64748B', '#94A3B8'],
+        accent: analysis.colors?.accent || ['#F59E0B'],
+        descriptions: analysis.colors?.descriptions || {}
       },
       typography: {
-        fonts: ['Inter', 'Sans-serif'],
-        headings: ['Inter'],
-        body: ['Inter']
+        primaryFont: analysis.typography?.primaryFont || 'Inter',
+        secondaryFont: analysis.typography?.secondaryFont || 'System UI',
+        headingStyle: analysis.typography?.headingStyle || 'Bold and modern',
+        bodyStyle: analysis.typography?.bodyStyle || 'Clean and readable',
+        recommendations: analysis.typography?.recommendations || []
       },
       voice: {
-        tone: ['Professional', 'Friendly', 'Innovative'],
-        personality: ['Expert', 'Approachable', 'Forward-thinking'],
-        values: ['Quality', 'Innovation', 'Customer Success']
+        tone: analysis.voice?.tone || ['Professional', 'Friendly'],
+        personality: analysis.voice?.personality || ['Innovative', 'Trustworthy'],
+        emotions: analysis.voice?.emotions || ['Confident', 'Inspiring'],
+        keywords: analysis.voice?.keywords || [],
+        examples: analysis.voice?.examples || []
       },
-      visual_style: {
-        photography: ['Modern', 'Clean', 'Authentic'],
-        graphics: ['Minimalist', 'Bold', 'Geometric'],
-        patterns: ['Gradients', 'Abstract shapes']
+      visualStyle: {
+        aesthetic: analysis.visualStyle?.aesthetic || ['Modern', 'Clean'],
+        imagery: analysis.visualStyle?.imagery || ['Photography'],
+        composition: analysis.visualStyle?.composition || ['Balanced'],
+        mood: analysis.visualStyle?.mood || ['Professional']
       },
-      audience: {
-        primary: 'Content creators and businesses',
-        demographics: ['25-45 years old', 'Tech-savvy', 'Growth-focused'],
-        psychographics: ['Value efficiency', 'Early adopters', 'Quality-conscious'],
-        pain_points: ['Time constraints', 'Content consistency', 'Multi-platform management']
+      targetAudience: {
+        demographics: analysis.targetAudience?.demographics || ['25-45 years', 'Professionals'],
+        psychographics: analysis.targetAudience?.psychographics || ['Growth-minded'],
+        painPoints: analysis.targetAudience?.painPoints || [],
+        aspirations: analysis.targetAudience?.aspirations || []
       },
-      competitors: [],
-      content_themes: ['Innovation', 'Growth', 'Success', 'Technology'],
-      unique_value_proposition: 'Transform your content creation with AI',
-      mission_statement: 'Empowering creators with intelligent tools',
-      brand_story: 'Built by creators, for creators',
-      do_and_donts: {
-        do: ['Be authentic', 'Focus on value', 'Stay consistent'],
-        dont: ['Over-promise', 'Use jargon', 'Ignore feedback']
+      competitors: {
+        direct: analysis.competitors?.direct || [],
+        indirect: analysis.competitors?.indirect || [],
+        positioning: analysis.competitors?.positioning || 'Unique value proposition',
+        differentiators: analysis.competitors?.differentiators || []
       },
-      strengths: ['AI technology', 'User-friendly', 'Comprehensive solution'],
-      opportunities: ['Market expansion', 'Feature development', 'Community building'],
-      recommendations: ['Focus on user education', 'Build strong community', 'Maintain brand consistency']
-    })
+      mission: {
+        statement: analysis.mission?.statement || 'To empower creators',
+        values: analysis.mission?.values || ['Innovation', 'Quality', 'Community'],
+        vision: analysis.mission?.vision || 'A world where creativity thrives',
+        purpose: analysis.mission?.purpose || 'Making creation accessible'
+      }
+    }
+
+    return NextResponse.json(completeAnalysis)
+  } catch (error: any) {
+    console.error('Brand analysis error:', error)
+    
+    // Provide specific error messages
+    let errorMessage = 'Failed to analyze brand materials'
+    let statusCode = 500
+    
+    if (error.message?.includes('Unauthorized')) {
+      errorMessage = 'Authentication failed'
+      statusCode = 401
+    } else if (error.message?.includes('rate limit')) {
+      errorMessage = 'Too many requests. Please try again later.'
+      statusCode = 429
+    } else if (error.message?.includes('Invalid response')) {
+      errorMessage = 'Failed to process analysis results'
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: statusCode }
+    )
   }
 }
