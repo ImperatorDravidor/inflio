@@ -207,14 +207,8 @@ export class PostsService {
     if (suggestionError) throw suggestionError
 
     try {
-      // Generate images
-      const images = await this.generatePostImages({
-        suggestionId: suggestion.id,
-        contentType,
-        contentIdea,
-        personaId,
-        userId
-      })
+      // Defer image generation until user selects a post.
+      const images: any[] = []
 
       // Generate platform-specific copy
       const copyVariants = await this.generatePlatformCopy({

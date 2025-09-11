@@ -3,10 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { fal } from '@fal-ai/client'
 import { PersonaValidationService } from '@/lib/services/persona-validation-service'
 
-// Configure FAL AI client
-fal.config({
-  credentials: process.env.FAL_KEY!
-})
+// Configure FAL client lazily after auth
 
 interface GenerateSamplesRequest {
   personaPhotos: string[] // Base64 or URLs
@@ -27,6 +24,12 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const falKey = process.env.FAL_KEY
+    if (!falKey) {
+      return NextResponse.json({ error: 'FAL_KEY is not configured' }, { status: 401 })
+    }
+    fal.config({ credentials: falKey })
 
     const body: GenerateSamplesRequest = await request.json()
     const { personaPhotos, personaName, styles } = body
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
       (referencePhoto.startsWith('data:') || referencePhoto.startsWith('http'))
 
     // Generate samples in parallel for speed
+    let sawUnauthorized = false
     const samplePromises = styleConfigs.slice(0, 5).map(async (config, index) => {
       try {
         console.log(`Generating ${config.style} sample...`)
@@ -157,8 +161,11 @@ export async function POST(request: NextRequest) {
         }
 
         return null
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Failed to generate ${config.style} sample:`, error)
+        if (error?.status === 401 || /unauthorized/i.test(error?.message || '')) {
+          sawUnauthorized = true
+        }
         return null
       }
     })
@@ -174,10 +181,10 @@ export async function POST(request: NextRequest) {
     })
 
     if (samples.length === 0) {
-      return NextResponse.json(
-        { error: 'Failed to generate preview samples' },
-        { status: 500 }
-      )
+      if (sawUnauthorized) {
+        return NextResponse.json({ error: 'FAL authorization failed. Check FAL_KEY.' }, { status: 401 })
+      }
+      return NextResponse.json({ error: 'Failed to generate preview samples' }, { status: 500 })
     }
 
     // Get recommendations based on the photos

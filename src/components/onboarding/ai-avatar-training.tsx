@@ -25,8 +25,6 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { PersonaApprovalDialog } from '@/components/onboarding/persona-approval-dialog'
-import { PersonaValidationService } from '@/lib/services/persona-validation-service'
 
 interface AvatarPhoto {
   id: string
@@ -46,13 +44,15 @@ interface AvatarPhoto {
 }
 
 interface AIAvatarTrainingProps {
-  onComplete: (photos: AvatarPhoto[]) => void
+  onComplete: (photos: AvatarPhoto[], personaId?: string) => void
   onBack?: () => void
   onSkip?: () => void
   minPhotos?: number
   recommendedPhotos?: number
   maxPhotos?: number
   hideNavigation?: boolean
+  formData?: any
+  updateFormData?: (key: string, value: any) => void
 }
 
 const PHOTO_TIPS = [
@@ -96,7 +96,9 @@ export function AIAvatarTraining({
   minPhotos = 5,
   recommendedPhotos = 10,
   maxPhotos = 20,
-  hideNavigation = false
+  hideNavigation = false,
+  formData,
+  updateFormData
 }: AIAvatarTrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -118,20 +120,12 @@ export function AIAvatarTraining({
   const [captureMode, setCaptureMode] = useState<'instant' | 'timer'>('instant')
   const [timerDuration, setTimerDuration] = useState(3) // 3 second default
   
-  // Approval flow state
-  const [showApprovalDialog, setShowApprovalDialog] = useState(false)
-  const [approvalPrompted, setApprovalPrompted] = useState(false)
-  const [approvalReceived, setApprovalReceived] = useState(false)
-  const [isGeneratingSamples, setIsGeneratingSamples] = useState(false)
+  // Training state
   const [isTraining, setIsTraining] = useState(false)
-  const [sampleImages, setSampleImages] = useState<Array<{ url: string; style: string; prompt: string; quality: number }>>([])
-  const [photoAnalysis, setPhotoAnalysis] = useState<{
-    quality: 'excellent' | 'good' | 'needs_improvement'
-    feedback: string[]
-    suggestions: string[]
-    readyForTraining: boolean
-    scores: { lighting: number; consistency: number; variety: number; clarity: number; overall: number }
-  } | null>(null)
+  const [trainingProgress, setTrainingProgress] = useState(0)
+  const [trainingStatus, setTrainingStatus] = useState('')
+  const [personaName, setPersonaName] = useState(formData?.fullName || '')
+  const [personaId, setPersonaId] = useState<string | null>(null)
 
   // Calculate progress
   const progress = Math.min((photos.length / recommendedPhotos) * 100, 100)
@@ -693,26 +687,12 @@ export function AIAvatarTraining({
     toast.success(`${photos.length} photos downloaded to your device`)
   }
   
-  // Handle completion (gated by approval)
+  // Handle completion - simple and direct
   const handleComplete = () => {
     if (!isReady) return
-    if (!approvalReceived) {
-      if (!approvalPrompted) {
-        generateApprovalPreview()
-          .then(() => {
-            setShowApprovalDialog(true)
-            setApprovalPrompted(true)
-          })
-          .catch(() => {
-            setShowApprovalDialog(true)
-            setApprovalPrompted(true)
-          })
-      } else {
-        setShowApprovalDialog(true)
-      }
-      return
-    }
-    onComplete(photos)
+    
+    // Just start training immediately - no approval needed
+    startPersonaTraining()
   }
 
   // Cleanup on unmount
@@ -722,43 +702,129 @@ export function AIAvatarTraining({
     }
   }, [])
 
-  // Generate GPT-5 analysis and preview samples
-  const generateApprovalPreview = async () => {
+  // Start persona training with FAL AI
+  const startPersonaTraining = async () => {
+    if (!isReady || isTraining) return
+    
+    setIsTraining(true)
+    setTrainingProgress(0)
+    setTrainingStatus('Preparing your photos...')
+    
     try {
-      setIsGeneratingSamples(true)
-      // Analyze photos with GPT-5
-      const analysis = await PersonaValidationService.analyzePersonaPhotos(
-        photos.map(p => p.url)
-      )
-      setPhotoAnalysis(analysis)
-
-      // Generate preview samples (without training)
-      const response = await fetch('/api/personas/generate-samples', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personaPhotos: photos.map(p => p.url),
-          personaName: 'Creator'
+      // Convert photos to Files
+      const photoFiles = await Promise.all(
+        photos.map(async (photo, index) => {
+          const response = await fetch(photo.url)
+          const blob = await response.blob()
+          return new File([blob], `photo_${index + 1}.jpg`, { type: 'image/jpeg' })
         })
+      )
+      
+      // Create FormData
+      const uploadData = new FormData()
+      uploadData.append('name', personaName || formData?.fullName || 'Creator')
+      uploadData.append('description', 'AI Avatar for content creation')
+      uploadData.append('triggerPhrase', (personaName || 'creator').toLowerCase().replace(/\s+/g, '_'))
+      uploadData.append('autoTrain', 'true')
+      
+      photoFiles.forEach((file) => {
+        uploadData.append('photos', file)
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSampleImages(data.samples || [])
-      } else {
-        setSampleImages([])
+      
+      setTrainingProgress(20)
+      setTrainingStatus('Creating your AI avatar...')
+      
+      // Call persona creation API
+      const response = await fetch('/api/personas/create', {
+        method: 'POST',
+        body: uploadData
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create persona')
       }
+      
+      const result = await response.json()
+      setPersonaId(result.persona.id)
+      
+      // Update form data if available
+      if (updateFormData) {
+        updateFormData('personaId', result.persona.id)
+        updateFormData('personaName', personaName)
+        updateFormData('personaStatus', result.persona.status)
+      }
+      
+      setTrainingProgress(40)
+      setTrainingStatus('AI training started (10-30 minutes)...')
+      
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setTrainingProgress(prev => {
+          if (prev >= 95) {
+            clearInterval(progressInterval)
+            return 95
+          }
+          return prev + 5
+        })
+      }, 3000)
+      
+      // Poll for training status
+      const checkStatus = async () => {
+        try {
+          const statusResponse = await fetch(`/api/personas/train-lora?personaId=${result.persona.id}`)
+          const statusData = await statusResponse.json()
+          
+          if (statusData.latestJob) {
+            const job = statusData.latestJob
+            
+            if (job.status === 'completed') {
+              clearInterval(progressInterval)
+              setTrainingProgress(100)
+              setTrainingStatus('Training complete!')
+              toast.success('Your AI avatar is ready!')
+              
+              setTimeout(() => {
+                onComplete(photos, result.persona.id)
+              }, 1500)
+              return true
+            } else if (job.status === 'failed') {
+              clearInterval(progressInterval)
+              setIsTraining(false)
+              toast.error('Training failed. Please try again.')
+              return true
+            }
+          }
+          
+          return false
+        } catch (error) {
+          console.error('Status check error:', error)
+          return false
+        }
+      }
+      
+      // Check status every 10 seconds
+      const statusInterval = setInterval(async () => {
+        const isDone = await checkStatus()
+        if (isDone) {
+          clearInterval(statusInterval)
+        }
+      }, 10000)
+      
+      // Initial status check after 5 seconds
+      setTimeout(() => checkStatus(), 5000)
+      
     } catch (error) {
-      console.error('Approval preview generation failed:', error)
-      setSampleImages([])
-    } finally {
-      setIsGeneratingSamples(false)
+      console.error('Training error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to start training')
+      setIsTraining(false)
     }
   }
 
+
   return (
     <TooltipProvider>
-      <div className="space-y-6">
+      <div className="space-y-6 pb-24">
         {/* Header */}
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-bold">Train Your AI Avatar</h2>
@@ -766,11 +832,11 @@ export function AIAvatarTraining({
             Upload or capture photos to create your personalized AI model
           </p>
           <div className="flex items-center justify-center gap-2 text-sm">
-            <Badge variant="outline" className="bg-red-50">
+            <Badge variant="outline" className="bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800">
               <AlertCircle className="h-3 w-3 mr-1" />
               Minimum: {minPhotos} photos
             </Badge>
-            <Badge variant="outline" className="bg-green-50">
+            <Badge variant="outline" className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
               <Check className="h-3 w-3 mr-1" />
               Recommended: {recommendedPhotos} photos
             </Badge>
@@ -786,12 +852,12 @@ export function AIAvatarTraining({
               {photos.length >= minPhotos && photos.length < recommendedPhotos && ` (${recommendedPhotos - photos.length} more recommended)`}
             </span>
             {isOptimal ? (
-              <Badge className="bg-green-500">
+              <Badge className="bg-green-500 text-white border-green-600">
                 <Check className="h-3 w-3 mr-1" />
                 Optimal amount
               </Badge>
             ) : isReady ? (
-              <Badge className="bg-yellow-500">
+              <Badge className="bg-yellow-500 text-white border-yellow-600">
                 <Check className="h-3 w-3 mr-1" />
                 Ready to train
               </Badge>
@@ -827,7 +893,7 @@ export function AIAvatarTraining({
               <TabsContent value="capture" className="space-y-4">
                 {/* Camera explanation before starting */}
                 {!cameraActive && !cameraError && (
-                  <Card className="p-6 bg-primary/5 border-primary/20">
+                  <Card className="p-6 bg-primary/5 dark:bg-primary/10 border-primary/20 dark:border-primary/30">
                     <h4 className="font-semibold mb-3 flex items-center gap-2">
                       <Camera className="h-5 w-5 text-primary" />
                       How to Take Great Avatar Photos
@@ -907,7 +973,7 @@ export function AIAvatarTraining({
                                 </div>
                                 
                                 {/* Photo counter badge */}
-                                <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/90 text-black rounded-full text-xs font-medium">
+                                <div className="inline-flex items-center gap-2 px-3 py-1 bg-background/90 backdrop-blur-sm border rounded-full text-xs font-medium">
                                   <Camera className="h-3 w-3" />
                                   {photos.length} / {recommendedPhotos} photos
                                 </div>
@@ -922,7 +988,7 @@ export function AIAvatarTraining({
                             initial={{ opacity: 1 }}
                             animate={{ opacity: 0 }}
                             transition={{ duration: 0.1 }}
-                            className="absolute inset-0 bg-white pointer-events-none"
+                            className="absolute inset-0 bg-white dark:bg-gray-200 pointer-events-none"
                           />
                         )}
                         
@@ -986,7 +1052,7 @@ export function AIAvatarTraining({
                                   "h-16 w-16 rounded-full p-0 transition-all",
                                   countdown !== null
                                     ? "bg-red-500 animate-pulse"
-                                    : "bg-white hover:bg-gray-100 hover:scale-110"
+                                    : "bg-background hover:bg-accent hover:scale-110 border"
                                 )}
                               >
                                 {isCapturing ? (
@@ -1332,115 +1398,127 @@ export function AIAvatarTraining({
                 </div>
               )}
               
+              {/* Simple, clear status */}
               {photos.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4"
-                >
-                  <Alert 
-                    className={cn(
-                      "border-2",
-                      photos.length < minPhotos 
-                        ? "border-red-200 bg-red-50 dark:bg-red-950/20" 
-                        : photos.length < recommendedPhotos 
-                        ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20"
-                        : "border-green-200 bg-green-50 dark:bg-green-950/20"
-                    )}
-                  >
+                <div className="mt-4 text-center p-3 rounded-lg bg-muted/50">
+                  <p className="text-sm font-medium">
                     {photos.length < minPhotos ? (
-                      <>
-                        <AlertCircle className="h-4 w-4 text-red-600" />
-                        <AlertDescription className="text-red-800 dark:text-red-200">
-                          <strong>Add {minPhotos - photos.length} more photo{minPhotos - photos.length !== 1 && 's'}</strong> to enable AI training.
-                          <div className="mt-2 text-xs">
-                            Minimum required for basic avatar generation.
-                          </div>
-                        </AlertDescription>
-                      </>
-                    ) : photos.length < recommendedPhotos ? (
-                      <>
-                        <Info className="h-4 w-4 text-yellow-600" />
-                        <AlertDescription className="text-yellow-800 dark:text-yellow-200">
-                          <strong>Ready to train!</strong> Add {recommendedPhotos - photos.length} more photo{recommendedPhotos - photos.length !== 1 && 's'} for optimal quality.
-                          <div className="mt-2 text-xs">
-                            More photos = better AI accuracy and variety.
-                          </div>
-                        </AlertDescription>
-                      </>
-                    ) : photos.length < 15 ? (
-                      <>
-                        <Check className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-800 dark:text-green-200">
-                          <strong>Excellent!</strong> You have the recommended amount for great results.
-                          <div className="mt-2 text-xs">
-                            Add more for even better variety (up to {maxPhotos} total).
-                          </div>
-                        </AlertDescription>
-                      </>
+                      <span className="text-muted-foreground">
+                        Add {minPhotos - photos.length} more photo{minPhotos - photos.length !== 1 ? 's' : ''} to start
+                      </span>
                     ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 text-purple-600" />
-                        <AlertDescription className="text-purple-800 dark:text-purple-200">
-                          <strong>Outstanding!</strong> Maximum quality avatar training ready.
-                          <div className="mt-2 text-xs">
-                            Your AI avatar will have excellent variety and accuracy.
-                          </div>
-                        </AlertDescription>
-                      </>
+                      <span className="text-green-600 dark:text-green-400">
+                        ✓ Ready to train - Click "Start Training" below
+                      </span>
                     )}
-                  </Alert>
-                </motion.div>
+                  </p>
+                </div>
               )}
             </Card>
           </div>
         </div>
         
-        {/* Actions */}
-        {!hideNavigation ? (
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              onClick={onBack}
-              disabled={isProcessing}
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            
-            <div className="flex gap-3">
-              {onSkip && (
+        {/* Actions - Fixed at bottom */}
+        <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 z-40">
+          <div className="max-w-4xl mx-auto">
+            {!hideNavigation ? (
+              <div className="flex items-center justify-between">
                 <Button
-                  variant="outline"
-                  onClick={onSkip}
+                  variant="ghost"
+                  onClick={onBack}
                   disabled={isProcessing}
                 >
-                  Skip for now
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
                 </Button>
-              )}
-              
-              <Button
-                onClick={handleComplete}
-                disabled={!isReady || isProcessing}
-              >
-                <Wand2 className="h-4 w-4 mr-2" />
-                {approvalReceived ? 'Start Training' : 'Review & Start Training'}
-              </Button>
-            </div>
+                
+                <div className="flex gap-3">
+                  {onSkip && (
+                    <Button
+                      variant="outline"
+                      onClick={onSkip}
+                      disabled={isProcessing}
+                    >
+                      Skip for now
+                    </Button>
+                  )}
+                  
+                  <Button
+                    onClick={handleComplete}
+                    disabled={!isReady || isProcessing}
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    Start Training
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <Button
+                  onClick={handleComplete}
+                  disabled={!isReady || isProcessing}
+                  size="lg"
+                >
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  {isReady ? 'Start Training' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
+                </Button>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex justify-center">
-            <Button
-              onClick={handleComplete}
-              disabled={!isReady || isProcessing}
-              size="lg"
-            >
-              <Wand2 className="h-4 w-4 mr-2" />
-              {isReady ? 'Save Photos' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
-            </Button>
-          </div>
-        )}
+        </div>
         
+        {/* Training Progress Overlay */}
+        <AnimatePresence>
+          {isTraining && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center p-4"
+            >
+              <Card className="max-w-md w-full p-8">
+                <div className="space-y-6">
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 text-center">
+                    <h3 className="text-xl font-semibold">Training Your AI Avatar</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {trainingStatus}
+                    </p>
+                  </div>
+
+                  <Progress value={trainingProgress} className="h-2" />
+
+                  <Alert>
+                    <Sparkles className="h-4 w-4" />
+                    <AlertDescription>
+                      Your AI avatar is being trained with advanced machine learning.
+                      This process typically takes 10-30 minutes. You can continue with
+                      the onboarding or come back later.
+                    </AlertDescription>
+                  </Alert>
+
+                  {onSkip && (
+                    <Button
+                      variant="outline"
+                      onClick={onSkip}
+                      className="w-full"
+                    >
+                      Continue Setup (Training in Background)
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Selected photo modal */}
         <AnimatePresence>
           {selectedPhoto && (
@@ -1506,36 +1584,6 @@ export function AIAvatarTraining({
           )}
         </AnimatePresence>
 
-        {/* Persona approval dialog */}
-        <PersonaApprovalDialog
-          open={showApprovalDialog}
-          onOpenChange={setShowApprovalDialog}
-          photos={photos}
-          samples={sampleImages}
-          analysis={photoAnalysis || undefined}
-          personaName={'Creator'}
-          onApprove={() => {
-            setApprovalReceived(true)
-            setShowApprovalDialog(false)
-            setIsTraining(true)
-            try {
-              onComplete(photos)
-            } finally {
-              setIsTraining(false)
-            }
-          }}
-          onReject={(issues, feedback) => {
-            setApprovalReceived(false)
-            setShowApprovalDialog(false)
-            const note = issues.length ? ` (${issues.join(', ')})` : ''
-            toast.info('Let’s improve your photos' + note, {
-              description: feedback || 'Try better lighting, clear face, and varied angles.'
-            })
-          }}
-          onRegenerate={generateApprovalPreview}
-          isGeneratingSamples={isGeneratingSamples}
-          isTraining={isTraining}
-        />
       </div>
     </TooltipProvider>
   )

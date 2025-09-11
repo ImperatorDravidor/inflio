@@ -605,7 +605,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
         </div>
 
         {/* Main content */}
-        <div className="pt-20 pb-24 px-6">
+        <div className="pt-20 pb-32 px-6">
           <div className="max-w-4xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
@@ -665,11 +665,11 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             transition={{ delay: 0.2 + i * 0.1 }}
                             className="p-6 rounded-2xl bg-card border border-border shadow-lg hover:shadow-xl transition-all"
                           >
-                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
+                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4 mx-auto">
                               <item.icon className="h-6 w-6 text-primary" />
                             </div>
-                            <h3 className="font-semibold mb-2">{item.title}</h3>
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                            <h3 className="font-semibold mb-2 text-center">{item.title}</h3>
+                            <p className="text-sm text-muted-foreground text-center">{item.description}</p>
                           </motion.div>
                         ))}
                       </div>
@@ -814,43 +814,42 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                 {/* Persona Step */}
                 {currentStep === 3 && (
                   <AIAvatarTraining
-                    onComplete={(photos) => {
-                      // Convert AvatarPhoto[] to string[] URLs for formData
-                      const photoUrls = photos.map(p => p.url)
-                      updateFormData('personaPhotos', photoUrls)
-                      setIsTraining(true)
-                      toast.success('Photos saved! Training will start after onboarding.')
-                      // Auto-advance to next step after saving photos
+                    onComplete={(photos, personaId) => {
+                      if (personaId) {
+                        updateFormData('personaId', personaId)
+                        updateFormData('personaTrained', true)
+                        toast.success('AI Avatar created and training started!')
+                      } else {
+                        updateFormData('personaPhotos', photos.map(p => p.url))
+                        toast.success('Photos saved! Training will start after onboarding.')
+                      }
+                      // Auto-advance to next step
                       setTimeout(() => {
-                        if (currentSection < totalSections - 1) {
-                          setCurrentSection(currentSection + 1)
-                        } else if (currentStep < totalSteps - 1) {
+                        if (currentStep < totalSteps - 1) {
                           setCurrentStep(currentStep + 1)
                           setCurrentSection(0)
                         } else {
                           handleComplete()
                         }
-                      }, 2000)
-                    }}
-                    onBack={() => {
-                      if (currentSection > 0) {
-                        setCurrentSection(currentSection - 1)
-                      } else if (currentStep > 0) {
-                        setCurrentStep(currentStep - 1)
-                        setCurrentSection(ONBOARDING_FLOW[currentStep - 1].sections.length - 1)
-                      }
+                      }, 1500)
                     }}
                     onSkip={() => {
-                      updateFormData('personaPhotosSkipped', true)
-                      if (currentSection < totalSections - 1) {
-                        setCurrentSection(currentSection + 1)
-                      } else if (currentStep < totalSteps - 1) {
+                      updateFormData('personaSkipped', true)
+                      if (currentStep < totalSteps - 1) {
                         setCurrentStep(currentStep + 1)
                         setCurrentSection(0)
                       } else {
                         handleComplete()
                       }
                     }}
+                    onBack={() => {
+                      if (currentStep > 0) {
+                        setCurrentStep(currentStep - 1)
+                        setCurrentSection(0)
+                      }
+                    }}
+                    formData={formData}
+                    updateFormData={updateFormData}
                     minPhotos={5}
                     recommendedPhotos={10}
                     maxPhotos={20}
@@ -1036,14 +1035,28 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
               ))}
             </div>
             
-            <Button
-              onClick={handleContinue}
-              disabled={!validateCurrentSection()}
-              className="min-w-[120px]"
-            >
-              {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-              <ChevronRight className="h-4 w-4 ml-2" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {currentStep === 2 && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    updateFormData('brandAnalysisSkipped', true)
+                    setCurrentStep(3)
+                    setCurrentSection(0)
+                  }}
+                >
+                  Skip to AI Avatar
+                </Button>
+              )}
+              <Button
+                onClick={handleContinue}
+                disabled={!validateCurrentSection()}
+                className="min-w-[120px]"
+              >
+                {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
 

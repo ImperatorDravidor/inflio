@@ -1,230 +1,335 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import OpenAI from 'openai'
+import Anthropic, { toFile } from '@anthropic-ai/sdk'
+import { Readable } from 'stream'
+import { createClient } from '@supabase/supabase-js'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!
+// Configure for large file uploads - Files API supports up to 500MB per file!
+export const runtime = 'nodejs'
+export const maxDuration = 300 // Allow up to 5 minutes for large documents
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!
 })
 
+// Supabase admin client for URL fallback uploads
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(request: NextRequest) {
+  console.log('[Brand Analysis] Request received')
   try {
     const { userId } = await auth()
     if (!userId) {
+      console.log('[Brand Analysis] Unauthorized - no userId')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    console.log('[Brand Analysis] User authenticated:', userId)
 
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
+    console.log('[Brand Analysis] Files received:', files.length, files.map(f => ({ name: f.name, type: f.type, size: f.size })))
     
     if (files.length === 0) {
+      console.log('[Brand Analysis] No files provided')
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
-    // Process files and extract content
-    const processedContent: any[] = []
-    let textContent = ''
+    // Upload files to Claude's Files API first (supports up to 500MB per file!)
+    const messageContent: any[] = []
+    const uploadedFileIds: string[] = []
+    const uploadedIdByKey = new Map<string, string>()
     
-    for (const file of files) {
-      const buffer = await file.arrayBuffer()
-      
-      if (file.type === 'application/pdf') {
-        // Extract text from PDF
-        try {
-          const pdf = (await import('pdf-parse' as any)).default as any
-          const data = await pdf(Buffer.from(buffer))
-          const pdfText = data.text.substring(0, 10000) // Limit to first 10k chars
-          textContent += `\n\nContent from ${file.name}:\n${pdfText}`
-          
-          // Also include metadata if available
-          if (data.info) {
-            textContent += `\nPDF Metadata: Title: ${data.info.Title || 'N/A'}, Author: ${data.info.Author || 'N/A'}`
-          }
-        } catch (error) {
-          console.error('Error processing PDF:', error)
-          textContent += `\n\nPDF File: ${file.name} (unable to extract text)`
+    try {
+      for (const file of files) {
+        console.log(`[Brand Analysis] Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB) to Files API`)
+
+        // Stream upload to Files API to avoid loading entire file into memory
+        const nodeStream = Readable.fromWeb(file.stream() as any)
+        const uploadedFile = await (anthropic.beta.files.upload as any)(
+          { file: await toFile(nodeStream, file.name, { type: file.type || 'application/octet-stream' }) },
+          { betas: ['files-api-2025-04-14'] }
+        )
+        
+        console.log(`[Brand Analysis] Uploaded ${file.name} with file_id: ${uploadedFile.id}`)
+        uploadedFileIds.push(uploadedFile.id)
+        uploadedIdByKey.set(`${file.name}:${file.size}`, uploadedFile.id)
+        
+        // Add appropriate content block based on file type
+        if (file.type === 'application/pdf') {
+          messageContent.push({
+            type: 'document',
+            source: {
+              type: 'file',
+              file_id: uploadedFile.id
+            }
+          })
+        } else if (file.type && file.type.startsWith('image/')) {
+          messageContent.push({
+            type: 'image',
+            source: {
+              type: 'file',
+              file_id: uploadedFile.id
+            }
+          })
+        } else if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+          // Text files also use document blocks
+          messageContent.push({
+            type: 'document',
+            source: {
+              type: 'file',
+              file_id: uploadedFile.id
+            }
+          })
+        } else {
+          // For unsupported file types, we could convert to text and include directly
+          console.log('[Brand Analysis] File type not directly supported, will include as document:', file.type)
+          messageContent.push({
+            type: 'document',
+            source: {
+              type: 'file',
+              file_id: uploadedFile.id
+            }
+          })
         }
-      } else if (file.type.startsWith('image/')) {
-        // For images, we'll use vision API
-        const base64 = Buffer.from(buffer).toString('base64')
-        processedContent.push({
-          type: 'image_url' as const,
-          image_url: {
-            url: `data:${file.type};base64,${base64}`,
-            detail: 'high' as const
-          }
-        })
-      } else if (file.type === 'image/svg+xml' || file.name.endsWith('.svg')) {
-        // SVG files can be read as text
-        try {
-          const svgText = new TextDecoder().decode(buffer)
-          textContent += `\n\nSVG from ${file.name} (first 2000 chars):\n${svgText.substring(0, 2000)}`
-        } catch (error) {
-          console.error('Error processing SVG:', error)
-        }
-      } else if (file.type.includes('presentation') || file.name.match(/\.(ppt|pptx)$/i)) {
-        // PowerPoint files - note them for context
-        textContent += `\n\nPresentation file: ${file.name} - Contains brand presentation materials`
-      } else if (file.type.includes('document') || file.type.includes('msword') || file.name.match(/\.(doc|docx)$/i)) {
-        // Word documents - note them for context
-        textContent += `\n\nDocument file: ${file.name} - Contains brand documentation`
-      } else if (file.type === 'text/plain' || file.name.match(/\.(txt|md)$/i)) {
-        // Plain text files
-        try {
-          const text = new TextDecoder().decode(buffer)
-          textContent += `\n\nContent from ${file.name}:\n${text.substring(0, 5000)}` // Limit text length
-        } catch (error) {
-          console.error('Error processing text file:', error)
-        }
-      } else {
-        // Unknown file type
-        textContent += `\n\nFile: ${file.name} (type: ${file.type || 'unknown'})`
       }
+    } catch (uploadError: any) {
+      console.error('[Brand Analysis] File upload error:', uploadError)
+      // Clean up any uploaded files on error
+      for (const fileId of uploadedFileIds) {
+        try {
+          await (anthropic.beta.files.delete as any)(fileId, { betas: ['files-api-2025-04-14'] })
+        } catch (deleteError) {
+          console.error(`[Brand Analysis] Failed to cleanup file ${fileId}:`, deleteError)
+        }
+      }
+      throw uploadError
     }
 
-    // Prepare the prompt for analysis
-    const prompt = `You are a brand identity expert. Analyze the following brand materials (images, documents, and text) and extract comprehensive brand identity information. 
-    Return a detailed JSON object with the following structure:
-    
-    {
-      "colors": {
-        "primary": ["#hex1", "#hex2", "#hex3"],
-        "secondary": ["#hex4", "#hex5"],
-        "accent": ["#hex6"],
-        "descriptions": {
-          "#hex1": "Description of how this color is used",
-          ...
-        }
-      },
-      "typography": {
-        "primaryFont": "Font name",
-        "secondaryFont": "Font name",
-        "headingStyle": "Style description",
-        "bodyStyle": "Style description",
-        "recommendations": ["Font pairing suggestion 1", "Font pairing suggestion 2"]
-      },
-      "voice": {
-        "tone": ["Professional", "Friendly", etc.],
-        "personality": ["Innovative", "Trustworthy", etc.],
-        "emotions": ["Confident", "Inspiring", etc.],
-        "keywords": ["Key phrase 1", "Key phrase 2"],
-        "examples": ["Example sentence 1", "Example sentence 2"]
-      },
-      "visualStyle": {
-        "aesthetic": ["Modern", "Minimalist", etc.],
-        "imagery": ["Photography style", "Illustration style"],
-        "composition": ["Layout principles"],
-        "mood": ["Visual mood descriptors"]
-      },
-      "targetAudience": {
-        "demographics": ["Age range", "Profession", "Location"],
-        "psychographics": ["Values", "Interests", "Lifestyle"],
-        "painPoints": ["Problem 1", "Problem 2"],
-        "aspirations": ["Goal 1", "Goal 2"]
-      },
-      "competitors": {
-        "direct": ["Competitor 1", "Competitor 2"],
-        "indirect": ["Alternative 1", "Alternative 2"],
-        "positioning": "How the brand differentiates",
-        "differentiators": ["Unique value 1", "Unique value 2"]
-      },
-      "mission": {
-        "statement": "Core mission statement",
-        "values": ["Value 1", "Value 2", "Value 3"],
-        "vision": "Long-term vision",
-        "purpose": "Why the brand exists"
-      }
+    console.log('[Brand Analysis] Processed files:', messageContent.length)
+    if (messageContent.length === 0) {
+      console.log('[Brand Analysis] No content to analyze after processing')
+      return NextResponse.json({ error: 'No content to analyze' }, { status: 400 })
     }
-    
-    Be as detailed and specific as possible. Extract actual hex color codes from images, identify font families if visible, and extract specific brand information from any text or visual elements.
-    
-    ${textContent ? `Additional text content from documents:\n${textContent}` : ''}`
 
-    // Build the message content
-    const messageContent: any[] = [
-      { type: 'text', text: prompt },
-      ...processedContent
-    ]
+    // Add the text prompt for analysis
+    messageContent.push({
+      type: 'text',
+      text: `Analyze this brand guideline document and extract all brand identity information.
 
-    // Call GPT-5 API for analysis [[memory:4799270]]
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5',
+Extract everything available including:
+- Colors (with exact hex codes)
+- Typography (font families, styles)
+- Brand voice and personality
+- Visual style and aesthetics
+- Target audience
+- Mission, vision, values
+- Competitors
+- Brand positioning
+
+Return ONLY a JSON object with this structure (include only sections with data). Do not include any explanations, markdown, or code fences. Do not wrap in \u0060\u0060\u0060 or say "json". Output must be minified JSON only:
+{
+  "colors": {
+    "primary": ["#hex codes"],
+    "secondary": [],
+    "accent": [],
+    "descriptions": {}
+  },
+  "typography": {
+    "primaryFont": "Font name",
+    "secondaryFont": "Font name",
+    "headingStyle": "",
+    "bodyStyle": "",
+    "recommendations": []
+  },
+  "voice": {
+    "tone": [],
+    "personality": [],
+    "emotions": [],
+    "keywords": [],
+    "examples": []
+  },
+  "visualStyle": {
+    "aesthetic": [],
+    "imagery": [],
+    "composition": [],
+    "mood": []
+  },
+  "targetAudience": {
+    "demographics": [],
+    "psychographics": [],
+    "painPoints": [],
+    "aspirations": []
+  },
+  "competitors": {
+    "direct": [],
+    "indirect": [],
+    "positioning": "",
+    "differentiators": []
+  },
+  "mission": {
+    "statement": "",
+    "values": [],
+    "vision": "",
+    "purpose": ""
+  }
+}`
+    })
+
+    // Call Claude API with file references
+    console.log('[Brand Analysis] Calling Claude API with', messageContent.length, 'files')
+    
+    let message
+    try {
+      message = await (anthropic.beta.messages.create as any)({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2500,
+      temperature: 0,
+      system: 'You extract brand identity data. Respond with minified JSON only. No markdown, no backticks, no prose. Omit unknown fields.',
       messages: [
-        {
-          role: 'system',
-          content: 'You are a brand identity expert analyzing brand materials to extract comprehensive brand information. Always return valid JSON.'
-        },
         {
           role: 'user',
           content: messageContent
         }
       ],
-      max_completion_tokens: 3000, // GPT-5 uses max_completion_tokens instead of max_tokens
-      temperature: 1.0, // GPT-5 only supports default temperature
-      response_format: { type: 'json_object' }
+      betas: ['files-api-2025-04-14']
     })
+    } catch (apiErr: any) {
+      // Surface clear message for common PDF processing errors
+      const msg = apiErr?.error?.message || apiErr?.message || ''
+      if (msg.includes('Could not process PDF')) {
+        console.log('[Brand Analysis] Claude could not process PDF via file_id. Retrying with base64 document...')
+        // Fallback: rebuild content with base64 for PDFs, keep images via file_id
+        const fallbackContent: any[] = []
+        for (const file of files) {
+          if (file.type === 'application/pdf') {
+            const base64 = Buffer.from(await file.arrayBuffer()).toString('base64')
+            fallbackContent.push({
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: base64
+              }
+            })
+          } else if (file.type && file.type.startsWith('image/')) {
+            const id = uploadedIdByKey.get(`${file.name}:${file.size}`)
+            if (id) {
+              fallbackContent.push({
+                type: 'image',
+                source: { type: 'file', file_id: id }
+              })
+            }
+          }
+        }
+        // Append the same instruction text
+        fallbackContent.push(messageContent.find((b: any) => b.type === 'text'))
 
-    const rawContent = response.choices[0]?.message?.content
-    if (!rawContent) {
-      throw new Error('No analysis content returned from AI')
+        try {
+          message = await (anthropic.beta.messages.create as any)({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1500,
+            temperature: 0,
+            system: 'You extract brand identity data. Respond with minified JSON only. No markdown, no backticks, no prose. Omit unknown fields.',
+            messages: [
+              {
+                role: 'user',
+                content: fallbackContent
+              }
+            ],
+            betas: ['files-api-2025-04-14']
+          })
+        } catch (secondErr: any) {
+          const msg2 = secondErr?.error?.message || secondErr?.message || ''
+          console.error('[Brand Analysis] Fallback also failed:', msg2)
+          return NextResponse.json({
+            error: 'The PDF could not be processed. Try exporting to a standard, non-encrypted PDF, or upload key pages as images.'
+          }, { status: 400 })
+        }
+      } else {
+        throw apiErr
+      }
     }
     
+    console.log('[Brand Analysis] Claude API response received')
+
+    // Extract the text content from Claude's response (join all text blocks)
+    const rawText = (message.content || [])
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('\n')
+      .trim()
+
+    if (!rawText) {
+      throw new Error('No analysis content returned from Claude')
+    }
+
+    // Robust JSON parsing: strip code fences and extract first valid JSON object
+    function stripCodeFences(input: string): string {
+      const fenceMatch = input.match(/```(?:json)?\n([\s\S]*?)```/i)
+      if (fenceMatch && fenceMatch[1]) return fenceMatch[1].trim()
+      return input
+    }
+
+    function extractFirstJsonObject(input: string): string | null {
+      const start = input.indexOf('{')
+      if (start === -1) return null
+      let depth = 0
+      let inString = false
+      let escaped = false
+      for (let i = start; i < input.length; i++) {
+        const ch = input[i]
+        if (inString) {
+          if (!escaped && ch === '"') inString = false
+          escaped = ch === '\\' ? !escaped : false
+          continue
+        }
+        if (ch === '"') {
+          inString = true
+          continue
+        }
+        if (ch === '{') depth++
+        if (ch === '}') {
+          depth--
+          if (depth === 0) {
+            return input.slice(start, i + 1)
+          }
+        }
+      }
+      return null
+    }
+
+    const textNoFences = stripCodeFences(rawText)
+    let jsonCandidate = textNoFences
+    if (textNoFences.trim()[0] !== '{') {
+      const extracted = extractFirstJsonObject(textNoFences)
+      if (extracted) jsonCandidate = extracted
+    }
+
     let analysis
     try {
-      analysis = JSON.parse(rawContent)
+      analysis = JSON.parse(jsonCandidate)
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError)
       throw new Error('Invalid response format from AI')
     }
-    
-    // Ensure all required fields exist with defaults
-    const completeAnalysis = {
-      colors: {
-        primary: analysis.colors?.primary || ['#8B5CF6', '#EC4899', '#3B82F6'],
-        secondary: analysis.colors?.secondary || ['#64748B', '#94A3B8'],
-        accent: analysis.colors?.accent || ['#F59E0B'],
-        descriptions: analysis.colors?.descriptions || {}
-      },
-      typography: {
-        primaryFont: analysis.typography?.primaryFont || 'Inter',
-        secondaryFont: analysis.typography?.secondaryFont || 'System UI',
-        headingStyle: analysis.typography?.headingStyle || 'Bold and modern',
-        bodyStyle: analysis.typography?.bodyStyle || 'Clean and readable',
-        recommendations: analysis.typography?.recommendations || []
-      },
-      voice: {
-        tone: analysis.voice?.tone || ['Professional', 'Friendly'],
-        personality: analysis.voice?.personality || ['Innovative', 'Trustworthy'],
-        emotions: analysis.voice?.emotions || ['Confident', 'Inspiring'],
-        keywords: analysis.voice?.keywords || [],
-        examples: analysis.voice?.examples || []
-      },
-      visualStyle: {
-        aesthetic: analysis.visualStyle?.aesthetic || ['Modern', 'Clean'],
-        imagery: analysis.visualStyle?.imagery || ['Photography'],
-        composition: analysis.visualStyle?.composition || ['Balanced'],
-        mood: analysis.visualStyle?.mood || ['Professional']
-      },
-      targetAudience: {
-        demographics: analysis.targetAudience?.demographics || ['25-45 years', 'Professionals'],
-        psychographics: analysis.targetAudience?.psychographics || ['Growth-minded'],
-        painPoints: analysis.targetAudience?.painPoints || [],
-        aspirations: analysis.targetAudience?.aspirations || []
-      },
-      competitors: {
-        direct: analysis.competitors?.direct || [],
-        indirect: analysis.competitors?.indirect || [],
-        positioning: analysis.competitors?.positioning || 'Unique value proposition',
-        differentiators: analysis.competitors?.differentiators || []
-      },
-      mission: {
-        statement: analysis.mission?.statement || 'To empower creators',
-        values: analysis.mission?.values || ['Innovation', 'Quality', 'Community'],
-        vision: analysis.mission?.vision || 'A world where creativity thrives',
-        purpose: analysis.mission?.purpose || 'Making creation accessible'
+
+    // Clean up uploaded files after successful analysis
+    console.log('[Brand Analysis] Cleaning up uploaded files')
+    for (const fileId of uploadedFileIds) {
+      try {
+        await (anthropic.beta.files.delete as any)(fileId, { betas: ['files-api-2025-04-14'] })
+        console.log(`[Brand Analysis] Deleted file ${fileId}`)
+      } catch (deleteError) {
+        console.error(`[Brand Analysis] Failed to delete file ${fileId}:`, deleteError)
       }
     }
-
-    return NextResponse.json(completeAnalysis)
+    
+    // Return exactly what AI extracted; UI handles conditional rendering
+    console.log('[Brand Analysis] Returning analysis with keys:', Object.keys(analysis))
+    return NextResponse.json(analysis)
   } catch (error: any) {
     console.error('Brand analysis error:', error)
     
@@ -232,7 +337,13 @@ export async function POST(request: NextRequest) {
     let errorMessage = 'Failed to analyze brand materials'
     let statusCode = 500
     
-    if (error.message?.includes('Unauthorized')) {
+    if (error.status === 413 || error.message?.includes('request_too_large')) {
+      errorMessage = 'File exceeds the 500MB limit per file'
+      statusCode = 413
+    } else if (error.message?.includes('storage_limit')) {
+      errorMessage = 'Organization storage limit exceeded (100GB total)'
+      statusCode = 403
+    } else if (error.message?.includes('Unauthorized')) {
       errorMessage = 'Authentication failed'
       statusCode = 401
     } else if (error.message?.includes('rate limit')) {

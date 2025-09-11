@@ -120,6 +120,8 @@ export function ThumbnailCreatorV2({
   // Add state for streaming
   const [streamingMessage, setStreamingMessage] = useState("")
   const [useStreaming, setUseStreaming] = useState(true)
+  const [showFullScreenOverlay, setShowFullScreenOverlay] = useState(false)
+  const [overlayMessage, setOverlayMessage] = useState<string>("")
 
   // Reset state when dialog closes
   const handleClose = () => {
@@ -180,6 +182,10 @@ export function ThumbnailCreatorV2({
 
     setIsGenerating(true)
     setProgress(0)
+    // Take user off the form immediately
+    setOverlayMessage("Starting thumbnail generation...")
+    setShowFullScreenOverlay(true)
+    setOpen(false)
 
     try {
       let prompt = ""
@@ -269,12 +275,17 @@ export function ThumbnailCreatorV2({
                   if (data.type === 'progress') {
                     setProgress(data.progress)
                     setStreamingMessage(data.message)
+                    setOverlayMessage(data.message)
                   } else if (data.type === 'complete') {
                     setGeneratedUrl(data.url)
                     setCurrentStep('preview')
                     toast.success(data.message)
+                    // Bring dialog back with preview ready
+                    setShowFullScreenOverlay(false)
+                    setOpen(true)
                   } else if (data.type === 'error') {
                     toast.error(data.error)
+                    setOverlayMessage(data.error)
                   }
                 } catch (e) {
                   // Skip invalid JSON
@@ -313,11 +324,16 @@ export function ThumbnailCreatorV2({
           setGeneratedUrl(result.url)
           setCurrentStep('preview')
           toast.success("Thumbnail generated successfully!")
+          setShowFullScreenOverlay(false)
+          setOpen(true)
+        } else {
+          throw new Error('No URL in response')
         }
       }
     } catch (error) {
       console.error("Generation error:", error)
       toast.error(error instanceof Error ? error.message : "Failed to generate thumbnail")
+      setOverlayMessage(error instanceof Error ? error.message : 'Generation failed')
     } finally {
       setIsGenerating(false)
       setStreamingMessage("")
@@ -383,7 +399,25 @@ export function ThumbnailCreatorV2({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      {/* Full-screen overlay during generation */}
+      {showFullScreenOverlay && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+          <div className="w-full max-w-md mx-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center shadow-2xl">
+            <div className="mb-3 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+            </div>
+            <p className="text-white/90 font-medium">Generating thumbnail...</p>
+            <p className="text-white/60 text-sm mt-1">{overlayMessage || 'This can take up to 30 seconds'}</p>
+            <div className="mt-4">
+              <Progress value={progress} className="h-2" />
+              <p className="text-xs text-white/50 mt-2">{Math.max(0, Math.min(100, Math.round(progress)))}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button 
           variant="ghost" 
@@ -1014,5 +1048,6 @@ export function ThumbnailCreatorV2({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 } 

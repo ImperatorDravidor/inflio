@@ -100,6 +100,60 @@ export function BrandIdentityEnhanced({
   const [manualStep, setManualStep] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+
+  // Normalize AI analysis payload to ensure all fields exist and are arrays/strings as expected
+  const normalizeAnalysis = useCallback((raw: any): BrandAnalysis => {
+    const toArray = (v: any) => Array.isArray(v) ? v : (v ? [v] : [])
+    const ensure = (v: any, fallback: any) => (v === undefined || v === null ? fallback : v)
+
+    return {
+      colors: {
+        primary: toArray(raw?.colors?.primary),
+        secondary: toArray(raw?.colors?.secondary),
+        accent: toArray(raw?.colors?.accent),
+        descriptions: ensure(raw?.colors?.descriptions, {})
+      },
+      typography: {
+        primaryFont: ensure(raw?.typography?.primaryFont, ''),
+        secondaryFont: ensure(raw?.typography?.secondaryFont, ''),
+        headingStyle: ensure(raw?.typography?.headingStyle, ''),
+        bodyStyle: ensure(raw?.typography?.bodyStyle, ''),
+        recommendations: toArray(raw?.typography?.recommendations)
+      },
+      voice: {
+        tone: toArray(raw?.voice?.tone),
+        personality: toArray(raw?.voice?.personality),
+        emotions: toArray(raw?.voice?.emotions),
+        keywords: toArray(raw?.voice?.keywords),
+        examples: toArray(raw?.voice?.examples)
+      },
+      visualStyle: {
+        aesthetic: toArray(raw?.visualStyle?.aesthetic),
+        imagery: toArray(raw?.visualStyle?.imagery),
+        composition: toArray(raw?.visualStyle?.composition),
+        mood: toArray(raw?.visualStyle?.mood)
+      },
+      targetAudience: {
+        demographics: toArray(raw?.targetAudience?.demographics),
+        psychographics: toArray(raw?.targetAudience?.psychographics),
+        painPoints: toArray(raw?.targetAudience?.painPoints),
+        aspirations: toArray(raw?.targetAudience?.aspirations)
+      },
+      competitors: {
+        direct: toArray(raw?.competitors?.direct),
+        indirect: toArray(raw?.competitors?.indirect),
+        positioning: ensure(raw?.competitors?.positioning, ''),
+        differentiators: toArray(raw?.competitors?.differentiators)
+      },
+      mission: {
+        statement: ensure(raw?.mission?.statement, ''),
+        values: toArray(raw?.mission?.values),
+        vision: ensure(raw?.mission?.vision, ''),
+        purpose: ensure(raw?.mission?.purpose, '')
+      }
+    }
+  }, [])
+
   // File upload handler
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -111,9 +165,10 @@ export function BrandIdentityEnhanced({
     }
     
     const validFiles = files.filter(file => {
-      // Validate file size (20MB max)
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
+      // Validate file size - Files API supports up to 500MB per file!
+      const maxSizeMB = 500
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max ${maxSizeMB}MB per file)`)
         return false
       }
       return true
@@ -170,34 +225,19 @@ export function BrandIdentityEnhanced({
       // Update file statuses
       setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'analyzing' as const })))
       
-      // Show progress steps
+      // Simplified progress steps for faster feedback
       const steps = [
-        { step: 'Uploading files...', progress: 10 },
-        { step: 'Extracting content from documents...', progress: 25 },
-        { step: 'Analyzing visual elements...', progress: 40 },
-        { step: 'Identifying brand colors and typography...', progress: 55 },
-        { step: 'Understanding brand voice and tone...', progress: 70 },
-        { step: 'Mapping target audience...', progress: 85 },
-        { step: 'Generating comprehensive analysis...', progress: 95 }
+        { step: 'Uploading files to secure storage...', progress: 10 },
+        { step: 'Processing brand materials...', progress: 30 },
+        { step: 'Analyzing visual identity and content...', progress: 60 },
+        { step: 'Building your brand profile...', progress: 90 }
       ]
 
       // Show initial progress
       setAnalysisStep(steps[0].step)
       setAnalysisProgress(steps[0].progress)
 
-      // Prepare files for upload
-      const formDataToSend = new FormData()
-      uploadedFiles.forEach(({ file }) => {
-        formDataToSend.append('files', file)
-      })
-
-      // Start the API call
-      const apiCallPromise = fetch('/api/analyze-brand', {
-        method: 'POST',
-        body: formDataToSend
-      })
-
-      // Show progress while API is processing
+      // Start progress animation (fast updates)
       let currentStep = 1
       const progressInterval = setInterval(() => {
         if (currentStep < steps.length) {
@@ -205,38 +245,101 @@ export function BrandIdentityEnhanced({
           setAnalysisProgress(steps[currentStep].progress)
           currentStep++
         }
-      }, 2000)
+      }, 2000) // Smooth, steady progress
 
-      // Wait for API response
-      const response = await apiCallPromise
+      // Prepare files for upload - Claude handles PDFs natively!
+      const formDataToSend = new FormData()
+      let appendedCount = 0
+      
+      for (const { file } of uploadedFiles) {
+        console.log('Processing file:', file.name, 'type:', file.type, 'size:', (file.size / 1024 / 1024).toFixed(2) + 'MB')
+        // Files API supports PDFs, images, text files, and more
+        formDataToSend.append('files', file)
+        appendedCount++
+      }
+
+      if (appendedCount === 0) {
+        clearInterval(progressInterval)
+        setIsAnalyzing(false)
+        setAnalysisProgress(0)
+        setAnalysisStep('')
+        return
+      }
+
+      // Start the API call with timeout
+      console.log('Starting API call with', appendedCount, 'files')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 180000) // 180s timeout for large PDFs
+      
+      setAnalysisStep('Analyzing with AI...')
+      setAnalysisProgress(70)
+      
+      let response: Response
+      try {
+        console.log('Sending request to /api/analyze-brand')
+        response = await fetch('/api/analyze-brand', {
+          method: 'POST',
+          body: formDataToSend,
+          signal: controller.signal
+        })
+        console.log('API response received:', response.status)
+      } catch (fetchError: any) {
+        clearInterval(progressInterval)
+        clearTimeout(timeoutId)
+        console.error('API call failed:', fetchError)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Analysis timed out. Please try again with smaller files.')
+        }
+        throw fetchError
+      }
+      
+      clearTimeout(timeoutId)
       clearInterval(progressInterval)
 
       // Handle response
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `Analysis failed (${response.status})`)
+        let errorMessage = `Analysis failed (${response.status})`
+        try {
+          const errorData = await response.json()
+          if (errorData?.error) errorMessage = errorData.error
+        } catch {}
+        throw new Error(errorMessage)
       }
 
-      const analysis = await response.json()
+      const analysisRaw = await response.json()
+      const analysis = normalizeAnalysis(analysisRaw)
       
       // Final progress
-      setAnalysisStep('Finalizing brand profile...')
+      setAnalysisStep('Finalizing your brand profile...')
       setAnalysisProgress(100)
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
       // Update files status
       setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'complete' as const })))
       
-      // Set the analysis
+      // Set the analysis - this will automatically transition to the brand sheet view
       setBrandAnalysis(analysis)
       updateFormData('brandAnalysis', analysis)
-      
-      toast.success('Brand analysis complete! Review and edit your brand profile below.')
+      // Push key fields to profile formData immediately
+      updateFormData('primaryColor', analysis.colors.primary?.[0] || '')
+      updateFormData('brandColors', analysis.colors.primary || [])
+      const fonts = [analysis.typography.primaryFont, analysis.typography.secondaryFont].filter(Boolean)
+      updateFormData('fonts', fonts)
+      updateFormData('brandVoice', analysis.voice.tone?.[0] || '')
+      const audienceCombined = [
+        ...(analysis.targetAudience.demographics || []),
+        ...(analysis.targetAudience.psychographics || [])
+      ].filter(Boolean).join(', ')
+      updateFormData('targetAudience', audienceCombined)
+      updateFormData('audience', audienceCombined)
     } catch (error: any) {
       console.error('Brand analysis error:', error)
       
       // Show specific error message
-      const errorMessage = error.message || 'Failed to analyze brand materials'
+      let errorMessage = error.message || 'Failed to analyze brand materials'
+      if (errorMessage === 'ANALYSIS_TIMEOUT') {
+        errorMessage = 'Analysis timed out. Please try fewer pages or images.'
+      }
       toast.error(errorMessage)
       
       setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'error' as const })))
@@ -301,7 +404,7 @@ export function BrandIdentityEnhanced({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card 
-            className="p-8 cursor-pointer hover:shadow-xl transition-all hover:scale-[1.02] border-2 hover:border-primary/50"
+            className="p-8 cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary/50"
             onClick={() => setMode('upload')}
           >
             <div className="text-center space-y-4">
@@ -321,8 +424,7 @@ export function BrandIdentityEnhanced({
                 </div>
               </div>
               <div className="pt-2">
-                <Badge className="bg-gradient-to-r from-violet-600 to-purple-600">
-                  <Sparkles className="h-3 w-3 mr-1" />
+                <Badge variant="secondary">
                   AI-Powered Analysis
                 </Badge>
               </div>
@@ -330,7 +432,7 @@ export function BrandIdentityEnhanced({
           </Card>
 
           <Card 
-            className="p-8 cursor-pointer hover:shadow-xl transition-all hover:scale-[1.02] border-2 hover:border-primary/50"
+            className="p-8 cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary/50"
             onClick={() => setMode('manual')}
           >
             <div className="text-center space-y-4">
@@ -351,7 +453,6 @@ export function BrandIdentityEnhanced({
               </div>
               <div className="pt-2">
                 <Badge variant="outline">
-                  <Edit3 className="h-3 w-3 mr-1" />
                   Detailed questionnaire
                 </Badge>
               </div>
@@ -368,13 +469,9 @@ export function BrandIdentityEnhanced({
       return (
         <div className="space-y-8">
           <div className="text-center space-y-2">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4"
-            >
-              <CheckCircle className="h-8 w-8 text-white" />
-            </motion.div>
+            <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="h-8 w-8 text-green-500" />
+            </div>
             <h2 className="text-3xl font-bold">Your Brand Profile</h2>
             <p className="text-muted-foreground">
               Review and edit your AI-generated brand identity
@@ -558,6 +655,18 @@ export function BrandIdentityEnhanced({
                           className="mt-1"
                         />
                       </div>
+                      <div>
+                        <Label>Psychographics</Label>
+                        <Textarea
+                          value={brandAnalysis.targetAudience.psychographics.join(', ')}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.targetAudience.psychographics = e.target.value.split(',').map(s => s.trim())
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -578,6 +687,183 @@ export function BrandIdentityEnhanced({
                         </div>
                       </div>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Visual Style Section */}
+              {renderBrandSheetSection(
+                'Visual Style',
+                <Image className="h-5 w-5 text-primary" />,
+                'visualStyle',
+                <div className="space-y-3">
+                  {editMode === 'visualStyle' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Aesthetic Keywords</Label>
+                        <Textarea
+                          value={brandAnalysis.visualStyle.aesthetic.join(', ')}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.visualStyle.aesthetic = e.target.value.split(',').map(s => s.trim())
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Imagery Style</Label>
+                        <Textarea
+                          value={brandAnalysis.visualStyle.imagery.join(', ')}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.visualStyle.imagery = e.target.value.split(',').map(s => s.trim())
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {brandAnalysis.visualStyle.aesthetic.map((style, i) => (
+                          <Badge key={i} variant="secondary">{style}</Badge>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm font-medium mb-1">Imagery</p>
+                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.imagery.join(', ')}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium mb-1">Mood</p>
+                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.mood.join(', ')}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Competitive Landscape Section */}
+              {renderBrandSheetSection(
+                'Competitive Landscape',
+                <Trophy className="h-5 w-5 text-primary" />,
+                'competitors',
+                <div className="space-y-3">
+                  {editMode === 'competitors' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Direct Competitors</Label>
+                        <Textarea
+                          value={brandAnalysis.competitors.direct.join(', ')}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.competitors.direct = e.target.value.split(',').map(s => s.trim())
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Market Positioning</Label>
+                        <Textarea
+                          value={brandAnalysis.competitors.positioning}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.competitors.positioning = e.target.value
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-3">
+                        <p className="text-sm font-medium mb-2">Direct Competitors</p>
+                        <div className="flex flex-wrap gap-2">
+                          {brandAnalysis.competitors.direct.map((comp, i) => (
+                            <Badge key={i} variant="outline">{comp}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium mb-1">Market Positioning</p>
+                        <p className="text-sm text-muted-foreground">{brandAnalysis.competitors.positioning}</p>
+                      </div>
+                      {brandAnalysis.competitors.differentiators.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium mb-1">Key Differentiators</p>
+                          <div className="space-y-1">
+                            {brandAnalysis.competitors.differentiators.map((diff, i) => (
+                              <p key={i} className="text-sm text-muted-foreground">• {diff}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Mission & Values Section */}
+              {renderBrandSheetSection(
+                'Mission & Values',
+                <Lightbulb className="h-5 w-5 text-primary" />,
+                'mission',
+                <div className="space-y-3">
+                  {editMode === 'mission' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Mission Statement</Label>
+                        <Textarea
+                          value={brandAnalysis.mission.statement}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.mission.statement = e.target.value
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Core Values</Label>
+                        <Textarea
+                          value={brandAnalysis.mission.values.join(', ')}
+                          onChange={(e) => {
+                            const updated = { ...brandAnalysis }
+                            updated.mission.values = e.target.value.split(',').map(s => s.trim())
+                            setBrandAnalysis(updated)
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-3 bg-primary/5 rounded-lg mb-3">
+                        <p className="text-sm italic">&ldquo;{brandAnalysis.mission.statement}&rdquo;</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium mb-2">Core Values</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {brandAnalysis.mission.values.map((value, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <div className="h-2 w-2 bg-primary rounded-full" />
+                              <span className="text-sm">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {brandAnalysis.mission.vision && (
+                        <div>
+                          <p className="text-sm font-medium mb-1">Vision</p>
+                          <p className="text-sm text-muted-foreground">{brandAnalysis.mission.vision}</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -631,7 +917,7 @@ export function BrandIdentityEnhanced({
               Supports: PDF, Images (PNG, JPG, SVG), PowerPoint, Word, Text files
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Max 10 files, up to 20MB each
+              Max 10 files, up to 500MB each
             </p>
             <div className="flex gap-2 justify-center mt-4">
               <Badge variant="secondary">Brand Books</Badge>
@@ -686,27 +972,31 @@ export function BrandIdentityEnhanced({
 
         {/* Analysis progress */}
         {isAnalyzing && (
-          <Card className="p-6 bg-primary/5 border-primary/20">
+          <Card className="p-6 border-2">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Sparkles className="h-5 w-5 text-primary animate-pulse" />
-                  <p className="font-medium">AI Analysis in Progress</p>
+                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  <div>
+                    <p className="font-medium">Analyzing Your Brand Materials</p>
+                    <p className="text-sm text-muted-foreground mt-1">{analysisStep}</p>
+                  </div>
                 </div>
-                <Badge variant="secondary">{analysisProgress}%</Badge>
+                <span className="text-sm font-medium">{analysisProgress}%</span>
               </div>
               
-              <div className="space-y-2">
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-primary"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${analysisProgress}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">{analysisStep}</p>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-500 ease-out"
+                  style={{ width: `${analysisProgress}%` }}
+                />
               </div>
+              
+              {analysisProgress === 100 && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Finalizing your brand profile...
+                </p>
+              )}
             </div>
           </Card>
         )}

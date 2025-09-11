@@ -320,6 +320,10 @@ export function EnhancedPostsGenerator({
   const [suggestions, setSuggestions] = useState<PostSuggestion[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState(0)
+  const [showProgressOverlay, setShowProgressOverlay] = useState(false)
+  const [overlayMessage, setOverlayMessage] = useState('Generating AI posts...')
+  const [overlaySubtext, setOverlaySubtext] = useState('This can take 30-60 seconds. You can keep browsing while we work.')
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PostSuggestion | null>(null)
   const [editingCopy, setEditingCopy] = useState<any>(null)
   const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['carousel', 'quote', 'single', 'thread', 'reel', 'story'])
@@ -343,8 +347,17 @@ export function EnhancedPostsGenerator({
   })
 
   // State to track if we've attempted auto-generation for this project
-  const [hasAttemptedAutoGeneration, setHasAttemptedAutoGeneration] = useState(false)
+  // Use sessionStorage to persist across tab switches
+  const autoGenKey = `auto-gen-attempted-${projectId}`
+  const [hasAttemptedAutoGeneration, setHasAttemptedAutoGeneration] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem(autoGenKey) === 'true'
+    }
+    return false
+  })
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Load suggestions on mount
   useEffect(() => {
@@ -367,7 +380,18 @@ export function EnhancedPostsGenerator({
     }
   }, [contentAnalysis, suggestions.length, suggestionsLoaded, hasAttemptedAutoGeneration, isGenerating])
 
+  // Clear auto-generation flag when suggestions are manually deleted or project changes
+  useEffect(() => {
+    // If we have suggestions now, we can clear the flag for future
+    if (suggestions.length > 0 && typeof window !== 'undefined') {
+      // Don't clear immediately - keep flag to prevent re-trigger
+      // Only clear if user manually generates new ones
+    }
+  }, [suggestions.length])
+
   const loadSuggestions = async () => {
+    setIsLoadingSuggestions(true)
+    setLoadError(null)
     try {
       const response = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
       if (response.ok) {
@@ -375,18 +399,26 @@ export function EnhancedPostsGenerator({
         setSuggestions(data.suggestions || [])
         setSuggestionsLoaded(true)
         return data.suggestions || []
+      } else {
+        const txt = await response.text()
+        setLoadError(txt || 'Failed to load post suggestions')
       }
     } catch (error) {
       console.error('Failed to load suggestions:', error)
-      toast.error('Failed to load post suggestions')
+      setLoadError('Failed to load post suggestions')
+    } finally {
+      setIsLoadingSuggestions(false)
+      if (!suggestionsLoaded) setSuggestionsLoaded(true)
     }
-    setSuggestionsLoaded(true)
     return []
   }
 
   const autoGeneratePostsIfNeeded = async () => {
     // Mark that we've attempted auto-generation for this project
     setHasAttemptedAutoGeneration(true)
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(autoGenKey, 'true')
+    }
     
     // Show a toast that we're auto-generating
     toast.info('🎨 Generating AI posts based on your content...', {
@@ -401,6 +433,9 @@ export function EnhancedPostsGenerator({
   const generateSuggestionsWithDefaults = async () => {
     setIsGenerating(true)
     setGenerationProgress(0)
+    setOverlayMessage('Generating AI posts...')
+    setOverlaySubtext('This can take 30-60 seconds. You can keep browsing while we work.')
+    setShowProgressOverlay(true)
     
     // Use smart defaults for automatic generation
     const defaultSettings = {
@@ -411,8 +446,8 @@ export function EnhancedPostsGenerator({
       includeEmojis: true,
       includeHashtags: true,
       optimizeForEngagement: true,
-      usePersona: !!personaId,
-      selectedPersonaId: personaId
+      usePersona: generationSettings.usePersona && !!selectedPersonaForGeneration,
+      selectedPersonaId: generationSettings.usePersona ? selectedPersonaForGeneration : null
     }
 
     // Track progress interval to ensure cleanup
@@ -482,21 +517,44 @@ export function EnhancedPostsGenerator({
       }
       setIsGenerating(false)
       setGenerationProgress(0) // Reset to 0 instead of leaving at 100
+      setShowProgressOverlay(false)
     }
   }
 
   const generateSuggestions = async () => {
+    // Mark that we've generated (prevents auto-generation)
+    setHasAttemptedAutoGeneration(true)
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(autoGenKey, 'true')
+    }
+    
     setIsGenerating(true)
     setGenerationProgress(0)
     setShowGenerateDialog(false)
+    setOverlayMessage('Generating AI posts...')
+    setOverlaySubtext("We'll notify you when they are ready.")
+    setShowProgressOverlay(true)
 
     try {
-      const response = await fetch('/api/posts/generate', {
+      const response = await fetch('/api/posts/generate-smart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          projectTitle
+          projectTitle,
+          contentAnalysis,
+          transcript: transcript?.substring(0, 3000),
+          settings: {
+            contentTypes: selectedContentTypes,
+            platforms: selectedPlatforms,
+            creativity: generationSettings.creativity,
+            tone: generationSettings.tone,
+            includeHashtags: generationSettings.autoHashtags,
+            includeCTA: generationSettings.includeCTA,
+            optimizeForEngagement: generationSettings.optimizeForEngagement,
+            usePersona: generationSettings.usePersona && !!selectedPersonaForGeneration,
+            selectedPersonaId: generationSettings.usePersona ? selectedPersonaForGeneration : null
+          }
         })
       })
 
@@ -532,9 +590,8 @@ export function EnhancedPostsGenerator({
         })
       }, 250)
       
-      if (data.jobId) {
-        await pollGenerationProgress(data.jobId)
-      }
+      // Smart generation does not rely on job status; continue immediately
+      setGenerationProgress(80)
 
       await loadSuggestions()
       toast.success('🎉 AI Posts generated successfully!')
@@ -545,6 +602,8 @@ export function EnhancedPostsGenerator({
     } finally {
       setIsGenerating(false)
       setGenerationProgress(0) // Reset to 0 instead of leaving at 100
+      setShowProgressOverlay(false)
+      setCurrentJobId(null)
     }
   }
 
@@ -615,6 +674,48 @@ export function EnhancedPostsGenerator({
     } catch (error) {
       console.error('Approval error:', error)
       toast.error('Failed to approve suggestion')
+    }
+  }
+  
+  const generateAssets = async (
+    suggestionId: string,
+    options?: { size?: string; quality?: 'low' | 'standard' | 'high'; count?: number; transparent?: boolean }
+  ) => {
+    try {
+      setOverlayMessage('Generating images for post...')
+      setOverlaySubtext('Using gpt-image-1. This may take a few seconds.')
+      setShowProgressOverlay(true)
+      setIsGenerating(true)
+      setGenerationProgress(10)
+
+      const response = await fetch('/api/posts/generate-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          suggestionId,
+          size: options?.size || '1024x1024',
+          quality: options?.quality || 'standard',
+          count: options?.count || 1,
+          transparent: options?.transparent || false
+        })
+      })
+
+      if (!response.ok) {
+        const t = await response.text()
+        throw new Error(t || 'Failed to generate images')
+      }
+
+      setGenerationProgress(90)
+      await loadSuggestions()
+      setGenerationProgress(100)
+      toast.success('Images generated and attached to the post')
+    } catch (e) {
+      console.error('Assets generation failed', e)
+      toast.error('Failed to generate images for the post')
+    } finally {
+      setIsGenerating(false)
+      setShowProgressOverlay(false)
+      setGenerationProgress(0)
     }
   }
 
@@ -919,6 +1020,16 @@ export function EnhancedPostsGenerator({
           <CardFooter className="pt-3 pb-3 px-3 gap-2">
             <Button
               size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => generateAssets(suggestion.id)}
+              disabled={isGenerating}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              {suggestion.images.length > 0 ? 'Regenerate Images' : 'Generate Images'}
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               className="flex-1 h-8"
               onClick={() => setSelectedBatch(prev => 
@@ -963,6 +1074,41 @@ export function EnhancedPostsGenerator({
 
   return (
     <div className="space-y-6">
+      {/* Non-blocking progress panel */}
+      <AnimatePresence>
+        {showProgressOverlay && (
+          <motion.div
+            className="fixed bottom-4 right-4 z-50 pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <Card className="w-80 shadow-xl pointer-events-auto">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    Generating Posts
+                  </CardTitle>
+                  <Button variant="ghost" size="icon" onClick={() => setShowProgressOverlay(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <CardDescription>{overlaySubtext}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">{overlayMessage}</span>
+                    <span className="text-sm font-medium">{generationProgress}%</span>
+                  </div>
+                  <Progress value={generationProgress} className="h-2" />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Enhanced Header */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
@@ -1127,7 +1273,32 @@ export function EnhancedPostsGenerator({
       </AnimatePresence>
 
       {/* Content Grid/List */}
-      {processedSuggestions.length > 0 ? (
+      {!suggestionsLoaded || isLoadingSuggestions ? (
+        <div className={cn(
+          viewMode === 'grid' 
+            ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            : "space-y-4"
+        )}>
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <Card key={idx} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-2/3" />
+                <div className="mt-2 flex gap-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="aspect-[4/5] w-full" />
+                <div className="mt-3 flex gap-2">
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-6 w-20" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : processedSuggestions.length > 0 ? (
         <div className={cn(
           viewMode === 'grid' 
             ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
@@ -1149,10 +1320,18 @@ export function EnhancedPostsGenerator({
             <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
               Generate AI-powered social media posts optimized for maximum engagement
             </p>
-            <Button onClick={() => setShowGenerateDialog(true)}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Your First Posts
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowGenerateDialog(true)}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Your First Posts
+              </Button>
+              {loadError && (
+                <Button variant="outline" onClick={loadSuggestions}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry Loading
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
