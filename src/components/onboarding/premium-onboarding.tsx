@@ -7,15 +7,16 @@ import { useTheme } from 'next-themes'
 import confetti from 'canvas-confetti'
 import { InflioLogo } from '@/components/inflio-logo'
 import { AIAvatarTraining } from '@/components/onboarding/ai-avatar-training'
+import { BrandIdentityEnhanced } from '@/components/onboarding/brand-identity-enhanced'
 import { 
-  Sparkles, ChevronRight, ChevronLeft, Check, Upload,
+  Sparkles, ChevronRight, ChevronLeft, Check, Upload, AlertCircle,
   Twitter, Instagram, Linkedin, Youtube, Facebook, Globe,
   Palette, Type, Camera, Hash, MessageSquare, Zap,
   Shield, ArrowRight, User, Briefcase, Target, TrendingUp,
   Heart, Star, Gift, Rocket, Crown, Brain, Circle, LayoutGrid, 
   Video, Info, HelpCircle, PlayCircle, FileText, BarChart,
   Clock, Users, Wand2, ImageIcon, PenTool, Share2, Layers,
-  Lightbulb, Settings, AlertCircle, CheckCircle, TrendingDown,
+  Lightbulb, CheckCircle, TrendingDown,
   Bot, Megaphone, Calendar, DollarSign, Award, BookOpen,
   Monitor, Smartphone, Coffee, Music, Gamepad, Dumbbell,
   ShoppingBag, Plane, Home, Brush, Code, HeadphonesIcon,
@@ -126,16 +127,16 @@ const ONBOARDING_FLOW = [
     ]
   },
   {
-    id: 'quick_setup',
-    title: 'Quick Setup',
-    icon: Lightning,
+    id: 'creator_profile',
+    title: 'Quick Intro',
+    icon: User,
     gradient: 'from-blue-600 to-cyan-600',
     duration: '30 seconds',
     sections: [
       {
-        id: 'essentials',
-        title: 'Essential Information',
-        description: 'Let\'s get the basics right'
+        id: 'basics',
+        title: 'Basic Information',
+        description: 'Just the essentials - AI handles the rest'
       }
     ]
   },
@@ -183,20 +184,6 @@ const ONBOARDING_FLOW = [
         id: 'connect',
         title: 'Platform Connections',
         description: 'Where will your content live?'
-      }
-    ]
-  },
-  {
-    id: 'preferences',
-    title: 'AI Preferences',
-    icon: Settings,
-    gradient: 'from-cyan-600 to-blue-600',
-    duration: '1 minute',
-    sections: [
-      {
-        id: 'style',
-        title: 'Content Style',
-        description: 'How should AI create for you?'
       }
     ]
   },
@@ -332,13 +319,11 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
   const contentAnimation = useAnimation()
   
   // Refs
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // File refs moved to respective components
   // Video and canvas refs moved to AIAvatarTraining component
   
   // State for brand analysis
-  const [brandFile, setBrandFile] = useState<File | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [brandAnalysis, setBrandAnalysis] = useState<any>(null)
+  // Brand state is now managed in BrandIdentityEnhanced component
   
   // State for persona training - handled by AIAvatarTraining component
   const [isTraining, setIsTraining] = useState(false)
@@ -397,10 +382,14 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     const sectionId = currentStepData.sections[currentSection].id
     
     switch (`${stepId}.${sectionId}`) {
-      case 'quick_setup.essentials':
-        return !!formData.name && !!formData.industry
+      case 'creator_profile.basics':
+        // Simple validation - just name and industry required
+        return !!formData.fullName && !!formData.industry
+      case 'brand.upload':
       case 'brand.customize':
-        return !!formData.primaryColor && !!formData.brandVoice
+        // Brand identity component handles its own validation
+        // Require at least brand analysis or manual setup
+        return !!formData.brandAnalysis || (!!formData.primaryColor && !!formData.brandVoice)
       case 'platforms.connect':
         return formData.platforms.length > 0
       default:
@@ -524,45 +513,6 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     }
   }
 
-  // Brand file analysis with GPT-5 [[memory:4799270]]
-  const analyzeBrandFile = async (file: File) => {
-    setIsAnalyzing(true)
-    setBrandFile(file)
-    
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('userId', userId)
-    
-    try {
-      const response = await fetch('/api/analyze-brand', {
-        method: 'POST',
-        body: formData
-      })
-      
-      if (response.ok) {
-        const analysis = await response.json()
-        setBrandAnalysis(analysis)
-        
-        // Apply extracted brand elements
-        setFormData((prev: any) => ({
-          ...prev,
-          primaryColor: analysis.colors?.primary?.[0] || prev.primaryColor,
-          brandColors: analysis.colors?.primary || [],
-          fonts: analysis.typography?.fonts || [],
-          brandVoice: analysis.voice?.tone?.[0] || prev.brandVoice,
-          brandPersonality: analysis.voice?.personality || [],
-          targetAudience: analysis.audience || prev.targetAudience
-        }))
-        
-        toast.success('Brand analysis complete! We\'ve extracted your brand identity.')
-      }
-    } catch (error) {
-      console.error('Brand analysis failed:', error)
-      toast.error('Unable to analyze brand file. Please try again.')
-    } finally {
-      setIsAnalyzing(false)
-    }
-  }
 
   // Camera management moved to AIAvatarTraining component
 
@@ -610,20 +560,20 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
           {/* Floating header */}
           <div className="bg-background/80 backdrop-blur-xl border-b border-border">
             <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <InflioLogo size="sm" />
-                
-                {/* Step breadcrumb */}
-                <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>{currentStepData.title}</span>
-                  {currentStepData.sections.length > 1 && (
-                    <>
-                      <ChevronRight className="h-3 w-3" />
-                      <span>{currentStepData.sections[currentSection].title}</span>
-                    </>
-                  )}
-                </div>
-              </div>
+          <div className="flex items-center gap-4">
+            <InflioLogo size="sm" />
+            
+            {/* Step breadcrumb - Skip AI Preferences */}
+            <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{currentStepData.title}</span>
+              {currentStepData.sections.length > 1 && (
+                <>
+                  <ChevronRight className="h-3 w-3" />
+                  <span>{currentStepData.sections[currentSection].title}</span>
+                </>
+              )}
+            </div>
+          </div>
               
               <div className="flex items-center gap-3">
                 {isSaving && (
@@ -655,7 +605,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
         </div>
 
         {/* Main content */}
-        <div className="pt-20 pb-24 px-6">
+        <div className="pt-20 pb-32 px-6">
           <div className="max-w-4xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
@@ -715,11 +665,11 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             transition={{ delay: 0.2 + i * 0.1 }}
                             className="p-6 rounded-2xl bg-card border border-border shadow-lg hover:shadow-xl transition-all"
                           >
-                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
+                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4 mx-auto">
                               <item.icon className="h-6 w-6 text-primary" />
                             </div>
-                            <h3 className="font-semibold mb-2">{item.title}</h3>
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                            <h3 className="font-semibold mb-2 text-center">{item.title}</h3>
+                            <p className="text-sm text-muted-foreground text-center">{item.description}</p>
                           </motion.div>
                         ))}
                       </div>
@@ -746,343 +696,160 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   </div>
                 )}
 
-                {/* Quick Setup Step */}
+                {/* Simple Creator Profile Step */}
                 {currentStep === 1 && (
                   <div className="space-y-8">
                     <div className="text-center space-y-2">
-                      <h2 className="text-3xl font-bold">Let's get you started</h2>
+                      <h2 className="text-3xl font-bold">Quick Introduction</h2>
                       <p className="text-muted-foreground">
-                        Just a few quick questions to personalize your experience
+                        Just the basics - we'll extract everything else from your content
                       </p>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Your name *</Label>
-                        <Input
-                          id="name"
-                          placeholder="John Doe"
-                          value={formData.name || ''}
-                          onChange={(e) => updateFormData('name', e.target.value)}
-                          className={cn(
-                            "transition-all",
-                            touchedFields.has('name') && !formData.name && "border-destructive"
-                          )}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="industry">Industry *</Label>
-                        <Select
-                          value={formData.industry || ''}
-                          onValueChange={(value) => {
-                            updateFormData('industry', value)
-                            applyIndustryTemplate(value)
-                          }}
-                        >
-                          <SelectTrigger id="industry">
-                            <SelectValue placeholder="Select your industry" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.keys(INDUSTRY_TEMPLATES).map((industry) => (
-                              <SelectItem key={industry} value={industry}>
-                                {industry}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    
-                    {formData.selectedTemplate && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="p-4 rounded-xl bg-primary/5 border border-primary/20"
-                      >
-                        <div className="flex items-start gap-3">
-                          <Wand2 className="h-5 w-5 text-primary mt-0.5" />
-                          <div>
-                            <p className="font-medium text-sm">
-                              Smart template applied!
-                            </p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              We've configured optimal settings for {formData.selectedTemplate}. 
-                              You can customize everything in the next steps.
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="goal">What's your main goal?</Label>
-                      <RadioGroup
-                        value={formData.goal || ''}
-                        onValueChange={(value) => updateFormData('goal', value)}
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {[
-                            { value: 'growth', label: 'Grow my audience', icon: TrendingUp },
-                            { value: 'monetize', label: 'Monetize content', icon: DollarSign },
-                            { value: 'brand', label: 'Build my brand', icon: Award },
-                            { value: 'engage', label: 'Increase engagement', icon: Heart }
-                          ].map((option) => (
-                            <Label
-                              key={option.value}
-                              htmlFor={option.value}
+                    <Card className="p-6">
+                      <div className="space-y-6">
+                        {/* Essential fields only */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="fullName">Full Name *</Label>
+                            <Input
+                              id="fullName"
+                              placeholder="John Doe"
+                              value={formData.fullName || ''}
+                              onChange={(e) => updateFormData('fullName', e.target.value)}
                               className={cn(
-                                "flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all",
-                                formData.goal === option.value
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border hover:border-muted-foreground/50"
+                                "transition-all",
+                                touchedFields.has('fullName') && !formData.fullName && "border-destructive"
                               )}
-                            >
-                              <RadioGroupItem value={option.value} id={option.value} className="sr-only" />
-                              <option.icon className={cn(
-                                "h-5 w-5",
-                                formData.goal === option.value
-                                  ? "text-primary"
-                                  : "text-muted-foreground"
-                              )} />
-                              <span className={cn(
-                                "font-medium",
-                                formData.goal === option.value && "text-foreground"
-                              )}>
-                                {option.label}
-                              </span>
-                            </Label>
-                          ))}
-                        </div>
-                      </RadioGroup>
-                    </div>
-                  </div>
-                )}
-
-                {/* Brand Step */}
-                {currentStep === 2 && (
-                  <div className="space-y-8">
-                    {currentSection === 0 ? (
-                      // Brand upload section
-                      <>
-                        <div className="text-center space-y-2">
-                          <h2 className="text-3xl font-bold">Brand Identity</h2>
-                          <p className="text-muted-foreground">
-                            Upload your brand materials or create from scratch
-                          </p>
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="professionalTitle">Title/Role</Label>
+                            <Input
+                              id="professionalTitle"
+                              placeholder="Content Creator, CEO, etc. (optional)"
+                              value={formData.professionalTitle || ''}
+                              onChange={(e) => updateFormData('professionalTitle', e.target.value)}
+                            />
+                          </div>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <Card
-                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-primary"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              className="hidden"
-                              accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0]
-                                if (file) analyzeBrandFile(file)
-                              }}
+                          <div className="space-y-2">
+                            <Label htmlFor="companyName">Company/Brand</Label>
+                            <Input
+                              id="companyName"
+                              placeholder="Your company or brand (optional)"
+                              value={formData.companyName || ''}
+                              onChange={(e) => updateFormData('companyName', e.target.value)}
                             />
-                            
-                            <div className="text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto">
-                                <Upload className="h-8 w-8 text-primary" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold">Upload Brand Book</h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  PDF, PPT, or images
-                                </p>
-                              </div>
-                              
-                              {brandFile && (
-                                <div className="p-3 rounded-lg bg-primary/5">
-                                  <p className="text-sm font-medium">{brandFile.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {(brandFile.size / 1024 / 1024).toFixed(2)} MB
-                                  </p>
-                                </div>
-                              )}
-                              
-                              {isAnalyzing && (
-                                <div className="space-y-2">
-                                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
-                                  <p className="text-sm text-muted-foreground">
-                                    Analyzing with GPT-5...
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </Card>
+                          </div>
                           
-                          <Card
-                            className="p-6 cursor-pointer hover:shadow-lg transition-all border-2 hover:border-primary"
-                            onClick={() => setCurrentSection(1)}
-                          >
-                            <div className="text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto">
-                                <Palette className="h-8 w-8 text-primary" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold">Create Manually</h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  Define your brand step by step
-                                </p>
-                              </div>
-                            </div>
-                          </Card>
+                          <div className="space-y-2">
+                            <Label htmlFor="industry">Main Industry *</Label>
+                            <Select
+                              value={formData.industry || ''}
+                              onValueChange={(value) => updateFormData('industry', value)}
+                            >
+                              <SelectTrigger id="industry">
+                                <SelectValue placeholder="Select your industry" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Technology">Technology</SelectItem>
+                                <SelectItem value="Business">Business</SelectItem>
+                                <SelectItem value="Education">Education</SelectItem>
+                                <SelectItem value="Health">Health & Wellness</SelectItem>
+                                <SelectItem value="Entertainment">Entertainment</SelectItem>
+                                <SelectItem value="Lifestyle">Lifestyle</SelectItem>
+                                <SelectItem value="Finance">Finance</SelectItem>
+                                <SelectItem value="Creative">Creative/Arts</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                         
-                        {brandAnalysis && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="p-6 rounded-2xl bg-primary/5 border border-primary/20"
-                          >
-                            <h3 className="font-semibold mb-4 flex items-center gap-2">
-                              <CheckCircle className="h-5 w-5 text-green-500" />
-                              Brand Analysis Complete
-                            </h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Colors</p>
-                                <div className="flex gap-1 mt-1">
-                                  {brandAnalysis.colors?.primary?.slice(0, 3).map((color: string, i: number) => (
-                                    <div
-                                      key={i}
-                                      className="w-6 h-6 rounded"
-                                      style={{ backgroundColor: color }}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Voice</p>
-                                <p className="text-sm font-medium">{brandAnalysis.voice?.tone?.[0]}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Audience</p>
-                                <p className="text-sm font-medium">{brandAnalysis.audience?.primary}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Style</p>
-                                <p className="text-sm font-medium">{brandAnalysis.style?.visual}</p>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </>
-                    ) : (
-                      // Brand customization section
-                      <>
-                        <div className="text-center space-y-2">
-                          <h2 className="text-3xl font-bold">Customize Your Brand</h2>
-                          <p className="text-muted-foreground">
-                            Define your visual identity and voice
+                        <div className="space-y-2">
+                          <Label htmlFor="bio">Quick Bio</Label>
+                          <Textarea
+                            id="bio"
+                            placeholder="Brief introduction (optional - we'll learn more from your content)"
+                            value={formData.bio || ''}
+                            onChange={(e) => updateFormData('bio', e.target.value)}
+                            className="min-h-[80px]"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Don't overthink it - our AI will learn your style from your brand materials
                           </p>
                         </div>
-                        
-                        <div className="space-y-6">
-                          <div>
-                            <Label>Primary Color</Label>
-                            <div className="grid grid-cols-6 gap-3 mt-3">
-                              {[
-                                '#8B5CF6', '#EC4899', '#3B82F6', '#10B981', 
-                                '#F59E0B', '#EF4444', '#6366F1', '#14B8A6',
-                                '#F97316', '#84CC16', '#06B6D4', '#A855F7'
-                              ].map((color) => (
-                                <button
-                                  key={color}
-                                  onClick={() => updateFormData('primaryColor', color)}
-                                  className={cn(
-                                    "w-full aspect-square rounded-xl transition-all",
-                                    formData.primaryColor === color && "ring-2 ring-offset-2 ring-primary"
-                                  )}
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          
-                          <div>
-                            <Label>Brand Voice</Label>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                              {[
-                                'Professional', 'Casual', 'Friendly',
-                                'Authoritative', 'Playful', 'Inspiring'
-                              ].map((voice) => (
-                                <Button
-                                  key={voice}
-                                  variant={formData.brandVoice === voice ? 'default' : 'outline'}
-                                  onClick={() => updateFormData('brandVoice', voice)}
-                                  className="w-full"
-                                >
-                                  {voice}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          <div>
-                            <Label htmlFor="tagline">Tagline (optional)</Label>
-                            <Input
-                              id="tagline"
-                              placeholder="Your memorable brand statement"
-                              value={formData.tagline || ''}
-                              onChange={(e) => updateFormData('tagline', e.target.value)}
-                              className="mt-2"
-                            />
-                          </div>
-                        </div>
-                      </>
-                    )}
+                      </div>
+                    </Card>
+                    
+                    <Alert className="border-primary/20 bg-primary/5">
+                      <Sparkles className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>That's it!</strong> In the next step, we'll use AI to extract your brand identity, 
+                        content strategy, and everything else from your existing materials. No more forms!
+                      </AlertDescription>
+                    </Alert>
                   </div>
+                )}
+
+                {/* Enhanced Brand Identity Step */}
+                {currentStep === 2 && (
+                  <BrandIdentityEnhanced
+                    formData={formData}
+                    updateFormData={updateFormData}
+                    onComplete={() => {
+                      // Auto-advance to next step
+                      if (currentStep < totalSteps - 1) {
+                        setCurrentStep(currentStep + 1)
+                        setCurrentSection(0)
+                      }
+                    }}
+                  />
                 )}
 
                 {/* Persona Step */}
                 {currentStep === 3 && (
                   <AIAvatarTraining
-                    onComplete={(photos) => {
-                      // Convert AvatarPhoto[] to string[] URLs for formData
-                      const photoUrls = photos.map(p => p.url)
-                      updateFormData('personaPhotos', photoUrls)
-                      setIsTraining(true)
-                      toast.success('Photos saved! Training will start after onboarding.')
-                      // Auto-advance to next step after saving photos
+                    onComplete={(photos, personaId) => {
+                      if (personaId) {
+                        updateFormData('personaId', personaId)
+                        updateFormData('personaTrained', true)
+                        toast.success('AI Avatar created and training started!')
+                      } else {
+                        updateFormData('personaPhotos', photos.map(p => p.url))
+                        toast.success('Photos saved! Training will start after onboarding.')
+                      }
+                      // Auto-advance to next step
                       setTimeout(() => {
-                        if (currentSection < totalSections - 1) {
-                          setCurrentSection(currentSection + 1)
-                        } else if (currentStep < totalSteps - 1) {
+                        if (currentStep < totalSteps - 1) {
                           setCurrentStep(currentStep + 1)
                           setCurrentSection(0)
                         } else {
                           handleComplete()
                         }
-                      }, 2000)
-                    }}
-                    onBack={() => {
-                      if (currentSection > 0) {
-                        setCurrentSection(currentSection - 1)
-                      } else if (currentStep > 0) {
-                        setCurrentStep(currentStep - 1)
-                        setCurrentSection(ONBOARDING_FLOW[currentStep - 1].sections.length - 1)
-                      }
+                      }, 1500)
                     }}
                     onSkip={() => {
-                      updateFormData('personaPhotosSkipped', true)
-                      if (currentSection < totalSections - 1) {
-                        setCurrentSection(currentSection + 1)
-                      } else if (currentStep < totalSteps - 1) {
+                      updateFormData('personaSkipped', true)
+                      if (currentStep < totalSteps - 1) {
                         setCurrentStep(currentStep + 1)
                         setCurrentSection(0)
                       } else {
                         handleComplete()
                       }
                     }}
+                    onBack={() => {
+                      if (currentStep > 0) {
+                        setCurrentStep(currentStep - 1)
+                        setCurrentSection(0)
+                      }
+                    }}
+                    formData={formData}
+                    updateFormData={updateFormData}
                     minPhotos={5}
                     recommendedPhotos={10}
                     maxPhotos={20}
@@ -1162,119 +929,8 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   </div>
                 )}
 
-                {/* Preferences Step */}
+                {/* Launch Step - Now Step 5 after removing AI Preferences */}
                 {currentStep === 5 && (
-                  <div className="space-y-8">
-                    <div className="text-center space-y-2">
-                      <h2 className="text-3xl font-bold">AI Preferences</h2>
-                      <p className="text-muted-foreground">
-                        How should AI create content for you?
-                      </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Card className="p-6">
-                        <h3 className="font-semibold mb-4">Caption Style</h3>
-                        <RadioGroup
-                          value={formData.captionStyle || ''}
-                          onValueChange={(value) => updateFormData('captionStyle', value)}
-                        >
-                          <div className="space-y-3">
-                            {[
-                              { value: 'short', label: 'Short & Punchy', example: 'Quick, impactful.' },
-                              { value: 'detailed', label: 'Detailed', example: 'Comprehensive explanations.' },
-                              { value: 'story', label: 'Story-driven', example: 'Personal narratives.' },
-                              { value: 'question', label: 'Questions', example: 'Engaging discussions.' }
-                            ].map((style) => (
-                              <Label
-                                key={style.value}
-                                htmlFor={`caption-${style.value}`}
-                                className={cn(
-                                  "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                                  formData.captionStyle === style.value
-                                    ? "border-primary bg-primary/5"
-                                    : "border-border"
-                                )}
-                              >
-                                <RadioGroupItem value={style.value} id={`caption-${style.value}`} />
-                                <div className="flex-1">
-                                  <p className="font-medium">{style.label}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {style.example}
-                                  </p>
-                                </div>
-                              </Label>
-                            ))}
-                          </div>
-                        </RadioGroup>
-                      </Card>
-                      
-                      <Card className="p-6">
-                        <h3 className="font-semibold mb-4">Content Frequency</h3>
-                        <RadioGroup
-                          value={formData.frequency || ''}
-                          onValueChange={(value) => updateFormData('frequency', value)}
-                        >
-                          <div className="space-y-3">
-                            {[
-                              { value: 'daily', label: 'Daily', description: 'Post every day' },
-                              { value: '3-week', label: '3x per week', description: 'Mon, Wed, Fri' },
-                              { value: 'weekly', label: 'Weekly', description: 'Quality over quantity' },
-                              { value: 'custom', label: 'Custom', description: 'Set your own schedule' }
-                            ].map((freq) => (
-                              <Label
-                                key={freq.value}
-                                htmlFor={`freq-${freq.value}`}
-                                className={cn(
-                                  "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                                  formData.frequency === freq.value
-                                    ? "border-primary bg-primary/5"
-                                    : "border-border"
-                                )}
-                              >
-                                <RadioGroupItem value={freq.value} id={`freq-${freq.value}`} />
-                                <div className="flex-1">
-                                  <p className="font-medium">{freq.label}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {freq.description}
-                                  </p>
-                                </div>
-                              </Label>
-                            ))}
-                          </div>
-                        </RadioGroup>
-                      </Card>
-                    </div>
-                    
-                    <Card className="p-6">
-                      <h3 className="font-semibold mb-4">Hashtag Strategy</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="hashtag-count">Number of hashtags</Label>
-                          <span className="text-sm font-medium">
-                            {formData.hashtagCount || 10}
-                          </span>
-                        </div>
-                        <Slider
-                          id="hashtag-count"
-                          value={[formData.hashtagCount || 10]}
-                          onValueChange={([value]) => updateFormData('hashtagCount', value)}
-                          min={5}
-                          max={30}
-                          step={5}
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Minimal</span>
-                          <span>Moderate</span>
-                          <span>Maximum</span>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Launch Step */}
-                {currentStep === 6 && (
                   <div className="min-h-[60vh] flex flex-col justify-center">
                     <motion.div
                       initial={{ scale: 0.9, opacity: 0 }}
@@ -1379,14 +1035,28 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
               ))}
             </div>
             
-            <Button
-              onClick={handleContinue}
-              disabled={!validateCurrentSection()}
-              className="min-w-[120px]"
-            >
-              {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-              <ChevronRight className="h-4 w-4 ml-2" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {currentStep === 2 && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    updateFormData('brandAnalysisSkipped', true)
+                    setCurrentStep(3)
+                    setCurrentSection(0)
+                  }}
+                >
+                  Skip to AI Avatar
+                </Button>
+              )}
+              <Button
+                onClick={handleContinue}
+                disabled={!validateCurrentSection()}
+                className="min-w-[120px]"
+              >
+                {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
 

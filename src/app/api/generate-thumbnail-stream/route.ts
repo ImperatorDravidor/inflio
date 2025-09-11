@@ -79,14 +79,25 @@ export async function POST(req: NextRequest) {
             progress: 60
           })}\n\n`))
 
-          const imageUrl = response.data?.[0]?.url
+          let imageUrl = response.data?.[0]?.url as string | undefined
+          let imageBlob: Blob | null = null
           if (!imageUrl) {
-            throw new Error('No image URL returned')
+            const b64 = (response.data?.[0] as any)?.b64_json
+            if (!b64) {
+              throw new Error('No image URL returned')
+            }
+            // Convert base64 to Blob
+            const binary = atob(b64)
+            const array = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
+            imageBlob = new Blob([array], { type: 'image/png' })
           }
 
-          // Download and save the image
-          const imageResponse = await fetch(imageUrl)
-          const imageBlob = await imageResponse.blob()
+          // Download and save the image (or use constructed blob)
+          if (!imageBlob && imageUrl) {
+            const imageResponse = await fetch(imageUrl)
+            imageBlob = await imageResponse.blob()
+          }
           
           const fileName = `thumbnail-${crypto.randomUUID()}.png`
           const filePath = `${projectId}/thumbnails/${fileName}`
@@ -99,7 +110,7 @@ export async function POST(req: NextRequest) {
           
           const { error: uploadError } = await supabaseAdmin.storage
             .from('images')
-            .upload(filePath, imageBlob, {
+            .upload(filePath, imageBlob!, {
               contentType: 'image/png',
               upsert: false
             })

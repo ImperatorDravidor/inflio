@@ -137,6 +137,46 @@ async function trainLoRAAsync(
       })
       .eq('id', jobId)
 
+    // Fetch job to get persona_id and user_id
+    const { data: jobRow } = await supabaseAdmin
+      .from('lora_training_jobs')
+      .select('persona_id, user_id')
+      .eq('id', jobId)
+      .single()
+
+    if (jobRow?.persona_id) {
+      // Persist LoRA details onto persona and mark as trained
+      await supabaseAdmin
+        .from('personas')
+        .update({
+          status: 'trained',
+          lora_model_url: result.diffusersLoraFile.url,
+          lora_config_url: result.configFile.url,
+          lora_trigger_phrase: params.triggerPhrase,
+          lora_training_status: 'completed',
+          lora_trained_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          training_job_id: jobId
+        })
+        .eq('id', jobRow.persona_id)
+
+      // Ensure default_persona_id is set if missing
+      if (jobRow.user_id) {
+        const { data: profile } = await supabaseAdmin
+          .from('user_profiles')
+          .select('default_persona_id')
+          .eq('clerk_user_id', jobRow.user_id)
+          .single()
+
+        if (!profile?.default_persona_id) {
+          await supabaseAdmin
+            .from('user_profiles')
+            .update({ default_persona_id: jobRow.persona_id })
+            .eq('clerk_user_id', jobRow.user_id)
+        }
+      }
+    }
+
     console.log(`LoRA training completed for job ${jobId}`)
   } catch (error) {
     console.error(`LoRA training failed for job ${jobId}:`, error)
@@ -150,6 +190,25 @@ async function trainLoRAAsync(
         completed_at: new Date().toISOString()
       })
       .eq('id', jobId)
+
+    // Also reflect failure on persona status if possible
+    const { data: jobRow } = await supabaseAdmin
+      .from('lora_training_jobs')
+      .select('persona_id')
+      .eq('id', jobId)
+      .single()
+
+    if (jobRow?.persona_id) {
+      await supabaseAdmin
+        .from('personas')
+        .update({
+          status: 'failed',
+          lora_training_status: 'failed',
+          updated_at: new Date().toISOString(),
+          training_job_id: jobId
+        })
+        .eq('id', jobRow.persona_id)
+    }
   }
 }
 

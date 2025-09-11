@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AnimatedBackground } from "@/components/animated-background"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
-import { SchedulingWizard } from "@/components/staging/scheduling-wizard"
+import { AISchedulingAssistant } from "@/components/staging/ai-scheduling-assistant"
 import { StagingReview } from "@/components/staging/staging-review"
 import { 
   AlertDialog,
@@ -666,7 +666,7 @@ export default function ProjectStagePage() {
           )}
           
           {currentStep === 1 && (
-            <SchedulingWizard
+            <AISchedulingAssistant
               content={stagedContent}
               onComplete={handleSchedulingComplete}
               onBack={() => setCurrentStep(0)}

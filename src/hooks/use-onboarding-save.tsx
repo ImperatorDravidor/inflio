@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { OnboardingService } from '@/lib/services/onboarding-service'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 interface UseOnboardingSaveProps {
   userId: string
@@ -11,8 +11,7 @@ interface UseOnboardingSaveProps {
 export function useOnboardingSave({ userId, currentStep, stepId }: UseOnboardingSaveProps) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveMessage, setSaveMessage] = useState<string>()
-  const saveTimeoutRef = useRef<NodeJS.Timeout>()
-  const { toast } = useToast()
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const saveProgress = useCallback(async (formData: any, showToast = false) => {
     // Clear any existing timeout
@@ -34,9 +33,8 @@ export function useOnboardingSave({ userId, currentStep, stepId }: UseOnboarding
       if (success) {
         setSaveStatus('saved')
         if (showToast) {
-          toast({
-            title: "Progress saved",
-            description: "Your information has been saved successfully",
+          toast.success('Progress saved', {
+            description: 'Your information has been saved successfully'
           })
         }
         
@@ -48,10 +46,8 @@ export function useOnboardingSave({ userId, currentStep, stepId }: UseOnboarding
         setSaveStatus('error')
         setSaveMessage('Failed to save progress')
         if (showToast) {
-          toast({
-            title: "Save failed",
-            description: "We couldn't save your progress. Please try again.",
-            variant: "destructive"
+          toast.error('Save failed', {
+            description: "We couldn't save your progress. Please try again."
           })
         }
       }
@@ -60,14 +56,12 @@ export function useOnboardingSave({ userId, currentStep, stepId }: UseOnboarding
       setSaveStatus('error')
       setSaveMessage('An unexpected error occurred')
       if (showToast) {
-        toast({
-          title: "Error",
-          description: "An unexpected error occurred while saving",
-          variant: "destructive"
+        toast.error('Error', {
+          description: 'An unexpected error occurred while saving'
         })
       }
     }
-  }, [userId, currentStep, stepId, toast])
+  }, [userId, currentStep, stepId])
   
   // Auto-save function with debouncing
   const autoSave = useCallback((formData: any) => {

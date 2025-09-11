@@ -1,9 +1,10 @@
 import { fal } from '@fal-ai/client'
 
 // Configure FAL API key
-if (process.env.FAL_API_KEY) {
+const falKey = process.env.FAL_KEY || process.env.FAL_API_KEY
+if (falKey) {
   fal.config({
-    credentials: process.env.FAL_API_KEY
+    credentials: falKey
   })
 }
 
@@ -64,8 +65,9 @@ export class FALService {
    * Generate images using FLUX models with optional LoRA
    */
   static async generateImage(params: FluxGenerationParams): Promise<FluxGenerationResult> {
-    if (!process.env.FAL_API_KEY) {
-      throw new Error('FAL_API_KEY is not configured')
+    const falKey = process.env.FAL_KEY || process.env.FAL_API_KEY
+    if (!falKey) {
+      throw new Error('FAL_KEY is not configured')
     }
 
     const {
@@ -133,8 +135,9 @@ export class FALService {
    * Train a LoRA model for portrait generation
    */
   static async trainLoRA(params: LoRATrainingParams): Promise<LoRATrainingResult> {
-    if (!process.env.FAL_API_KEY) {
-      throw new Error('FAL_API_KEY is not configured')
+    const falKey = process.env.FAL_KEY || process.env.FAL_API_KEY
+    if (!falKey) {
+      throw new Error('FAL_KEY is not configured')
     }
 
     const {
@@ -233,7 +236,7 @@ export class FALService {
    * Validate FAL API key
    */
   static isConfigured(): boolean {
-    return !!process.env.FAL_API_KEY
+    return !!(process.env.FAL_KEY || process.env.FAL_API_KEY)
   }
 }
 
