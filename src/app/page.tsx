@@ -9,9 +9,28 @@ import { useState, useRef, useEffect } from "react"
 import { AnalyticsService } from "@/lib/analytics-service"
 import InfiniteHero from "@/components/ui/infinite-hero"
 import { PricingSection } from "@/components/ui/pricing-section"
-import { useGSAP } from "@gsap/react"
-import { gsap } from "gsap"
-import { SplitText } from "gsap/SplitText"
+// GSAP imports - wrapped in try-catch for production
+let gsap: any = null
+let SplitText: any = null
+let useGSAP: any = null
+
+// Try to import GSAP, but don't fail if it's not available
+if (typeof window !== 'undefined') {
+  try {
+    const gsapModule = require('gsap')
+    const gsapReact = require('@gsap/react')
+    gsap = gsapModule.gsap
+    useGSAP = gsapReact.useGSAP
+    // SplitText might not be available in production
+    try {
+      SplitText = require('gsap/SplitText').SplitText
+    } catch (e) {
+      console.log('SplitText not available - using fallback animations')
+    }
+  } catch (e) {
+    console.log('GSAP not available - using fallback animations')
+  }
+}
 import { InflioLogo } from "@/components/inflio-logo"
 import { 
   Video, 
@@ -77,7 +96,14 @@ import {
   IconFileText,
 } from "@tabler/icons-react"
 
-gsap.registerPlugin(SplitText)
+// Register SplitText only if both GSAP and SplitText are available
+if (gsap && SplitText) {
+  try {
+    gsap.registerPlugin(SplitText)
+  } catch (e) {
+    console.log('Could not register SplitText plugin')
+  }
+}
 
 // Platform integrations
 const platforms = [
@@ -163,61 +189,165 @@ function InflioHero() {
   const pRef = useRef<HTMLParagraphElement>(null)
   const ctaRef = useRef<HTMLDivElement>(null)
   const { isSignedIn } = useUser()
+  const [animationReady, setAnimationReady] = useState(false)
 
-  useGSAP(
-    () => {
-      const ctas = ctaRef.current ? Array.from(ctaRef.current.children) : []
+  // Use GSAP if available, otherwise we'll use framer-motion as fallback
+  useEffect(() => {
+    if (useGSAP && gsap && SplitText) {
+      // GSAP is available, use it
+      try {
+        const ctas = ctaRef.current ? Array.from(ctaRef.current.children) : []
 
-      const h1Split = new SplitText(h1Ref.current, { type: "lines" })
-      const pSplit = new SplitText(pRef.current, { type: "lines" })
+        const h1Split = new SplitText(h1Ref.current, { type: "lines" })
+        const pSplit = new SplitText(pRef.current, { type: "lines" })
 
-      gsap.set(logoRef.current, { opacity: 0, y: -20, scale: 0.9 })
-      gsap.set(h1Split.lines, {
-        opacity: 0,
-        y: 24,
-        filter: "blur(8px)",
-      })
-      gsap.set(pSplit.lines, {
-        opacity: 0,
-        y: 16,
-        filter: "blur(6px)",
-      })
-      if (ctas.length) gsap.set(ctas, { opacity: 0, y: 16 })
+        gsap.set(logoRef.current, { opacity: 0, y: -20, scale: 0.9 })
+        gsap.set(h1Split.lines, {
+          opacity: 0,
+          y: 24,
+          filter: "blur(8px)",
+        })
+        gsap.set(pSplit.lines, {
+          opacity: 0,
+          y: 16,
+          filter: "blur(6px)",
+        })
+        if (ctas.length) gsap.set(ctas, { opacity: 0, y: 16 })
 
-      const tl = gsap.timeline({ defaults: { ease: "power2.out" } })
-      tl.to(logoRef.current, { opacity: 1, y: 0, scale: 1, duration: 0.8 }, 0)
-        .to(
-          h1Split.lines,
-          {
-            opacity: 1,
-            y: 0,
-            filter: "blur(0px)",
-            duration: 0.8,
-            stagger: 0.1,
-          },
-          0.3,
-        )
-        .to(
-          pSplit.lines,
-          {
-            opacity: 1,
-            y: 0,
-            filter: "blur(0px)",
-            duration: 0.6,
-            stagger: 0.08,
-          },
-          "-=0.3",
-        )
-        .to(ctas, { opacity: 1, y: 0, duration: 0.6, stagger: 0.08 }, "-=0.2")
+        const tl = gsap.timeline({ defaults: { ease: "power2.out" } })
+        tl.to(logoRef.current, { opacity: 1, y: 0, scale: 1, duration: 0.8 }, 0)
+          .to(
+            h1Split.lines,
+            {
+              opacity: 1,
+              y: 0,
+              filter: "blur(0px)",
+              duration: 0.8,
+              stagger: 0.1,
+            },
+            0.3,
+          )
+          .to(
+            pSplit.lines,
+            {
+              opacity: 1,
+              y: 0,
+              filter: "blur(0px)",
+              duration: 0.6,
+              stagger: 0.08,
+            },
+            "-=0.3",
+          )
+          .to(ctas, { opacity: 1, y: 0, duration: 0.6, stagger: 0.08 }, "-=0.2")
 
-      return () => {
-        h1Split.revert()
-        pSplit.revert()
+        return () => {
+          h1Split.revert()
+          pSplit.revert()
+        }
+      } catch (error) {
+        console.log('GSAP animation failed, using fallback')
+        setAnimationReady(true)
       }
-    },
-    { scope: rootRef },
-  )
+    } else {
+      // GSAP not available, trigger framer-motion fallback
+      setAnimationReady(true)
+    }
+  }, [])
 
+  // Framer Motion fallback animations when GSAP is not available
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15,
+        delayChildren: 0.2,
+      }
+    }
+  }
+
+  const itemVariants = {
+    hidden: { 
+      opacity: 0, 
+      y: 30
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.8,
+        type: "spring" as const,
+        stiffness: 100
+      }
+    }
+  }
+
+  // If GSAP failed to load, use framer-motion instead
+  if (animationReady) {
+    return (
+      <motion.div 
+        ref={rootRef} 
+        className="relative z-10 flex h-svh w-full items-center justify-center px-6"
+        initial="hidden"
+        animate="visible"
+        variants={containerVariants}
+      >
+        <div className="text-center">
+          <motion.div className="mb-8 flex justify-center" variants={itemVariants}>
+            <InflioLogo size="xl" />
+          </motion.div>
+          <motion.h1
+            className="mx-auto max-w-2xl lg:max-w-4xl text-[clamp(2.5rem,7vw,5rem)] font-extralight leading-[0.95] tracking-tight text-white"
+            variants={itemVariants}
+          >
+            Turn One Video Into
+            <span className="block bg-gradient-to-r from-white via-blue-200 to-purple-200 bg-clip-text text-transparent">
+              50+ Pieces of Content
+            </span>
+          </motion.h1>
+          <motion.p
+            className="mx-auto mt-6 max-w-2xl md:text-balance text-base/7 md:text-lg/8 font-light tracking-tight text-white/80"
+            variants={itemVariants}
+          >
+            AI-powered content repurposing that extracts clips, creates transcripts, 
+            generates blog posts, and schedules to all platforms - in under 10 minutes.
+          </motion.p>
+
+          <motion.div
+            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+            variants={itemVariants}
+          >
+            <Link href={isSignedIn ? "/studio/upload" : "/sign-up"}>
+              <button
+                type="button"
+                className="group relative overflow-hidden border border-white/30 bg-gradient-to-r from-white/20 to-white/10 px-8 py-3 text-base rounded-xl font-medium tracking-wide text-white backdrop-blur-sm transition-all duration-500 hover:border-white/50 hover:bg-white/20 hover:shadow-lg hover:shadow-white/10 cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5" />
+                  Start Creating Free
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </span>
+              </button>
+            </Link>
+
+            <Link href="#demo">
+              <button
+                type="button"
+                className="group relative px-8 py-3 text-base font-medium tracking-wide text-white/90 transition-all duration-500 hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)] hover:text-white cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Play className="h-5 w-5" />
+                  Watch 2-min Demo
+                </span>
+              </button>
+            </Link>
+          </motion.div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Default return with GSAP animations (when GSAP is available)
   return (
     <div ref={rootRef} className="relative z-10 flex h-svh w-full items-center justify-center px-6">
       <div className="text-center">
