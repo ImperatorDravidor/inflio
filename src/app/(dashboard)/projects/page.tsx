@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { VideoThumbnailFallback } from "@/components/video-thumbnail-fallback"
+import { SupabaseVideoPreview } from "@/components/supabase-video-preview"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -182,11 +182,11 @@ function ProjectCard({
             className="relative w-full sm:w-32 h-48 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 cursor-pointer group"
             onClick={handleProjectClick}
           >
-            <VideoThumbnailFallback
+            <SupabaseVideoPreview
               videoUrl={project.video_url}
               thumbnailUrl={project.thumbnail_url}
               title={project.title}
-              className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+              className="object-cover w-full h-full"
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
               {isProcessing ? (
@@ -327,11 +327,11 @@ function ProjectCard({
         className="relative aspect-video overflow-hidden bg-muted cursor-pointer"
         onClick={handleProjectClick}
       >
-        <VideoThumbnailFallback
+        <SupabaseVideoPreview
           videoUrl={project.video_url}
           thumbnailUrl={project.thumbnail_url}
           title={project.title}
-          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+          className="object-cover w-full h-full"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-3 sm:right-4">
