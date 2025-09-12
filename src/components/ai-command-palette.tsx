@@ -33,7 +33,7 @@ interface QuickAction {
   id: string
   title: string
   description: string
-  icon: React.ElementType
+  icon: React.ComponentType<{ className?: string }>
   shortcut?: string
   action: () => void | Promise<void>
   category: 'create' | 'navigate' | 'ai' | 'analyze'
@@ -437,37 +437,15 @@ export function AICommandPalette({ open, onOpenChange }: AICommandPaletteProps) 
 
                 {groupedActions.create.length > 0 && (
                   <CommandGroup heading="Create">
-                    {groupedActions.create.map((action) => (
-                      <CommandItem
-                        key={action.id}
-                        onSelect={action.action}
-                        className="cursor-pointer"
-                      >
-                        <action.icon className="mr-2 h-4 w-4" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{action.title}</p>
-                          <p className="text-xs text-muted-foreground">{action.description}</p>
-                        </div>
-                        {action.shortcut && (
-                          <CommandShortcut>{action.shortcut}</CommandShortcut>
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {groupedActions.ai.length > 0 && (
-                  <>
-                    <CommandSeparator />
-                    <CommandGroup heading="AI Assistant">
-                      {groupedActions.ai.map((action) => (
+                    {groupedActions.create.map((action) => {
+                      const Icon = action.icon
+                      return (
                         <CommandItem
                           key={action.id}
                           onSelect={action.action}
                           className="cursor-pointer"
-                          disabled={isProcessing}
                         >
-                          <action.icon className="mr-2 h-4 w-4" />
+                          <Icon className="mr-2 h-4 w-4" />
                           <div className="flex-1">
                             <p className="text-sm font-medium">{action.title}</p>
                             <p className="text-xs text-muted-foreground">{action.description}</p>
@@ -476,7 +454,35 @@ export function AICommandPalette({ open, onOpenChange }: AICommandPaletteProps) 
                             <CommandShortcut>{action.shortcut}</CommandShortcut>
                           )}
                         </CommandItem>
-                      ))}
+                      )
+                    })}
+                  </CommandGroup>
+                )}
+
+                {groupedActions.ai.length > 0 && (
+                  <>
+                    <CommandSeparator />
+                    <CommandGroup heading="AI Assistant">
+                      {groupedActions.ai.map((action) => {
+                        const Icon = action.icon
+                        return (
+                          <CommandItem
+                            key={action.id}
+                            onSelect={action.action}
+                            className="cursor-pointer"
+                            disabled={isProcessing}
+                          >
+                            <Icon className="mr-2 h-4 w-4" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{action.title}</p>
+                              <p className="text-xs text-muted-foreground">{action.description}</p>
+                            </div>
+                            {action.shortcut && (
+                              <CommandShortcut>{action.shortcut}</CommandShortcut>
+                            )}
+                          </CommandItem>
+                        )
+                      })}
                     </CommandGroup>
                   </>
                 )}
@@ -485,22 +491,25 @@ export function AICommandPalette({ open, onOpenChange }: AICommandPaletteProps) 
                   <>
                     <CommandSeparator />
                     <CommandGroup heading="Navigate">
-                      {groupedActions.navigate.map((action) => (
-                        <CommandItem
-                          key={action.id}
-                          onSelect={action.action}
-                          className="cursor-pointer"
-                        >
-                          <action.icon className="mr-2 h-4 w-4" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{action.title}</p>
-                            <p className="text-xs text-muted-foreground">{action.description}</p>
-                          </div>
-                          {action.shortcut && (
-                            <CommandShortcut>{action.shortcut}</CommandShortcut>
-                          )}
-                        </CommandItem>
-                      ))}
+                      {groupedActions.navigate.map((action) => {
+                        const Icon = action.icon
+                        return (
+                          <CommandItem
+                            key={action.id}
+                            onSelect={action.action}
+                            className="cursor-pointer"
+                          >
+                            <Icon className="mr-2 h-4 w-4" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{action.title}</p>
+                              <p className="text-xs text-muted-foreground">{action.description}</p>
+                            </div>
+                            {action.shortcut && (
+                              <CommandShortcut>{action.shortcut}</CommandShortcut>
+                            )}
+                          </CommandItem>
+                        )
+                      })}
                     </CommandGroup>
                   </>
                 )}
@@ -509,19 +518,22 @@ export function AICommandPalette({ open, onOpenChange }: AICommandPaletteProps) 
                   <>
                     <CommandSeparator />
                     <CommandGroup heading="Analyze">
-                      {groupedActions.analyze.map((action) => (
-                        <CommandItem
-                          key={action.id}
-                          onSelect={action.action}
-                          className="cursor-pointer"
-                        >
-                          <action.icon className="mr-2 h-4 w-4" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{action.title}</p>
-                            <p className="text-xs text-muted-foreground">{action.description}</p>
-                          </div>
-                        </CommandItem>
-                      ))}
+                      {groupedActions.analyze.map((action) => {
+                        const Icon = action.icon
+                        return (
+                          <CommandItem
+                            key={action.id}
+                            onSelect={action.action}
+                            className="cursor-pointer"
+                          >
+                            <Icon className="mr-2 h-4 w-4" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{action.title}</p>
+                              <p className="text-xs text-muted-foreground">{action.description}</p>
+                            </div>
+                          </CommandItem>
+                        )
+                      })}
                     </CommandGroup>
                   </>
                 )}

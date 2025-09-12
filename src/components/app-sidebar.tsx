@@ -11,6 +11,7 @@ import {
   IconVideo,
   IconTrendingUp,
   IconShare2,
+  IconPalette,
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"

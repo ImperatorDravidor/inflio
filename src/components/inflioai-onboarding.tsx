@@ -24,7 +24,7 @@ interface OnboardingStep {
   description: string
   benefit: string
   timeEstimate: string
-  icon: React.ElementType
+  icon: React.ComponentType<{ className?: string }>
   image?: string
   path: string
   status: 'completed' | 'current' | 'upcoming'
@@ -516,7 +516,10 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                         {step.status === 'completed' ? (
                           <CheckCircle2 className="h-7 w-7" />
                         ) : (
-                          <step.icon className="h-7 w-7" />
+                          (() => {
+                            const Icon = step.icon
+                            return <Icon className="h-7 w-7" />
+                          })()
                         )}
                       </div>
                       <span className={cn(
