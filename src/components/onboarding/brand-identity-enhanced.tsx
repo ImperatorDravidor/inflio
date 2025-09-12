@@ -366,8 +366,8 @@ export function BrandIdentityEnhanced({
     }
     
     const validFiles = files.filter(file => {
-      // Validate file size - Files API supports up to 500MB per file!
-      const maxSizeMB = 500
+      // Validate file size - 25MB per file, up to 10 files
+      const maxSizeMB = 25
       if (file.size > maxSizeMB * 1024 * 1024) {
         toast.error(`${file.name} is too large (max ${maxSizeMB}MB per file)`)
         return false
@@ -1383,7 +1383,7 @@ export function BrandIdentityEnhanced({
               Supports: PDF, Images (PNG, JPG, SVG), PowerPoint, Word, Text files
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Max 10 files, up to 500MB each
+              Max 10 files, up to 25MB each
             </p>
             <div className="flex gap-2 justify-center mt-4">
               <Badge variant="secondary">Brand Books</Badge>

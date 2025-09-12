@@ -4,7 +4,7 @@ import Anthropic, { toFile } from '@anthropic-ai/sdk'
 import { Readable } from 'stream'
 import { createClient } from '@supabase/supabase-js'
 
-// Configure for large file uploads - Files API supports up to 500MB per file!
+// Configure for file uploads - 25MB per file limit, up to 10 files
 export const runtime = 'nodejs'
 export const maxDuration = 300 // Allow up to 5 minutes for large documents
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
-    // Upload files to Claude's Files API first (supports up to 500MB per file!)
+    // Upload files to Claude's Files API first (limited to 25MB per file)
     const messageContent: any[] = []
     const uploadedFileIds: string[] = []
     const uploadedIdByKey = new Map<string, string>()
@@ -401,7 +401,7 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
     let statusCode = 500
     
     if (error.status === 413 || error.message?.includes('request_too_large')) {
-      errorMessage = 'File exceeds the 500MB limit per file'
+      errorMessage = 'File exceeds the 25MB limit per file'
       statusCode = 413
     } else if (error.message?.includes('storage_limit')) {
       errorMessage = 'Organization storage limit exceeded (100GB total)'
