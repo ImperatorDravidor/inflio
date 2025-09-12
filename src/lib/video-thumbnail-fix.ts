@@ -132,8 +132,6 @@ export async function generateVideoThumbnailFromUrl(
       return
     }
     
-    console.log('generateVideoThumbnailFromUrl: Starting for', videoUrl, 'at', seekTo, 'seconds')
-    
     // Cleanup function
     const cleanup = () => {
       video.remove()
@@ -185,19 +183,12 @@ export async function generateVideoThumbnailFromUrl(
     }
     
     // Set up video element
-    video.onloadedmetadata = () => {
-      console.log('Video metadata loaded, duration:', video.duration, 'dimensions:', video.videoWidth, 'x', video.videoHeight)
+    video.onloadeddata = () => {
+      console.log('Video from URL loaded, duration:', video.duration)
       
-      // Seek to specified time
-      if (video.duration > seekTo) {
-        video.currentTime = seekTo
-      } else if (video.duration > 0) {
-        // If video is shorter than seekTo, use 10% of duration
-        video.currentTime = video.duration * 0.1
-      } else {
-        // Fallback to first frame
-        video.currentTime = 0
-      }
+      // Seek to specified time or 10% of duration
+      const targetTime = Math.min(seekTo, video.duration * 0.1)
+      video.currentTime = targetTime > 0 ? targetTime : 0
     }
     
     video.onseeked = () => {
@@ -206,38 +197,24 @@ export async function generateVideoThumbnailFromUrl(
       setTimeout(captureFrame, 200)
     }
     
-    // Also try capturing on loadeddata as a fallback
-    video.onloadeddata = () => {
-      console.log('Video data loaded')
-      if (video.duration && video.duration > 0) {
-        const targetTime = Math.min(seekTo, video.duration * 0.1)
-        video.currentTime = targetTime > 0 ? targetTime : 0
-      }
-    }
-    
     video.onerror = (e) => {
-      console.error('Video URL loading error:', e, 'URL:', videoUrl)
+      console.error('Video URL loading error:', e)
       clearTimeout(timeout)
       cleanup()
       resolve('')
     }
-    
-    // Try without CORS first for Supabase URLs
-    const isSupabaseUrl = videoUrl.includes('supabase') || videoUrl.includes('sbpcdn')
     
     // Configure video element
     video.muted = true
     video.playsInline = true
     video.preload = 'auto'
     
-    // Set crossOrigin only for non-Supabase external URLs
-    if (videoUrl.startsWith('http') && !videoUrl.includes('blob:') && !isSupabaseUrl) {
+    // Set crossOrigin for external URLs
+    if (videoUrl.startsWith('http') && !videoUrl.includes('blob:')) {
       video.crossOrigin = 'anonymous'
     }
     
     video.src = videoUrl
-    
-    console.log('Loading video from:', videoUrl, 'CORS:', video.crossOrigin)
     
     // Start loading
     video.load()

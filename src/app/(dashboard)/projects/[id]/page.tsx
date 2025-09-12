@@ -1616,7 +1616,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <EnhancedVideoPlayer
                 ref={videoRef}
                 videoUrl={project.video_url}
-                thumbnailUrl={project.thumbnail_url || thumbnailUrl || defaultThumbnail}
+                thumbnailUrl={project.thumbnail_url || thumbnailUrl}
                 onLoadedMetadata={(duration) => {
                   if (!project.metadata?.duration || project.metadata.duration !== duration) {
                     setProject(prev => prev ? {

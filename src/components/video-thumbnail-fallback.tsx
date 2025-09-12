@@ -23,30 +23,21 @@ export function VideoThumbnailFallback({
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState(false)
 
+  // Log the video URL for debugging
+  console.log('VideoThumbnailFallback:', { videoUrl, thumbnailUrl, title })
+
   useEffect(() => {
     async function generateThumbnail() {
       if (!thumbnailUrl && videoUrl && !generatedThumbnail && !isGenerating && !error) {
+        console.log('Generating thumbnail for:', videoUrl)
         setIsGenerating(true)
         try {
-          console.log('VideoThumbnailFallback: Generating thumbnail for', videoUrl)
-          // Try to generate thumbnail from video at 0.5 seconds mark (or 1 second for longer videos)
-          const thumbnail = await generateVideoThumbnailFromUrl(videoUrl, 0.5)
-          
-          if (thumbnail && thumbnail !== '') {
-            console.log('VideoThumbnailFallback: Thumbnail generated successfully')
-            setGeneratedThumbnail(thumbnail)
-          } else {
-            console.log('VideoThumbnailFallback: Empty thumbnail returned, trying fallback')
-            // Try again at 1 second if first attempt failed
-            const fallbackThumbnail = await generateVideoThumbnailFromUrl(videoUrl, 1)
-            if (fallbackThumbnail && fallbackThumbnail !== '') {
-              setGeneratedThumbnail(fallbackThumbnail)
-            } else {
-              setError(true)
-            }
-          }
+          // Try to generate thumbnail from video at 2 seconds mark
+          const thumbnail = await generateVideoThumbnailFromUrl(videoUrl, 2)
+          console.log('Generated thumbnail result:', thumbnail ? 'success' : 'empty')
+          setGeneratedThumbnail(thumbnail)
         } catch (err) {
-          console.error("VideoThumbnailFallback: Failed to generate thumbnail:", err)
+          console.error("Failed to generate thumbnail:", err)
           setError(true)
         } finally {
           setIsGenerating(false)
@@ -59,23 +50,34 @@ export function VideoThumbnailFallback({
 
   // If we have a thumbnail URL, use it
   if (thumbnailUrl) {
-    if (thumbnailUrl.startsWith('http')) {
-      return (
-        <img
-          src={thumbnailUrl}
-          alt={title}
-          className={className}
-        />
-      )
-    } else {
-      return (
-        <img
-          src={thumbnailUrl}
-          alt={title}
-          className={className}
-        />
-      )
-    }
+    return (
+      <img
+        src={thumbnailUrl}
+        alt={title}
+        className={className}
+        onError={(e) => {
+          console.error('Thumbnail image failed to load:', thumbnailUrl)
+          e.currentTarget.style.display = 'none'
+        }}
+      />
+    )
+  }
+
+  // If we have a video URL but no thumbnail, show the video element directly
+  if (videoUrl && !isGenerating) {
+    return (
+      <video
+        src={videoUrl}
+        className={className}
+        muted
+        playsInline
+        preload="metadata"
+        onError={(e) => {
+          console.error('Video failed to load:', videoUrl)
+          setError(true)
+        }}
+      />
+    )
   }
 
   // If we generated a thumbnail, use it
