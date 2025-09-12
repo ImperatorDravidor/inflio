@@ -133,7 +133,7 @@ export default function ClerkSignInPage() {
       </nav>
       
       {/* Sign In Component */}
-      <div className="pt-16">
+      <div className="fixed inset-0 pt-16">
         <SignInPage
           title={
             <span className="font-light text-foreground tracking-tighter">
