@@ -28,11 +28,25 @@ export function VideoThumbnailFallback({
       if (!thumbnailUrl && videoUrl && !generatedThumbnail && !isGenerating && !error) {
         setIsGenerating(true)
         try {
-          // Try to generate thumbnail from video at 2 seconds mark
-          const thumbnail = await generateVideoThumbnailFromUrl(videoUrl, 2)
-          setGeneratedThumbnail(thumbnail)
+          console.log('VideoThumbnailFallback: Generating thumbnail for', videoUrl)
+          // Try to generate thumbnail from video at 0.5 seconds mark (or 1 second for longer videos)
+          const thumbnail = await generateVideoThumbnailFromUrl(videoUrl, 0.5)
+          
+          if (thumbnail && thumbnail !== '') {
+            console.log('VideoThumbnailFallback: Thumbnail generated successfully')
+            setGeneratedThumbnail(thumbnail)
+          } else {
+            console.log('VideoThumbnailFallback: Empty thumbnail returned, trying fallback')
+            // Try again at 1 second if first attempt failed
+            const fallbackThumbnail = await generateVideoThumbnailFromUrl(videoUrl, 1)
+            if (fallbackThumbnail && fallbackThumbnail !== '') {
+              setGeneratedThumbnail(fallbackThumbnail)
+            } else {
+              setError(true)
+            }
+          }
         } catch (err) {
-          console.error("Failed to generate thumbnail:", err)
+          console.error("VideoThumbnailFallback: Failed to generate thumbnail:", err)
           setError(true)
         } finally {
           setIsGenerating(false)
