@@ -430,14 +430,14 @@ export async function processTranscription(params: {
           console.log('[TranscriptionProcessor] No existing posts found, generating AI posts directly...')
           
           // Get user_id for the project if not provided
-          const userId = params.userId || project.user_id
+          let userId = params.userId
           if (!userId) {
             const { data: projectWithUser } = await supabaseAdmin
               .from('projects')
               .select('user_id')
               .eq('id', projectId)
               .single()
-            params.userId = projectWithUser?.user_id
+            userId = projectWithUser?.user_id
           }
 
           // Generate post suggestions directly from content analysis
@@ -448,10 +448,11 @@ export async function processTranscription(params: {
           const defaultPlatforms = ['instagram', 'twitter', 'linkedin']
           
           // Use postSuggestions from AI analysis if available
-          if (contentAnalysis.postSuggestions && contentAnalysis.postSuggestions.length > 0) {
-            console.log(`[TranscriptionProcessor] Found ${contentAnalysis.postSuggestions.length} post suggestions from AI analysis`)
+          const postSuggestions = (contentAnalysis as any).postSuggestions
+          if (postSuggestions && postSuggestions.length > 0) {
+            console.log(`[TranscriptionProcessor] Found ${postSuggestions.length} post suggestions from AI analysis`)
             
-            for (const suggestion of contentAnalysis.postSuggestions) {
+            for (const suggestion of postSuggestions) {
               const suggestionId = uuidv4()
               
               // Build platform copy
@@ -479,7 +480,7 @@ export async function processTranscription(params: {
               postSuggestionsToCreate.push({
                 id: suggestionId,
                 project_id: projectId,
-                user_id: params.userId || userId,
+                user_id: userId,
                 type: suggestion.type,
                 images: [{
                   id: uuidv4(),

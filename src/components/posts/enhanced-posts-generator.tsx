@@ -1753,7 +1753,7 @@ export function EnhancedPostsGenerator({
 
                 <TabsContent value="copy" className="space-y-4 mt-4">
                   {/* Enhanced copy editing interface */}
-                  {Object.entries(selectedSuggestion.copy_variants).map(([platform, copy]) => {
+                  {selectedSuggestion.copy_variants && Object.entries(selectedSuggestion.copy_variants).map(([platform, copy]) => {
                     const config = platformConfig[platform as keyof typeof platformConfig]
                     if (!config) return null
                     
