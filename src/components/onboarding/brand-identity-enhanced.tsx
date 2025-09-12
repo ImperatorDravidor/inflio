@@ -40,36 +40,90 @@ interface UploadedFile {
 
 interface BrandAnalysis {
   colors: {
-    primary: string[]
-    secondary: string[]
-    accent: string[]
-    descriptions: Record<string, string>
+    primary: {
+      hex: string[]
+      name: string[]
+      usage: string
+    }
+    secondary: {
+      hex: string[]
+      name: string[]
+      usage: string
+    }
+    accent: {
+      hex: string[]
+      name: string[]
+      usage: string
+    }
+    neutral: {
+      hex: string[]
+      name: string[]
+      usage: string
+    }
+    guidelines: string[]
   }
   typography: {
-    primaryFont: string
-    secondaryFont: string
-    headingStyle: string
-    bodyStyle: string
-    recommendations: string[]
+    primary: {
+      family: string
+      weights: string[]
+      fallback: string
+      usage: string
+    }
+    secondary: {
+      family: string
+      weights: string[]
+      fallback: string
+      usage: string
+    }
+    body: {
+      family: string
+      size: string
+      lineHeight: string
+    }
+    headings: {
+      h1: { size: string; weight: string }
+      h2: { size: string; weight: string }
+      h3: { size: string; weight: string }
+    }
   }
   voice: {
     tone: string[]
     personality: string[]
-    emotions: string[]
-    keywords: string[]
-    examples: string[]
+    attributes: string[]
+    phrases: string[]
+    dos: string[]
+    donts: string[]
+    guidelines: string[]
   }
   visualStyle: {
-    aesthetic: string[]
-    imagery: string[]
-    composition: string[]
+    principles: string[]
+    photography: {
+      style: string[]
     mood: string[]
+      composition: string[]
+    }
+    imagery: string[]
+    iconography: string
+    patterns: string[]
   }
   targetAudience: {
-    demographics: string[]
+    demographics: {
+      age: string
+      location: string
+      interests: string[]
+    }
     psychographics: string[]
     painPoints: string[]
-    aspirations: string[]
+    needs: string[]
+    personas: string[]
+  }
+  brandStrategy: {
+    mission: string
+    vision: string
+    values: string[]
+    positioning: string
+    pillars: string[]
+    story: string
   }
   competitors: {
     direct: string[]
@@ -77,11 +131,11 @@ interface BrandAnalysis {
     positioning: string
     differentiators: string[]
   }
-  mission: {
-    statement: string
-    values: string[]
-    vision: string
-    purpose: string
+  logoUsage: {
+    guidelines: string[]
+    clearSpace: string
+    minimumSize: string
+    variations: string[]
   }
 }
 
@@ -106,38 +160,98 @@ export function BrandIdentityEnhanced({
     const toArray = (v: any) => Array.isArray(v) ? v : (v ? [v] : [])
     const ensure = (v: any, fallback: any) => (v === undefined || v === null ? fallback : v)
 
+    // Handle both old and new format
+    const colors = raw?.colors || {}
+    const primaryColors = colors.primary || {}
+    const isNewFormat = typeof primaryColors === 'object' && !Array.isArray(primaryColors)
+
+    if (isNewFormat) {
     return {
       colors: {
-        primary: toArray(raw?.colors?.primary),
-        secondary: toArray(raw?.colors?.secondary),
-        accent: toArray(raw?.colors?.accent),
-        descriptions: ensure(raw?.colors?.descriptions, {})
+          primary: {
+            hex: toArray(colors.primary?.hex),
+            name: toArray(colors.primary?.name),
+            usage: ensure(colors.primary?.usage, '')
+          },
+          secondary: {
+            hex: toArray(colors.secondary?.hex),
+            name: toArray(colors.secondary?.name),
+            usage: ensure(colors.secondary?.usage, '')
+          },
+          accent: {
+            hex: toArray(colors.accent?.hex),
+            name: toArray(colors.accent?.name),
+            usage: ensure(colors.accent?.usage, '')
+          },
+          neutral: {
+            hex: toArray(colors.neutral?.hex),
+            name: toArray(colors.neutral?.name),
+            usage: ensure(colors.neutral?.usage, '')
+          },
+          guidelines: toArray(colors.guidelines)
       },
       typography: {
-        primaryFont: ensure(raw?.typography?.primaryFont, ''),
-        secondaryFont: ensure(raw?.typography?.secondaryFont, ''),
-        headingStyle: ensure(raw?.typography?.headingStyle, ''),
-        bodyStyle: ensure(raw?.typography?.bodyStyle, ''),
-        recommendations: toArray(raw?.typography?.recommendations)
+          primary: {
+            family: ensure(raw?.typography?.primary?.family || raw?.typography?.primaryFont, ''),
+            weights: toArray(raw?.typography?.primary?.weights),
+            fallback: ensure(raw?.typography?.primary?.fallback, ''),
+            usage: ensure(raw?.typography?.primary?.usage, '')
+          },
+          secondary: {
+            family: ensure(raw?.typography?.secondary?.family || raw?.typography?.secondaryFont, ''),
+            weights: toArray(raw?.typography?.secondary?.weights),
+            fallback: ensure(raw?.typography?.secondary?.fallback, ''),
+            usage: ensure(raw?.typography?.secondary?.usage, '')
+          },
+          body: {
+            family: ensure(raw?.typography?.body?.family, ''),
+            size: ensure(raw?.typography?.body?.size, '16px'),
+            lineHeight: ensure(raw?.typography?.body?.lineHeight, '1.5')
+          },
+          headings: {
+            h1: { size: ensure(raw?.typography?.headings?.h1?.size, ''), weight: ensure(raw?.typography?.headings?.h1?.weight, '') },
+            h2: { size: ensure(raw?.typography?.headings?.h2?.size, ''), weight: ensure(raw?.typography?.headings?.h2?.weight, '') },
+            h3: { size: ensure(raw?.typography?.headings?.h3?.size, ''), weight: ensure(raw?.typography?.headings?.h3?.weight, '') }
+          }
       },
       voice: {
         tone: toArray(raw?.voice?.tone),
         personality: toArray(raw?.voice?.personality),
-        emotions: toArray(raw?.voice?.emotions),
-        keywords: toArray(raw?.voice?.keywords),
-        examples: toArray(raw?.voice?.examples)
+          attributes: toArray(raw?.voice?.attributes),
+          phrases: toArray(raw?.voice?.phrases || raw?.voice?.examples),
+          dos: toArray(raw?.voice?.dos),
+          donts: toArray(raw?.voice?.donts),
+          guidelines: toArray(raw?.voice?.guidelines)
       },
       visualStyle: {
-        aesthetic: toArray(raw?.visualStyle?.aesthetic),
+          principles: toArray(raw?.visualStyle?.principles || raw?.visualStyle?.aesthetic),
+          photography: {
+            style: toArray(raw?.visualStyle?.photography?.style),
+            mood: toArray(raw?.visualStyle?.photography?.mood || raw?.visualStyle?.mood),
+            composition: toArray(raw?.visualStyle?.photography?.composition || raw?.visualStyle?.composition)
+          },
         imagery: toArray(raw?.visualStyle?.imagery),
-        composition: toArray(raw?.visualStyle?.composition),
-        mood: toArray(raw?.visualStyle?.mood)
+          iconography: ensure(raw?.visualStyle?.iconography, ''),
+          patterns: toArray(raw?.visualStyle?.patterns)
       },
       targetAudience: {
-        demographics: toArray(raw?.targetAudience?.demographics),
+          demographics: {
+            age: ensure(raw?.targetAudience?.demographics?.age, ''),
+            location: ensure(raw?.targetAudience?.demographics?.location, ''),
+            interests: toArray(raw?.targetAudience?.demographics?.interests)
+          },
         psychographics: toArray(raw?.targetAudience?.psychographics),
         painPoints: toArray(raw?.targetAudience?.painPoints),
-        aspirations: toArray(raw?.targetAudience?.aspirations)
+          needs: toArray(raw?.targetAudience?.needs),
+          personas: toArray(raw?.targetAudience?.personas)
+        },
+        brandStrategy: {
+          mission: ensure(raw?.brandStrategy?.mission || raw?.mission?.statement, ''),
+          vision: ensure(raw?.brandStrategy?.vision || raw?.mission?.vision, ''),
+          values: toArray(raw?.brandStrategy?.values || raw?.mission?.values),
+          positioning: ensure(raw?.brandStrategy?.positioning || raw?.competitors?.positioning, ''),
+          pillars: toArray(raw?.brandStrategy?.pillars),
+          story: ensure(raw?.brandStrategy?.story, '')
       },
       competitors: {
         direct: toArray(raw?.competitors?.direct),
@@ -145,11 +259,98 @@ export function BrandIdentityEnhanced({
         positioning: ensure(raw?.competitors?.positioning, ''),
         differentiators: toArray(raw?.competitors?.differentiators)
       },
-      mission: {
-        statement: ensure(raw?.mission?.statement, ''),
-        values: toArray(raw?.mission?.values),
+        logoUsage: {
+          guidelines: toArray(raw?.logoUsage?.guidelines),
+          clearSpace: ensure(raw?.logoUsage?.clearSpace, ''),
+          minimumSize: ensure(raw?.logoUsage?.minimumSize, ''),
+          variations: toArray(raw?.logoUsage?.variations)
+        }
+      }
+    }
+
+    // Fallback for old format
+    return {
+      colors: {
+        primary: { hex: toArray(colors.primary), name: [], usage: '' },
+        secondary: { hex: toArray(colors.secondary), name: [], usage: '' },
+        accent: { hex: toArray(colors.accent), name: [], usage: '' },
+        neutral: { hex: [], name: [], usage: '' },
+        guidelines: []
+      },
+      typography: {
+        primary: {
+          family: ensure(raw?.typography?.primaryFont, ''),
+          weights: ['400', '600', '700'],
+          fallback: '',
+          usage: ''
+        },
+        secondary: {
+          family: ensure(raw?.typography?.secondaryFont, ''),
+          weights: [],
+          fallback: '',
+          usage: ''
+        },
+        body: {
+          family: '',
+          size: '16px',
+          lineHeight: '1.5'
+        },
+        headings: {
+          h1: { size: '', weight: '' },
+          h2: { size: '', weight: '' },
+          h3: { size: '', weight: '' }
+        }
+      },
+      voice: {
+        tone: toArray(raw?.voice?.tone),
+        personality: toArray(raw?.voice?.personality),
+        attributes: [],
+        phrases: toArray(raw?.voice?.examples),
+        dos: [],
+        donts: [],
+        guidelines: []
+      },
+      visualStyle: {
+        principles: toArray(raw?.visualStyle?.aesthetic),
+        photography: {
+          style: [],
+          mood: toArray(raw?.visualStyle?.mood),
+          composition: toArray(raw?.visualStyle?.composition)
+        },
+        imagery: toArray(raw?.visualStyle?.imagery),
+        iconography: '',
+        patterns: []
+      },
+      targetAudience: {
+        demographics: {
+          age: '',
+          location: '',
+          interests: []
+        },
+        psychographics: toArray(raw?.targetAudience?.psychographics),
+        painPoints: toArray(raw?.targetAudience?.painPoints),
+        needs: [],
+        personas: []
+      },
+      brandStrategy: {
+        mission: ensure(raw?.mission?.statement, ''),
         vision: ensure(raw?.mission?.vision, ''),
-        purpose: ensure(raw?.mission?.purpose, '')
+        values: toArray(raw?.mission?.values),
+        positioning: ensure(raw?.competitors?.positioning, ''),
+        pillars: [],
+        story: ''
+      },
+      competitors: {
+        direct: toArray(raw?.competitors?.direct),
+        indirect: toArray(raw?.competitors?.indirect),
+        positioning: ensure(raw?.competitors?.positioning, ''),
+        differentiators: toArray(raw?.competitors?.differentiators)
+      },
+      logoUsage: {
+        guidelines: [],
+        clearSpace: '',
+        minimumSize: '',
+        variations: []
       }
     }
   }, [])
@@ -239,8 +440,9 @@ export function BrandIdentityEnhanced({
 
       // Start progress animation (fast updates)
       let currentStep = 1
+      let apiCallStarted = false
       const progressInterval = setInterval(() => {
-        if (currentStep < steps.length) {
+        if (currentStep < steps.length && !apiCallStarted) {
           setAnalysisStep(steps[currentStep].step)
           setAnalysisProgress(steps[currentStep].progress)
           currentStep++
@@ -271,6 +473,8 @@ export function BrandIdentityEnhanced({
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 180000) // 180s timeout for large PDFs
       
+      // Mark that API call has started
+      apiCallStarted = true
       setAnalysisStep('Analyzing with AI...')
       setAnalysisProgress(70)
       
@@ -321,14 +525,14 @@ export function BrandIdentityEnhanced({
       setBrandAnalysis(analysis)
       updateFormData('brandAnalysis', analysis)
       // Push key fields to profile formData immediately
-      updateFormData('primaryColor', analysis.colors.primary?.[0] || '')
-      updateFormData('brandColors', analysis.colors.primary || [])
-      const fonts = [analysis.typography.primaryFont, analysis.typography.secondaryFont].filter(Boolean)
+      updateFormData('primaryColor', analysis.colors.primary?.hex?.[0] || '')
+      updateFormData('brandColors', analysis.colors.primary?.hex || [])
+      const fonts = [analysis.typography?.primary?.family, analysis.typography?.secondary?.family].filter(Boolean)
       updateFormData('fonts', fonts)
       updateFormData('brandVoice', analysis.voice.tone?.[0] || '')
       const audienceCombined = [
-        ...(analysis.targetAudience.demographics || []),
-        ...(analysis.targetAudience.psychographics || [])
+        ...(analysis.targetAudience.psychographics || []),
+        ...(analysis.targetAudience.needs || [])
       ].filter(Boolean).join(', ')
       updateFormData('targetAudience', audienceCombined)
       updateFormData('audience', audienceCombined)
@@ -394,8 +598,8 @@ export function BrandIdentityEnhanced({
 
   if (!mode) {
     return (
-      <div className="space-y-8">
-        <div className="text-center space-y-2">
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="text-center space-y-4">
           <h2 className="text-3xl font-bold">Define Your Brand Identity</h2>
           <p className="text-muted-foreground">
             Upload your brand materials for AI analysis or create manually
@@ -467,8 +671,8 @@ export function BrandIdentityEnhanced({
     if (brandAnalysis) {
       // Show interactive brand sheet
       return (
-        <div className="space-y-8">
-          <div className="text-center space-y-2">
+        <div className="space-y-8 max-w-5xl mx-auto">
+          <div className="text-center space-y-4">
             <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="h-8 w-8 text-green-500" />
             </div>
@@ -485,20 +689,20 @@ export function BrandIdentityEnhanced({
                 'Color Palette',
                 <Palette className="h-5 w-5 text-primary" />,
                 'colors',
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {editMode === 'colors' ? (
                     <div className="space-y-4">
                       <div>
                         <Label>Primary Colors</Label>
                         <div className="flex gap-2 mt-2">
-                          {brandAnalysis.colors.primary.map((color, i) => (
+                          {brandAnalysis.colors.primary.hex.map((color, i) => (
                             <Input
                               key={i}
                               type="color"
                               value={color}
                               onChange={(e) => {
                                 const updated = { ...brandAnalysis }
-                                updated.colors.primary[i] = e.target.value
+                                updated.colors.primary.hex[i] = e.target.value
                                 setBrandAnalysis(updated)
                               }}
                               className="w-16 h-16 p-1"
@@ -508,23 +712,125 @@ export function BrandIdentityEnhanced({
                       </div>
                     </div>
                   ) : (
+                    <div className="space-y-6">
+                      {/* Primary Colors */}
+                      {brandAnalysis.colors.primary.hex.length > 0 && (
                     <div>
-                      <div className="flex gap-3 flex-wrap">
-                        {brandAnalysis.colors.primary.map((color, i) => (
-                          <div key={i} className="text-center">
-                            <div
-                              className="w-16 h-16 rounded-lg shadow-md"
+                          <h4 className="text-sm font-semibold mb-3">Primary Colors</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {brandAnalysis.colors.primary.hex.map((color, i) => (
+                              <div key={i} className="group">
+                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
+                                  <div
+                                    className="h-20 w-full"
                               style={{ backgroundColor: color }}
                             />
-                            <p className="text-xs mt-1">{color}</p>
+                                  <div className="bg-background p-2 space-y-1">
+                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
+                                    {brandAnalysis.colors.primary.name?.[i] && (
+                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.primary.name[i]}</p>
+                                    )}
+                                  </div>
+                                </div>
                           </div>
                         ))}
                       </div>
-                      {brandAnalysis.colors.descriptions && (
-                        <div className="mt-4 text-sm text-muted-foreground">
-                          {Object.entries(brandAnalysis.colors.descriptions).map(([color, desc]) => (
-                            <p key={color}><strong>{color}:</strong> {desc}</p>
+                          {brandAnalysis.colors.primary.usage && (
+                            <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.colors.primary.usage}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Secondary Colors */}
+                      {brandAnalysis.colors.secondary.hex.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Secondary Colors</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {brandAnalysis.colors.secondary.hex.map((color, i) => (
+                              <div key={i} className="group">
+                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
+                                  <div
+                                    className="h-20 w-full"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <div className="bg-background p-2 space-y-1">
+                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
+                                    {brandAnalysis.colors.secondary.name?.[i] && (
+                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.secondary.name[i]}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                           ))}
+                        </div>
+                          {brandAnalysis.colors.secondary.usage && (
+                            <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.colors.secondary.usage}</p>
+                      )}
+                    </div>
+                      )}
+
+                      {/* Accent Colors */}
+                      {brandAnalysis.colors.accent.hex.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Accent Colors</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {brandAnalysis.colors.accent.hex.map((color, i) => (
+                              <div key={i} className="group">
+                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
+                                  <div
+                                    className="h-20 w-full"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <div className="bg-background p-2 space-y-1">
+                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
+                                    {brandAnalysis.colors.accent.name?.[i] && (
+                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.accent.name[i]}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Neutral Colors */}
+                      {brandAnalysis.colors.neutral.hex.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Neutral Colors</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {brandAnalysis.colors.neutral.hex.map((color, i) => (
+                              <div key={i} className="group">
+                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
+                                  <div
+                                    className="h-20 w-full"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <div className="bg-background p-2 space-y-1">
+                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
+                                    {brandAnalysis.colors.neutral.name?.[i] && (
+                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.neutral.name[i]}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Color Guidelines */}
+                      {brandAnalysis.colors.guidelines.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Usage Guidelines</h4>
+                          <ul className="space-y-1">
+                            {brandAnalysis.colors.guidelines.map((guideline, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex items-start">
+                                <span className="mr-2">•</span>
+                                <span>{guideline}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       )}
                     </div>
@@ -537,28 +843,28 @@ export function BrandIdentityEnhanced({
                 'Typography',
                 <Type className="h-5 w-5 text-primary" />,
                 'typography',
-                <div className="space-y-3">
+                <div className="space-y-6">
                   {editMode === 'typography' ? (
                     <div className="space-y-3">
                       <div>
-                        <Label>Primary Font</Label>
+                        <Label>Primary Font Family</Label>
                         <Input
-                          value={brandAnalysis.typography.primaryFont}
+                          value={brandAnalysis.typography.primary.family}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.typography.primaryFont = e.target.value
+                            updated.typography.primary.family = e.target.value
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
                         />
                       </div>
                       <div>
-                        <Label>Secondary Font</Label>
+                        <Label>Secondary Font Family</Label>
                         <Input
-                          value={brandAnalysis.typography.secondaryFont}
+                          value={brandAnalysis.typography.secondary.family}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.typography.secondaryFont = e.target.value
+                            updated.typography.secondary.family = e.target.value
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
@@ -566,28 +872,164 @@ export function BrandIdentityEnhanced({
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-6">
+                      {/* Primary Font */}
+                      {brandAnalysis.typography.primary.family && (
+                        <div className="space-y-3">
                         <div>
-                          <p className="text-sm text-muted-foreground">Primary</p>
-                          <p className="font-medium">{brandAnalysis.typography.primaryFont}</p>
+                            <h4 className="text-sm font-semibold mb-2">Primary Typography</h4>
+                            <div className="p-4 rounded-lg border border-border bg-card">
+                              <p 
+                                className="text-2xl font-bold mb-2"
+                                style={{ fontFamily: brandAnalysis.typography.primary.family }}
+                              >
+                                {brandAnalysis.typography.primary.family}
+                              </p>
+                              <p 
+                                className="text-sm text-muted-foreground mb-3"
+                                style={{ fontFamily: brandAnalysis.typography.primary.family }}
+                              >
+                                The quick brown fox jumps over the lazy dog
+                              </p>
+                              <div className="flex flex-wrap gap-4 text-xs">
+                                {brandAnalysis.typography.primary.weights.length > 0 && (
+                                  <div>
+                                    <span className="text-muted-foreground">Weights: </span>
+                                    <span className="font-medium">{brandAnalysis.typography.primary.weights.join(', ')}</span>
                         </div>
+                                )}
+                                {brandAnalysis.typography.primary.fallback && (
                         <div>
-                          <p className="text-sm text-muted-foreground">Secondary</p>
-                          <p className="font-medium">{brandAnalysis.typography.secondaryFont}</p>
+                                    <span className="text-muted-foreground">Fallback: </span>
+                                    <span className="font-mono text-xs">{brandAnalysis.typography.primary.fallback}</span>
                         </div>
+                                )}
                       </div>
-                      {brandAnalysis.typography.recommendations.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-2">Recommendations:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {brandAnalysis.typography.recommendations.map((rec, i) => (
-                              <Badge key={i} variant="secondary">{rec}</Badge>
-                            ))}
+                              {brandAnalysis.typography.primary.usage && (
+                                <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.typography.primary.usage}</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
-                    </>
+
+                      {/* Secondary Font */}
+                      {brandAnalysis.typography.secondary.family && (
+                        <div className="space-y-3">
+                        <div>
+                            <h4 className="text-sm font-semibold mb-2">Secondary Typography</h4>
+                            <div className="p-4 rounded-lg border border-border bg-card">
+                              <p 
+                                className="text-2xl font-bold mb-2"
+                                style={{ fontFamily: brandAnalysis.typography.secondary.family }}
+                              >
+                                {brandAnalysis.typography.secondary.family}
+                              </p>
+                              <p 
+                                className="text-sm text-muted-foreground mb-3"
+                                style={{ fontFamily: brandAnalysis.typography.secondary.family }}
+                              >
+                                The quick brown fox jumps over the lazy dog
+                              </p>
+                              <div className="flex flex-wrap gap-4 text-xs">
+                                {brandAnalysis.typography.secondary.weights.length > 0 && (
+                                  <div>
+                                    <span className="text-muted-foreground">Weights: </span>
+                                    <span className="font-medium">{brandAnalysis.typography.secondary.weights.join(', ')}</span>
+                          </div>
+                                )}
+                                {brandAnalysis.typography.secondary.fallback && (
+                                  <div>
+                                    <span className="text-muted-foreground">Fallback: </span>
+                                    <span className="font-mono text-xs">{brandAnalysis.typography.secondary.fallback}</span>
+                        </div>
+                      )}
+                              </div>
+                              {brandAnalysis.typography.secondary.usage && (
+                                <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.typography.secondary.usage}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Type Scale */}
+                      {(brandAnalysis.typography.headings.h1.size || brandAnalysis.typography.body.size) && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Type Scale</h4>
+                          <div className="space-y-2">
+                            {brandAnalysis.typography.headings.h1.size && (
+                              <div className="flex items-baseline gap-4">
+                                <span className="text-xs text-muted-foreground w-12">H1</span>
+                                <span 
+                                  className="font-bold"
+                                  style={{ 
+                                    fontSize: brandAnalysis.typography.headings.h1.size,
+                                    fontFamily: brandAnalysis.typography.primary.family 
+                                  }}
+                                >
+                                  Heading One
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {brandAnalysis.typography.headings.h1.size} / {brandAnalysis.typography.headings.h1.weight}
+                                </span>
+                              </div>
+                            )}
+                            {brandAnalysis.typography.headings.h2.size && (
+                              <div className="flex items-baseline gap-4">
+                                <span className="text-xs text-muted-foreground w-12">H2</span>
+                                <span 
+                                  className="font-semibold"
+                                  style={{ 
+                                    fontSize: brandAnalysis.typography.headings.h2.size,
+                                    fontFamily: brandAnalysis.typography.primary.family 
+                                  }}
+                                >
+                                  Heading Two
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {brandAnalysis.typography.headings.h2.size} / {brandAnalysis.typography.headings.h2.weight}
+                                </span>
+                              </div>
+                            )}
+                            {brandAnalysis.typography.headings.h3.size && (
+                              <div className="flex items-baseline gap-4">
+                                <span className="text-xs text-muted-foreground w-12">H3</span>
+                                <span 
+                                  className="font-medium"
+                                  style={{ 
+                                    fontSize: brandAnalysis.typography.headings.h3.size,
+                                    fontFamily: brandAnalysis.typography.primary.family 
+                                  }}
+                                >
+                                  Heading Three
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {brandAnalysis.typography.headings.h3.size} / {brandAnalysis.typography.headings.h3.weight}
+                                </span>
+                              </div>
+                            )}
+                            {brandAnalysis.typography.body.size && (
+                              <div className="flex items-baseline gap-4">
+                                <span className="text-xs text-muted-foreground w-12">Body</span>
+                                <span 
+                                  style={{ 
+                                    fontSize: brandAnalysis.typography.body.size,
+                                    lineHeight: brandAnalysis.typography.body.lineHeight,
+                                    fontFamily: brandAnalysis.typography.body.family || brandAnalysis.typography.primary.family 
+                                  }}
+                                >
+                                  Body text example
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {brandAnalysis.typography.body.size} / {brandAnalysis.typography.body.lineHeight}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -620,11 +1062,11 @@ export function BrandIdentityEnhanced({
                           <Badge key={i} variant="outline">{tone}</Badge>
                         ))}
                       </div>
-                      {brandAnalysis.voice.examples.length > 0 && (
+                      {brandAnalysis.voice.phrases.length > 0 && (
                         <div>
                           <p className="text-sm text-muted-foreground mb-2">Example phrases:</p>
                           <ul className="text-sm space-y-1">
-                            {brandAnalysis.voice.examples.slice(0, 3).map((example, i) => (
+                            {brandAnalysis.voice.phrases.slice(0, 3).map((example: string, i: number) => (
                               <li key={i} className="italic">"{example}"</li>
                             ))}
                           </ul>
@@ -646,10 +1088,19 @@ export function BrandIdentityEnhanced({
                       <div>
                         <Label>Demographics</Label>
                         <Textarea
-                          value={brandAnalysis.targetAudience.demographics.join(', ')}
+                          value={`Age: ${brandAnalysis.targetAudience.demographics.age || ''}, Location: ${brandAnalysis.targetAudience.demographics.location || ''}, Interests: ${brandAnalysis.targetAudience.demographics.interests?.join(', ') || ''}`}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.targetAudience.demographics = e.target.value.split(',').map(s => s.trim())
+                            // Parse demographics from text
+                            const parts = e.target.value.split(',').map(s => s.trim())
+                            const age = parts.find(p => p.startsWith('Age:'))?.replace('Age:', '').trim() || ''
+                            const location = parts.find(p => p.startsWith('Location:'))?.replace('Location:', '').trim() || ''
+                            const interestsStr = parts.find(p => p.startsWith('Interests:'))?.replace('Interests:', '').trim() || ''
+                            updated.targetAudience.demographics = {
+                              age,
+                              location,
+                              interests: interestsStr ? interestsStr.split(',').map(s => s.trim()) : []
+                            }
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
@@ -673,7 +1124,7 @@ export function BrandIdentityEnhanced({
                       <div>
                         <p className="text-sm font-medium mb-2">Demographics</p>
                         <div className="space-y-1">
-                          {brandAnalysis.targetAudience.demographics.map((demo, i) => (
+                          {brandAnalysis.targetAudience.psychographics.map((demo: string, i: number) => (
                             <p key={i} className="text-sm text-muted-foreground">• {demo}</p>
                           ))}
                         </div>
@@ -702,10 +1153,10 @@ export function BrandIdentityEnhanced({
                       <div>
                         <Label>Aesthetic Keywords</Label>
                         <Textarea
-                          value={brandAnalysis.visualStyle.aesthetic.join(', ')}
+                          value={brandAnalysis.visualStyle.principles.join(', ')}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.visualStyle.aesthetic = e.target.value.split(',').map(s => s.trim())
+                            updated.visualStyle.principles = e.target.value.split(',').map(s => s.trim())
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
@@ -727,7 +1178,7 @@ export function BrandIdentityEnhanced({
                   ) : (
                     <>
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {brandAnalysis.visualStyle.aesthetic.map((style, i) => (
+                        {brandAnalysis.visualStyle.principles.map((style: string, i: number) => (
                           <Badge key={i} variant="secondary">{style}</Badge>
                         ))}
                       </div>
@@ -738,7 +1189,7 @@ export function BrandIdentityEnhanced({
                         </div>
                         <div>
                           <p className="text-sm font-medium mb-1">Mood</p>
-                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.mood.join(', ')}</p>
+                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.photography.mood.join(', ')}</p>
                         </div>
                       </div>
                     </>
@@ -812,17 +1263,17 @@ export function BrandIdentityEnhanced({
               {renderBrandSheetSection(
                 'Mission & Values',
                 <Lightbulb className="h-5 w-5 text-primary" />,
-                'mission',
+                'brandStrategy',
                 <div className="space-y-3">
-                  {editMode === 'mission' ? (
+                  {editMode === 'brandStrategy' ? (
                     <div className="space-y-3">
                       <div>
                         <Label>Mission Statement</Label>
                         <Textarea
-                          value={brandAnalysis.mission.statement}
+                          value={brandAnalysis.brandStrategy.mission}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.mission.statement = e.target.value
+                            updated.brandStrategy.mission = e.target.value
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
@@ -831,10 +1282,10 @@ export function BrandIdentityEnhanced({
                       <div>
                         <Label>Core Values</Label>
                         <Textarea
-                          value={brandAnalysis.mission.values.join(', ')}
+                          value={brandAnalysis.brandStrategy.values.join(', ')}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.mission.values = e.target.value.split(',').map(s => s.trim())
+                            updated.brandStrategy.values = e.target.value.split(',').map(s => s.trim())
                             setBrandAnalysis(updated)
                           }}
                           className="mt-1"
@@ -844,12 +1295,12 @@ export function BrandIdentityEnhanced({
                   ) : (
                     <>
                       <div className="p-3 bg-primary/5 rounded-lg mb-3">
-                        <p className="text-sm italic">&ldquo;{brandAnalysis.mission.statement}&rdquo;</p>
+                        <p className="text-sm italic">&ldquo;{brandAnalysis.brandStrategy.mission}&rdquo;</p>
                       </div>
                       <div>
                         <p className="text-sm font-medium mb-2">Core Values</p>
                         <div className="grid grid-cols-2 gap-2">
-                          {brandAnalysis.mission.values.map((value, i) => (
+                          {brandAnalysis.brandStrategy.values.map((value: string, i: number) => (
                             <div key={i} className="flex items-center gap-2">
                               <div className="h-2 w-2 bg-primary rounded-full" />
                               <span className="text-sm">{value}</span>
@@ -857,10 +1308,10 @@ export function BrandIdentityEnhanced({
                           ))}
                         </div>
                       </div>
-                      {brandAnalysis.mission.vision && (
+                      {brandAnalysis.brandStrategy.vision && (
                         <div>
                           <p className="text-sm font-medium mb-1">Vision</p>
-                          <p className="text-sm text-muted-foreground">{brandAnalysis.mission.vision}</p>
+                          <p className="text-sm text-muted-foreground">{brandAnalysis.brandStrategy.vision}</p>
                         </div>
                       )}
                     </>
@@ -874,7 +1325,22 @@ export function BrandIdentityEnhanced({
             <Button variant="outline" onClick={() => setMode(null)}>
               Start Over
             </Button>
-            <Button onClick={onComplete}>
+            <Button onClick={() => {
+              // Save the brand analysis to form data
+              updateFormData('brandAnalysis', brandAnalysis)
+              updateFormData('brandIdentity', {
+                colors: brandAnalysis.colors,
+                typography: brandAnalysis.typography,
+                voice: brandAnalysis.voice,
+                visualStyle: brandAnalysis.visualStyle,
+                targetAudience: brandAnalysis.targetAudience,
+                brandStrategy: brandAnalysis.brandStrategy,
+                competitors: brandAnalysis.competitors,
+                logoUsage: brandAnalysis.logoUsage
+              })
+              // Trigger completion callback
+              if (onComplete) onComplete()
+            }}>
               Save Brand Profile
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
@@ -885,8 +1351,8 @@ export function BrandIdentityEnhanced({
 
     // Show upload interface
     return (
-      <div className="space-y-8">
-        <div className="text-center space-y-2">
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="text-center space-y-4">
           <h2 className="text-3xl font-bold">Upload Brand Materials</h2>
           <p className="text-muted-foreground">
             Drop your brand book, style guides, or any brand materials
@@ -1108,8 +1574,8 @@ export function BrandIdentityEnhanced({
     ]
 
     return (
-      <div className="space-y-8">
-        <div className="text-center space-y-2">
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="text-center space-y-4">
           <h2 className="text-3xl font-bold">Define Your Brand</h2>
           <p className="text-muted-foreground">
             Step {manualStep + 1} of {manualSteps.length}: {manualSteps[manualStep].title}

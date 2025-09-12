@@ -42,13 +42,13 @@ export async function POST(req: NextRequest) {
 
     const images: any[] = []
     for (let i = 0; i < count; i++) {
+      // Simple image generation for the suggestion
       const rsp = await openai.images.generate({
-        model: 'gpt-image-1',
+        model: 'dall-e-3',
         prompt: basePrompt,
-        size,
+        size: size as any,
         quality: quality as any,
-        response_format: 'b64_json',
-        background: transparent ? 'transparent' : undefined
+        response_format: 'b64_json'
       })
 
       const b64 = rsp.data?.[0]?.b64_json

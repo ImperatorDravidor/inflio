@@ -11,7 +11,6 @@ import {
   IconVideo,
   IconTrendingUp,
   IconShare2,
-  IconFileText
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -149,6 +148,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       description: "Creator settings"
     },
     {
+      title: "Brand",
+      url: "/brand",
+      icon: IconPalette,
+      description: "Brand identity"
+    },
+    {
       title: "Settings",
       url: "/settings",
       icon: IconSettings,
@@ -266,34 +271,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               )}
             </div>
           </div>
-        </div>
-        
-        <SidebarSeparator />
-        
-        {/* AI Persona Selector */}
-        <SidebarGroup>
-          <SidebarGroupLabel>AI Persona</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="px-2">
-              <GlobalPersonaSelector />
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        
-        {/* Help & Docs */}
-        <div className="px-2 mb-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild className="h-10 px-3 rounded-xl hover:bg-sidebar-accent/60 transition-colors">
-                <Link href="/docs" className="flex items-center">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-sidebar-accent/50 mr-3">
-                    <IconHelp className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium">Help & Docs</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
         </div>
       </SidebarContent>
       

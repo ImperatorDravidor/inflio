@@ -1,3 +1,5 @@
+'use client'
+
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
@@ -8,12 +10,16 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { AnimatedBackground } from "@/components/animated-background"
 import { WorkflowIndicator } from "@/components/workflow-indicator"
 import { PersonaProvider } from "@/contexts/persona-context"
+import { AICommandPalette } from "@/components/ai-command-palette"
+import { useState } from "react"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const [commandOpen, setCommandOpen] = useState(false)
+
   return (
     <PersonaProvider>
       <SidebarProvider
@@ -38,6 +44,9 @@ export default function DashboardLayout({
         </SidebarInset>
         <Toaster position="bottom-right" />
       </SidebarProvider>
+      
+      {/* AI Command Palette - Global keyboard shortcut ⌘K */}
+      <AICommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       
       {/* Workflow Indicator - shows processing projects */}
       <WorkflowIndicator />

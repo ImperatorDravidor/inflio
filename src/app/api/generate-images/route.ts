@@ -101,28 +101,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply persona if requested
+    // Load persona data if requested
+    let personaImage: Buffer | null = null
+    let personaName = 'User'
+    
     if (usePersona && personaId) {
-      // Load persona from storage or use provided photos
-      const persona: ContentPersona = {
-        id: personaId,
-        name: 'User Persona',
-        description: 'Personal brand persona',
-        photos: personaPhotos.map((url, idx) => ({
-          id: `photo-${idx}`,
-          url,
-          name: `Photo ${idx + 1}`
-        })),
-        style: style || 'professional',
-        promptTemplate: 'featuring persona with professional appearance',
-        keywords: project.content_analysis?.keywords || []
+      // Get persona from database
+      const { data: persona } = await supabaseAdmin
+        .from('personas')
+        .select('*')
+        .eq('id', personaId)
+        .single()
+      
+      if (persona) {
+        personaName = persona.name
+        
+        // Get a pre-generated sample image to use as reference
+        if (persona.metadata?.sample_images?.length > 0) {
+          // Select appropriate sample based on content type
+          const sampleIndex = imageType === 'quote' ? 3 : // social media profile style
+                            imageType === 'story' ? 1 :  // casual portrait
+                            imageType === 'carousel' ? 2 : // youtube style
+                            0 // professional headshot
+          
+          const sampleUrl = persona.metadata.sample_images[sampleIndex]?.url || 
+                          persona.metadata.sample_images[0]?.url
+          
+          if (sampleUrl) {
+            // Download the sample image
+            const response = await fetch(sampleUrl)
+            personaImage = Buffer.from(await response.arrayBuffer())
+          }
+        }
       }
       
-      finalPrompt = UnifiedContentService.applyPersonaToPrompt(
-        enhancedPrompt || finalPrompt,
-        persona,
-        'social'
-      )
+      // Enhance prompt with persona context
+      finalPrompt = `Create a social media graphic featuring ${personaName}. ${finalPrompt || ''}`
     }
 
     // Apply video snippets if requested
@@ -158,15 +172,41 @@ export async function POST(req: NextRequest) {
                               finalPrompt.toLowerCase().includes('sticker') ||
                               style === 'quote-overlay'
       
-      // Generate image using gpt-image-1
-      const response = await openai.images.generate({
-        model: "gpt-image-1",
-        prompt: AIImageService.enhancePromptWithStyle(finalPrompt, style || 'modern', 'high'),
-        n: 1,
-        size: imageType === 'story' ? '1024x1792' : '1024x1024',
-        quality: 'standard',
-        response_format: 'b64_json' // Get base64 to handle transparency properly
-      })
+      let response
+      
+      // Use edit endpoint if we have a persona image
+      if (personaImage) {
+        // Enhanced prompt for persona integration
+        const editPrompt = `${finalPrompt}
+        
+        IMPORTANT: The provided image shows ${personaName}. Use their exact likeness and facial features.
+        Maintain their authentic appearance while creating the ${imageType} social media graphic.
+        ${customizations?.textOverlay ? `Include text overlay: "${customizations.textOverlay}"` : ''}
+        Style: ${style || 'modern'} social media design optimized for ${platforms.join(', ')}.`
+        
+        // Convert buffer to File-compatible format for OpenAI
+        const { toFile } = await import('openai')
+        const imageFile = await toFile(personaImage, 'persona.png', { type: 'image/png' })
+        
+        response = await openai.images.edit({
+          model: "gpt-image-1",
+          image: imageFile,
+          prompt: editPrompt,
+          n: 1,
+          size: '1024x1024', // Edit endpoint only supports square sizes
+          response_format: 'b64_json'
+        })
+      } else {
+        // Use standard generation without persona
+        response = await openai.images.generate({
+          model: "gpt-image-1",
+          prompt: AIImageService.enhancePromptWithStyle(finalPrompt, style || 'modern', 'high'),
+          n: 1,
+          size: imageType === 'story' ? '1024x1792' : '1024x1024',
+          quality: 'standard',
+          response_format: 'b64_json'
+        })
+      }
       
       if (response.data && response.data[0]?.b64_json) {
         // Convert base64 to blob

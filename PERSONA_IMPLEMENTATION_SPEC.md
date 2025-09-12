@@ -366,29 +366,86 @@ photorealistic, highly detailed`
 negativePrompt: 'blurry, low quality, distorted face, bad anatomy, extra limbs'
 ```
 
-### 5.2 Social Graphics Generation with GPT-Image
+### 5.2 Social Graphics Generation with GPT-Image-1 (STANDARDIZED)
 
 **Component**: `src/components/unified-content-generator.tsx`  
 **API**: `/api/generate-images`  
-**Model**: GPT-Image-1 (per user preference memory)
+**Model**: GPT-Image-1 (OpenAI's native multimodal model)
 
-#### Enhanced GPT-Image Integration:
-1. **Reference Photo Processing**: 
-   - Convert persona photos to base64
-   - Select best angle for platform
-   - GPT-5 determines optimal photo for context
+#### Standardized Workflow for Social Posts:
 
-2. **Style Consistency**:
-   - Apply brand colors from profile
-   - Maintain visual consistency across platforms
-   - Use persona's trained style preferences
+Since GPT-Image-1 cannot use LoRA models, we use a pre-generated persona image as reference:
 
-#### Integration Flow:
-1. Persona photos provided as reference
-2. GPT-Image generates variations
-3. Style and brand colors applied
-4. Platform-specific optimizations
-5. Text overlays added if needed
+1. **Pre-generated Persona Image Selection**:
+   ```typescript
+   // Select best persona sample for the platform
+   const personaImage = await PersonaService.getBestSampleForPlatform(
+     persona.id,
+     platform // 'instagram' | 'linkedin' | 'twitter' etc.
+   )
+   ```
+
+2. **Reference Image Integration**:
+   ```typescript
+   // Include persona image as base64 in prompt
+   const prompt = `
+   Using the attached image as reference for the person named ${persona.name},
+   create a ${platform} social media post graphic.
+   
+   IMPORTANT: The attached image shows ${persona.name} - use their exact likeness,
+   maintaining their facial features, expression style, and appearance.
+   
+   Content requirements:
+   - ${contentDescription}
+   - Style: ${brandStyle}
+   - Include text overlay: "${postText}"
+   - Platform: ${platform} (optimize for ${platformDimensions})
+   
+   The person in the attached reference image should be prominently featured
+   in the generated image, maintaining their authentic appearance.
+   `
+   ```
+
+3. **GPT-Image-1 API Call with Image Reference**:
+   ```typescript
+   // Using the edit endpoint for persona integration
+   const response = await openai.images.edit({
+     model: "gpt-image-1",
+     image: [personaImageFile], // Pre-generated persona sample
+     prompt: prompt,
+     n: 1, // Number of variations
+     size: platformOptimizedSize,
+     quality: "high", // or "medium", "low"
+     input_fidelity: "high" // Preserve persona features
+   })
+   
+   // Alternative: Using Responses API for multi-turn editing
+   const response = await openai.responses.create({
+     model: "gpt-5",
+     input: [
+       {
+         role: "user",
+         content: [
+           { type: "input_text", text: prompt },
+           { type: "input_image", image_url: personaImageDataUrl }
+         ]
+       }
+     ],
+     tools: [{ type: "image_generation", quality: "high" }]
+   })
+   ```
+
+4. **Platform-Specific Optimizations**:
+   - **Instagram**: Square (1024x1024), carousel support
+   - **LinkedIn**: Professional tone, 1200x627
+   - **Twitter/X**: 1024x512 for optimal timeline display
+   - **Facebook**: Multiple formats based on post type
+   - **YouTube Community**: 1024x1024 square format
+
+#### Key Differences from Thumbnail Generation:
+- Thumbnails use FLUX with LoRA (direct persona integration)
+- Social posts use GPT-Image-1 with reference image (indirect integration)
+- Both maintain persona consistency through different methods
 
 #### Supported Platforms:
 - Instagram (square, carousel, story)
@@ -531,7 +588,54 @@ export class ThumbnailPromptService {
 - Track usage statistics
 - Delete with confirmation
 
-### 7.2 Content Generation UI
+### 7.2 Persona Profile Tab (NEW)
+
+**Location**: `/profile/personas` or as tab in user profile page
+**Component**: `src/components/profile/persona-tab.tsx`
+
+#### UI/UX Features:
+
+1. **Persona Gallery Display**:
+   - 5 sample images generated with the trained LoRA
+   - Grid layout (2x2 + 1 large hero image)
+   - Each image shows different styles/contexts:
+     - Professional headshot
+     - Casual portrait
+     - YouTube thumbnail style
+     - Social media profile
+     - Creative/artistic style
+
+2. **Persona Information Panel**:
+   - Persona name and description
+   - Training date and status
+   - Number of photos used
+   - Trigger phrase display
+   - Usage statistics (times used in content)
+
+3. **Retrain Options**:
+   ```
+   UI Message: "Don't like the persona we trained? 
+   Retrain up to 3 times for free, or reach out to 
+   support for free guidance!"
+   ```
+   - Retrain button (disabled after 3 attempts)
+   - Remaining attempts counter
+   - Support contact link
+   - Upload new photos option
+
+4. **Sample Generation Status**:
+   - Loading states for each sample
+   - Regenerate individual samples
+   - Download samples as pack
+
+#### Database Schema Update:
+```sql
+ALTER TABLE personas ADD COLUMN retrain_count INTEGER DEFAULT 0;
+ALTER TABLE personas ADD COLUMN sample_images JSONB DEFAULT '[]';
+ALTER TABLE personas ADD COLUMN last_retrained_at TIMESTAMPTZ;
+```
+
+### 7.3 Content Generation UI
 
 ### 7.3 Enhanced Avatar Training Component Integration
 
@@ -609,6 +713,9 @@ const handleComplete = async () => {
 - `GET /api/personas/train-lora` - Check training status
 - `GET /api/personas/check-config` - Verify FAL.ai setup
 - **NEW**: `POST /api/personas/approve-training` - Record approval
+- **NEW**: `POST /api/personas/generate-display-samples` - Generate 5 display samples
+- **NEW**: `POST /api/personas/retrain` - Initiate retrain with new photos
+- **NEW**: `GET /api/personas/retrain-status` - Check remaining retrain attempts
 
 ### Content Generation
 - `POST /api/generate-thumbnail` - Create thumbnails with persona
@@ -654,7 +761,186 @@ const handleComplete = async () => {
 - User-controlled deletion
 - Export functionality for portability
 
-## 11. Enhanced Workflow Examples
+## 11. Persona Display & Retrain Workflow (NEW)
+
+### 11.1 Generating Display Samples
+
+After successful LoRA training, generate 5 showcase samples:
+
+```typescript
+// API: /api/personas/generate-display-samples
+async function generatePersonaDisplaySamples(personaId: string) {
+  const persona = await getPersona(personaId)
+  
+  const samplePrompts = [
+    {
+      style: 'professional_headshot',
+      prompt: `${persona.lora_trigger_phrase}, professional headshot, 
+               studio lighting, business attire, neutral background`
+    },
+    {
+      style: 'casual_portrait',
+      prompt: `${persona.lora_trigger_phrase}, casual portrait, 
+               natural lighting, relaxed pose, outdoor setting`
+    },
+    {
+      style: 'youtube_thumbnail',
+      prompt: `${persona.lora_trigger_phrase}, YouTube thumbnail style,
+               excited expression, vibrant background, high energy`
+    },
+    {
+      style: 'social_media_profile',
+      prompt: `${persona.lora_trigger_phrase}, social media profile photo,
+               friendly smile, approachable, modern setting`
+    },
+    {
+      style: 'creative_artistic',
+      prompt: `${persona.lora_trigger_phrase}, artistic portrait,
+               creative lighting, unique angle, stylized`
+    }
+  ]
+  
+  const samples = await Promise.all(
+    samplePrompts.map(async ({ style, prompt }) => {
+      const result = await fal.subscribe('fal-ai/flux-lora', {
+        input: {
+          prompt,
+          loras: [{
+            path: persona.lora_model_url,
+            scale: 1.0
+          }],
+          image_size: { width: 1024, height: 1024 }
+        }
+      })
+      
+      return {
+        style,
+        url: result.data.images[0].url,
+        prompt
+      }
+    })
+  )
+  
+  // Store samples in database
+  await updatePersona(personaId, {
+    sample_images: samples
+  })
+  
+  return samples
+}
+```
+
+### 11.2 Retrain Workflow
+
+```typescript
+// Check retrain eligibility
+async function checkRetrainEligibility(personaId: string) {
+  const persona = await getPersona(personaId)
+  
+  return {
+    canRetrain: persona.retrain_count < 3,
+    remainingAttempts: 3 - persona.retrain_count,
+    lastRetrainedAt: persona.last_retrained_at
+  }
+}
+
+// Initiate retrain
+async function retrainPersona(personaId: string, newPhotos: File[]) {
+  const eligibility = await checkRetrainEligibility(personaId)
+  
+  if (!eligibility.canRetrain) {
+    throw new Error('Maximum retrain attempts reached. Please contact support.')
+  }
+  
+  // Upload new photos
+  const uploadedPhotos = await uploadPersonaPhotos(newPhotos)
+  
+  // Start new training
+  const trainingJob = await startLoRATraining({
+    photos: uploadedPhotos,
+    personaId,
+    isRetrain: true
+  })
+  
+  // Update retrain count
+  await updatePersona(personaId, {
+    retrain_count: persona.retrain_count + 1,
+    last_retrained_at: new Date(),
+    status: 'retraining'
+  })
+  
+  return trainingJob
+}
+```
+
+### 11.3 Profile Tab Implementation
+
+```typescript
+// Component: PersonaProfileTab.tsx
+export function PersonaProfileTab({ userId }: { userId: string }) {
+  const [persona, setPersona] = useState<Persona | null>(null)
+  const [samples, setSamples] = useState<PersonaSample[]>([])
+  const [retrainEligibility, setRetrainEligibility] = useState<RetrainStatus>()
+  
+  // Fetch persona and samples
+  useEffect(() => {
+    fetchPersonaWithSamples(userId).then(data => {
+      setPersona(data.persona)
+      setSamples(data.samples)
+      setRetrainEligibility(data.retrainStatus)
+    })
+  }, [userId])
+  
+  return (
+    <div className="persona-profile-tab">
+      {/* Hero Section with Main Sample */}
+      <div className="hero-sample">
+        <img src={samples[0]?.url} alt="Main persona preview" />
+      </div>
+      
+      {/* Grid of 4 Additional Samples */}
+      <div className="samples-grid">
+        {samples.slice(1).map((sample, i) => (
+          <div key={i} className="sample-card">
+            <img src={sample.url} alt={sample.style} />
+            <span className="sample-label">{sample.style}</span>
+          </div>
+        ))}
+      </div>
+      
+      {/* Retrain Section */}
+      <div className="retrain-section">
+        {retrainEligibility?.canRetrain ? (
+          <>
+            <p>Don't like the persona we trained?</p>
+            <p>Retrain up to 3 times for free, or reach out to support for free guidance!</p>
+            <Button onClick={handleRetrain}>
+              Retrain Persona ({retrainEligibility.remainingAttempts} attempts left)
+            </Button>
+          </>
+        ) : (
+          <>
+            <p>Maximum retrain attempts reached.</p>
+            <Button onClick={contactSupport}>
+              Contact Support for Guidance
+            </Button>
+          </>
+        )}
+      </div>
+      
+      {/* Persona Info */}
+      <div className="persona-info">
+        <h3>{persona?.name}</h3>
+        <p>Trigger: {persona?.metadata?.lora_trigger_phrase}</p>
+        <p>Trained: {formatDate(persona?.created_at)}</p>
+        <p>Photos used: {persona?.metadata?.photo_count}</p>
+      </div>
+    </div>
+  )
+}
+```
+
+## 12. Enhanced Workflow Examples
 
 ### 11.1 Complete Persona Creation Flow
 

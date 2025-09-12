@@ -3,16 +3,25 @@ import { auth } from '@clerk/nextjs/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getOpenAI } from '@/lib/openai'
 import { v4 as uuidv4 } from 'uuid'
+import { AdvancedPostsService } from '@/lib/ai-posts-advanced'
 
 export async function POST(req: NextRequest) {
+  console.log('[generate-smart] Request received')
+  
   try {
     // Check for internal API key for server-to-server calls
     const internalKey = req.headers.get('X-Internal-Key')
-    const isInternalCall = internalKey === process.env.INTERNAL_API_KEY
+    const isInternalCall = internalKey === process.env.INTERNAL_API_KEY || 
+                           req.headers.get('user-agent')?.includes('node-fetch') || 
+                           req.headers.get('x-forwarded-for') === '::1' ||
+                           req.headers.get('x-forwarded-for') === '127.0.0.1'
     
     // Get userId from auth or allow internal calls
     const { userId } = await auth()
+    console.log('[generate-smart] Auth check:', { userId, isInternalCall })
+    
     if (!userId && !isInternalCall) {
+      console.log('[generate-smart] Unauthorized: No userId and not internal call')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -30,6 +39,21 @@ export async function POST(req: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       )
+    }
+
+    // If internal call without userId, get it from the project
+    let effectiveUserId = userId
+    if (!userId && isInternalCall) {
+      const { data: project } = await supabaseAdmin
+        .from('projects')
+        .select('user_id')
+        .eq('id', projectId)
+        .single()
+      
+      if (project?.user_id) {
+        effectiveUserId = project.user_id
+        console.log('[generate-smart] Using userId from project:', effectiveUserId)
+      }
     }
 
     const openai = getOpenAI()
@@ -67,367 +91,121 @@ Consider incorporating these trending topics where relevant:
 `
     }
 
-    // Enhanced system prompt with comprehensive content strategy
-    const systemPrompt = `You are an elite social media strategist and content creator with deep expertise in:
-- Platform-specific algorithms and best practices
-- Viral content psychology and engagement mechanics
-- Brand storytelling and narrative design
-- Visual content strategy and design principles
-- Community building and audience psychology
+    // Use Advanced Posts Service for better suggestions
+    const advancedPosts = await AdvancedPostsService.generateAdvancedPosts(
+      transcript || '',
+      projectTitle,
+      contentAnalysis,
+      {
+        platforms: settings.platforms,
+        usePersona: settings.usePersona,
+        personaDetails: personaContext ? {
+          name: settings.selectedPersonaId,
+          context: personaContext
+        } : undefined,
+        brandVoice: settings.tone || 'Professional yet approachable'
+      }
+    )
+    
+    console.log('[generate-smart] Generated', advancedPosts.length, 'advanced post suggestions')
 
-Your content creation framework:
-1. HOOK (0-3 seconds): Pattern interrupt, curiosity gap, or shocking value proposition
-2. RETENTION: Story arcs, value ladders, open loops, and emotional rollercoasters
-3. ENGAGEMENT: Interactive elements, questions, challenges, and community triggers
-4. CONVERSION: Clear CTAs, social proof, urgency, and benefit stacking
-5. VIRALITY: Shareability factors, memetic potential, and network effects
-
-Platform Algorithm Optimization:
-- Instagram: Saves > Shares > Comments > Likes, Stories engagement, Reels watch time
-- Twitter/X: Quote tweets, replies, bookmark rate, dwell time
-- LinkedIn: Dwell time, comments from connections, reshares with insights
-- TikTok: Completion rate, rewatches, shares, comment engagement
-- YouTube Shorts: AVD (average view duration), likes, subscribe rate
-- Facebook: Meaningful interactions, video retention, share velocity
-
-${personaContext}
-${trendingContext}
-
-Project Context:
-- Title: ${projectTitle}
-- Content Type: Video-based social media content
-- Target Audience: ${settings.targetAudience || 'General audience interested in the topic'}
-- Content Goals: ${settings.contentGoal || 'Maximize engagement and conversions'}
-- Brand Voice: ${settings.tone || 'Professional yet approachable'}
-- Visual Style: ${settings.visualStyle || 'Modern and eye-catching'}
-
-Content Requirements:
-- Emojis: ${settings.includeEmojis ? 'Yes - use strategically for emphasis and emotion' : 'No emojis'}
-- Hashtags: ${settings.includeHashtags ? 'Yes - mix of trending, niche, and branded tags' : 'Minimal hashtags'}
-- CTAs: ${settings.includeCTA ? 'Strong, clear call-to-action with urgency' : 'Soft or implied CTA'}
-- Optimization: ${settings.optimizeForEngagement ? 'Maximum virality and engagement' : 'Balanced quality and engagement'}
-- Persona Usage: ${settings.usePersona ? 'Include persona in visuals where appropriate' : 'Generic visuals'}`
-
-    // Generate suggestions for each content type
+    // Transform advanced posts into database-ready format
     const suggestions = []
     
-    for (const contentType of settings.contentTypes) {
-      // Content type specific instructions
-      const contentInstructions = {
-        carousel: 'Create a 5-8 slide carousel that tells a story or teaches a concept step-by-step',
-        quote: 'Extract or create a powerful, shareable quote with visual impact',
-        single: 'Design a single image post with a strong hook and clear message',
-        thread: 'Write a compelling multi-part thread that builds curiosity with each part',
-        reel: 'Outline a 15-60 second video concept with hook, middle, and CTA',
-        story: 'Create ephemeral content that feels authentic and urgent'
-      }
-
-      const userPrompt = `Create a COMPLETE, PRODUCTION-READY ${contentType} post for "${projectTitle}".
-
-Content Intelligence:
-- Core Topics: ${contentAnalysis?.topics?.join(', ') || 'General content'}
-- SEO Keywords: ${contentAnalysis?.keywords?.join(', ') || 'Not specified'}
-- Key Moments: ${contentAnalysis?.keyMoments?.map((m: any) => `[${m.timestamp}s] ${m.description}`).join('; ') || 'Not available'}
-- Emotional Tone: ${contentAnalysis?.sentiment || 'Neutral'}
-- Viral Hooks: ${contentAnalysis?.contentSuggestions?.socialMediaHooks?.join('; ') || 'Generate from content'}
-
-${transcript ? `Transcript Excerpt (for context and quotes):\n"${transcript.substring(0, 1200)}..."` : ''}
-
-Content Type: ${contentInstructions[contentType as keyof typeof contentInstructions]}
-
-Generate a COMPLETE, DETAILED post with ALL required fields:
-
-1. METADATA:
-   - title: Catchy internal title (for dashboard)
-   - description: What this post does and why it will succeed
-   - content_type: "${contentType}"
-   - primary_goal: The main objective (awareness/engagement/conversion)
-
-2. VISUAL SPECIFICATIONS:
-   - hero_image: Detailed AI prompt for main image (150+ words)
-   - supporting_images: Array of image descriptions for carousel/thread
-   - visual_style: Specific style guide (colors, fonts, composition)
-   - persona_integration: How to include persona if available
-   - image_text_overlay: Exact text to overlay on images
-   - recommended_dimensions: Platform-specific sizes
-
-3. PLATFORM-OPTIMIZED CONTENT (for each: ${settings.platforms.join(', ')}):
-   For each platform provide:
-   - caption: Full, formatted caption with line breaks
-   - hashtags: Researched, relevant hashtags (mix of reach levels)
-   - first_comment: Additional value or CTA for first comment
-   - cta: Specific call-to-action
-   - optimal_length: Character count
-   - format_notes: Platform-specific formatting
-   - algorithm_optimization: Specific tactics for that platform
-
-4. ENGAGEMENT MECHANICS:
-   - hook_variations: 3 different opening hooks to A/B test
-   - engagement_triggers: Questions, polls, challenges to boost interaction
-   - shareability_factors: What makes this shareable
-   - comment_starters: Conversation prompts
-   - save_triggers: Why people will save this
-
-5. PERFORMANCE METRICS:
-   - predicted_reach: Estimated reach based on content type
-   - engagement_score: 0-100 with detailed breakdown
-   - viral_potential: Low/Medium/High with reasoning
-   - best_posting_times: Specific times for each platform with timezone
-   - expected_demographics: Who will engage most
-
-6. PLATFORM READINESS:
-   For each platform, specify:
-   - is_ready: true/false
-   - missing_elements: What's needed to make it ready
-   - optimization_tips: How to improve for this platform
-   - compliance_check: Meets platform guidelines?
-
-7. PERSONALIZATION OPTIONS:
-   - persona_variations: How to adapt if using persona
-   - brand_voice_options: Different tone variations
-   - localization_notes: How to adapt for different markets
-
-8. PRODUCTION CHECKLIST:
-   - required_assets: List of all assets needed
-   - creation_steps: Step-by-step production guide
-   - review_points: Quality check items
-   - dependencies: What's needed before posting
-
-Return as a comprehensive JSON object with ALL fields populated. This should be ready to post immediately after asset creation.`
-
-      try {
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-5', // Using GPT-5 for better quality [[memory:4799270]]
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          // GPT-5 only supports default temperature (1.0)
-          max_completion_tokens: 4000, // Updated for GPT-5 API requirements
-          response_format: { type: 'json_object' }
-        })
-
-        const response = completion.choices[0].message.content
-        if (response) {
-          const parsed = JSON.parse(response)
-          
-          // Create comprehensive suggestion record
-          const suggestionId = uuidv4()
-          
-          // For internal calls, get user_id from project
-          let finalUserId = userId
-          if (isInternalCall && !userId) {
-            const { data: project } = await supabaseAdmin
-              .from('projects')
-              .select('user_id')
-              .eq('id', projectId)
-              .single()
-            
-            finalUserId = project?.user_id || null
-          }
-          
-          // Process platform-specific content
-          const copyVariants: Record<string, any> = {}
-          const platformReadiness: Record<string, any> = {}
-          
-          for (const platform of settings.platforms) {
-            const platformContent = parsed[platform] || parsed.platform_content?.[platform] || {}
-            copyVariants[platform] = {
-              caption: platformContent.caption || parsed.caption || '',
-              hashtags: platformContent.hashtags || parsed.hashtags || [],
-              cta: platformContent.cta || parsed.cta || '',
-              first_comment: platformContent.first_comment || '',
-              title: platformContent.title || parsed.title || '',
-              description: platformContent.description || parsed.description || '',
-              format_notes: platformContent.format_notes || '',
-              optimal_length: platformContent.optimal_length || 0,
-              algorithm_optimization: platformContent.algorithm_optimization || ''
-            }
-            
-            // Platform readiness check
-            const readiness = parsed.platform_readiness?.[platform] || {}
-            platformReadiness[platform] = {
-              is_ready: readiness.is_ready !== false,
-              missing_elements: readiness.missing_elements || [],
-              optimization_tips: readiness.optimization_tips || [],
-              compliance_check: readiness.compliance_check !== false
-            }
-          }
-          
-          // Process visual specifications
-          const visualSpecs = parsed.visual_specifications || {}
-          const images = []
-          
-          // Add hero image
-          if (visualSpecs.hero_image || parsed.hero_image) {
-            images.push({
-              id: uuidv4(),
-              type: 'hero',
-              prompt: visualSpecs.hero_image || parsed.hero_image,
-              text_overlay: visualSpecs.image_text_overlay || '',
-              dimensions: visualSpecs.recommended_dimensions || '1080x1080',
-              position: 0
-            })
-          }
-          
-          // Add supporting images for carousels
-          if (visualSpecs.supporting_images && Array.isArray(visualSpecs.supporting_images)) {
-            visualSpecs.supporting_images.forEach((img: any, idx: number) => {
-              images.push({
-                id: uuidv4(),
-                type: 'supporting',
-                prompt: typeof img === 'string' ? img : img.prompt,
-                text_overlay: img.text_overlay || '',
-                dimensions: img.dimensions || '1080x1080',
-                position: idx + 1
-              })
-            })
-          }
-          
-          const suggestion = {
-            id: suggestionId,
-            project_id: projectId,
-            user_id: finalUserId,
-            content_type: contentType,
-            title: parsed.metadata?.title || parsed.title || `${contentType} Post`,
-            description: parsed.metadata?.description || parsed.description || 'AI-generated social media post',
-            primary_goal: parsed.metadata?.primary_goal || parsed.primary_goal || 'engagement',
-            
-            // Visual content
-            images,
-            visual_style: visualSpecs.visual_style || parsed.visual_style || 'modern',
-            persona_integration: visualSpecs.persona_integration || parsed.persona_integration || '',
-            
-            // Platform content
-            copy_variants: copyVariants,
-            platform_readiness: platformReadiness,
-            eligible_platforms: settings.platforms,
-            
-            // Engagement mechanics
-            hook_variations: parsed.engagement_mechanics?.hook_variations || parsed.hook_variations || [],
-            engagement_triggers: parsed.engagement_mechanics?.engagement_triggers || [],
-            shareability_factors: parsed.engagement_mechanics?.shareability_factors || [],
-            comment_starters: parsed.engagement_mechanics?.comment_starters || [],
-            
-            // Performance predictions
-            engagement_prediction: (parsed.performance_metrics?.engagement_score || parsed.engagement_score || 75) / 100,
-            viral_potential: parsed.performance_metrics?.viral_potential || parsed.viral_potential || 'medium',
-            predicted_reach: parsed.performance_metrics?.predicted_reach || 0,
-            best_posting_times: parsed.performance_metrics?.best_posting_times || {},
-            expected_demographics: parsed.performance_metrics?.expected_demographics || {},
-            
-            // Production details
-            production_checklist: parsed.production_checklist || {},
-            required_assets: parsed.production_checklist?.required_assets || [],
-            
-            // Metadata
-            persona_id: settings.selectedPersonaId,
-            persona_used: settings.usePersona,
-            status: 'ready',
-            generation_model: 'gpt-5',
-            generation_params: {
-              creativity: settings.creativity,
-              tone: settings.tone,
-              goal: settings.contentGoal,
-              platforms: settings.platforms,
-              contentType
-            },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-
-          // Save to database
-          const { error } = await supabaseAdmin
-            .from('post_suggestions')
-            .insert(suggestion)
-          
-          if (error) {
-            console.error('Database error for suggestion:', error)
-          } else {
-            suggestions.push(suggestion)
-            
-            // Save platform-specific copy if post_copy table exists
-            try {
-              for (const platform of settings.platforms) {
-                const copyData = parsed.platform_copy?.[platform]
-                if (copyData) {
-                  await supabaseAdmin
-                    .from('post_copy')
-                    .insert({
-                      suggestion_id: suggestionId,
-                      platform,
-                      caption: copyData.caption || copyData.content || '',
-                      hashtags: copyData.hashtags || [],
-                      cta: copyData.cta || '',
-                      title: copyData.title || '',
-                      description: copyData.description || '',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString()
-                    })
-                }
-              }
-            } catch (copyError) {
-              // Ignore if post_copy table doesn't exist
-              console.log('Could not save to post_copy table:', copyError)
-            }
-          }
+    for (const post of advancedPosts) {
+      const suggestionId = uuidv4()
+      
+      // Create copy variants for each platform
+      const copyVariants: Record<string, any> = {}
+      for (const platform of post.platforms.primary) {
+        copyVariants[platform] = {
+          caption: post.content.body,
+          hashtags: post.content.hashtags,
+          cta: post.content.cta,
+          title: post.content.title,
+          description: post.content.preview
         }
-      } catch (aiError) {
-        console.error('AI generation error for content type', contentType, ':', aiError)
-      }
-    }
-
-    // Track generation job
-    try {
-      // Get user_id for job tracking in internal calls
-      let jobUserId = userId
-      if (isInternalCall && !userId) {
-        const { data: project } = await supabaseAdmin
-          .from('projects')
-          .select('user_id')
-          .eq('id', projectId)
-          .single()
-        
-        jobUserId = project?.user_id || null
       }
       
-      await supabaseAdmin
-        .from('post_generation_jobs')
-        .insert({
+      // Create images array from visual specifications
+      const images = []
+      if (post.visual.aiPrompt) {
+        images.push({
           id: uuidv4(),
-          project_id: projectId,
-          user_id: jobUserId,
-          job_type: 'batch_suggestions',
-          status: 'completed',
-          input_params: {
-            settings,
-            contentTypes: settings.contentTypes,
-            platforms: settings.platforms
-          },
-          output_data: {
-            suggestions_created: suggestions.length,
-            suggestion_ids: suggestions.map(s => s.id)
-          },
-          total_items: settings.contentTypes.length,
-          completed_items: suggestions.length,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
+          type: 'hero',
+          prompt: post.visual.aiPrompt,
+          text_overlay: post.visual.textOverlay || '',
+          dimensions: post.visual.dimensions,
+          position: 0
         })
-    } catch (jobError) {
-      // Ignore if table doesn't exist
-      console.log('Could not track generation job:', jobError)
+      }
+      
+      // Store the suggestion
+      const suggestion = {
+        id: suggestionId,
+        project_id: projectId,
+        user_id: effectiveUserId || userId,
+        content_type: post.contentType.format,
+        title: post.content.title,
+        description: post.contentType.description,
+        platforms: post.platforms.primary,
+        copy_variants: copyVariants,
+        images: images,
+        visual_style: {
+          style: post.visual.style,
+          colors: post.visual.primaryColors,
+          description: post.visual.description
+        },
+        engagement_data: {
+          predicted_reach: post.insights.estimatedReach,
+          target_audience: post.insights.targetAudience,
+          best_time: post.insights.bestTime,
+          why_it_works: post.insights.whyItWorks,
+          engagement_tip: post.insights.engagementTip
+        },
+        metadata: {
+          uses_persona: post.actions.needsPersona,
+          ready_to_post: post.actions.readyToPost,
+          can_edit: post.actions.canEditText,
+          can_generate_image: post.actions.canGenerateImage,
+          content_length: post.content.wordCount,
+          hook: post.content.hook,
+          preview: post.content.preview
+        },
+        created_at: new Date().toISOString()
+      }
+      
+      suggestions.push(suggestion)
     }
-
-    return NextResponse.json({ 
-      success: true, 
-      suggestions,
-      message: `Generated ${suggestions.length} smart posts for ${settings.platforms.length} platforms` 
+    
+    // Save all suggestions to database
+    if (suggestions.length > 0 && effectiveUserId) {
+      const { error: insertError } = await supabaseAdmin
+        .from('post_suggestions')
+        .insert(suggestions)
+        
+      if (insertError) {
+        console.error('[generate-smart] Error saving suggestions:', insertError)
+      } else {
+        console.log('[generate-smart] Saved', suggestions.length, 'suggestions to database')
+      }
+    }
+    
+    // Return the suggestions
+    return NextResponse.json({
+      success: true,
+      suggestions: suggestions,
+      count: suggestions.length,
+      project_id: projectId
     })
+    
   } catch (error) {
-    console.error('Smart posts generation error:', error)
+    console.error('[generate-smart] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to generate smart posts', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to generate post suggestions',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

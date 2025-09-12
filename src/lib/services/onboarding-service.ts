@@ -56,8 +56,15 @@ export class OnboardingService {
         clerk_user_id: userId,
         onboarding_progress: updatedProgress,
         onboarding_step: step,
+        onboarding_step_id: stepId,
         onboarding_completed: false,
         updated_at: new Date().toISOString()
+      }
+      
+      // Mark completion if at final step
+      if (step === 4 && stepId === 'review') {
+        profileUpdate.onboarding_completed = true
+        profileUpdate.onboarding_completed_at = new Date().toISOString()
       }
       
       // Sync specific fields to profile tabs based on current step
@@ -85,15 +92,31 @@ export class OnboardingService {
       }
       
       // Sync brand data if available
-      if (formData.brandColors || formData.primaryColor || formData.brandVoice) {
+      if (formData.brandIdentity || formData.brandAnalysis || formData.brandColors || formData.primaryColor || formData.brandVoice) {
         const existingBrand = (existingProfile as any)?.brand_identity || {}
-        profileUpdate.brand_identity = {
-          ...existingBrand,
-          ...(formData.brandColors && { colors: formData.brandColors }),
-          ...(formData.primaryColor && { primaryColor: formData.primaryColor }),
-          ...(formData.fonts && { fonts: formData.fonts }),
-          ...(formData.brandVoice && { voice: formData.brandVoice }),
-          ...(formData.tagline && { tagline: formData.tagline })
+        
+        // If we have the new comprehensive brand identity data
+        if (formData.brandIdentity) {
+          profileUpdate.brand_identity = {
+            ...existingBrand,
+            ...formData.brandIdentity,
+            extractedAt: new Date().toISOString()
+          }
+        } else {
+          // Fallback to old format
+          profileUpdate.brand_identity = {
+            ...existingBrand,
+            ...(formData.brandColors && { colors: formData.brandColors }),
+            ...(formData.primaryColor && { primaryColor: formData.primaryColor }),
+            ...(formData.fonts && { fonts: formData.fonts }),
+            ...(formData.brandVoice && { voice: formData.brandVoice }),
+            ...(formData.tagline && { tagline: formData.tagline })
+          }
+        }
+        
+        // Store the full analysis separately for reference
+        if (formData.brandAnalysis) {
+          profileUpdate.brand_analysis = formData.brandAnalysis
         }
       }
       
@@ -102,40 +125,76 @@ export class OnboardingService {
         profileUpdate.platform_connections = formData.platforms
       }
       
-      // Save to database with real-time profile sync
-      const { error } = await supabase
-        .from('user_profiles')
-        .upsert(profileUpdate, {
-          onConflict: 'clerk_user_id'
-        })
+      // Track persona completion
+      if (formData.personaId) {
+        profileUpdate.persona_id = formData.personaId
+      }
       
-      if (error) {
-        // Check if error has meaningful content before logging
-        if (error.message || error.code || error.details) {
-          const errorDetails: any = {
-            message: error.message || 'Unknown error',
-            code: error.code,
-            table: 'user_profiles',
-            userId,
-            step,
-            stepId
-          }
-          
-          // Add additional details only if they exist
-          if (error.details) errorDetails.details = error.details
-          if (error.hint) errorDetails.hint = error.hint
-          
-          console.error('Error saving onboarding progress:', errorDetails)
-          
-          // Provide specific guidance based on error code
-          if (error.code === '42P01') {
-            console.error('Database migration needed: Run the migration in /migrations/fix-onboarding-errors.sql')
-          } else if (error.code === '42703') {
-            console.error('Missing column in user_profiles table. Run the migration to add onboarding_progress column.')
-          }
-        } else {
-          // For empty errors, log a more helpful message
-          console.warn('Onboarding progress save returned an empty error. This might be a permission issue or the profile might already exist.')
+      // Track review states
+      if (formData.brandReviewed) {
+        profileUpdate.brand_reviewed = true
+      }
+      if (formData.personaReviewed) {
+        profileUpdate.persona_reviewed = true
+      }
+      if (formData.socialsConnected) {
+        profileUpdate.socials_connected = true
+      }
+      
+      // First check if profile exists
+      const { data: existingCheck, error: checkError } = await supabase
+        .from('user_profiles')
+        .select('clerk_user_id')
+        .eq('clerk_user_id', userId)
+        .single()
+      
+      // If check fails with anything other than PGRST116 (no rows), there's a real error
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking profile existence:', {
+          code: checkError.code,
+          message: checkError.message,
+          details: checkError.details,
+          hint: checkError.hint
+        })
+        return false
+      }
+      
+      // Determine if we should insert or update
+      let saveError
+      if (existingCheck) {
+        // Profile exists, update it
+        const { error } = await supabase
+          .from('user_profiles')
+          .update(profileUpdate)
+          .eq('clerk_user_id', userId)
+        saveError = error
+      } else {
+        // Profile doesn't exist, insert it
+        const { error } = await supabase
+          .from('user_profiles')
+          .insert(profileUpdate)
+        saveError = error
+      }
+      
+      if (saveError) {
+        console.error('Error saving onboarding progress:', {
+          operation: existingCheck ? 'update' : 'insert',
+          code: saveError.code,
+          message: saveError.message,
+          details: saveError.details,
+          hint: saveError.hint,
+          userId,
+          step,
+          stepId
+        })
+        
+        // Provide specific guidance based on error code
+        if (saveError.code === '42P01') {
+          console.error('Table does not exist. Ensure user_profiles table is created.')
+        } else if (saveError.code === '42703') {
+          console.error('Column does not exist. Run: supabase db push migrations/add-onboarding-tracking-fields.sql')
+        } else if (saveError.code === '23505') {
+          console.error('Duplicate key violation. Profile already exists.')
         }
         
         return false

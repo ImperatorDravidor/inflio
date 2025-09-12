@@ -236,9 +236,9 @@ export function PersonaUploadSimple({
   const isProcessing = isUploading || isTraining
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-8">
       {/* Header */}
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-4">
         <h2 className="text-3xl font-bold">Create Your AI Avatar</h2>
         <p className="text-muted-foreground">
           Upload photos to train your personalized AI model for accurate thumbnails

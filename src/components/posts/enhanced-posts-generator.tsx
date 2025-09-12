@@ -249,11 +249,12 @@ const contentTypeConfig = {
 
 interface PostSuggestion {
   id: string
-  content_type: 'carousel' | 'quote' | 'single' | 'thread' | 'story'
-  title: string
-  description?: string
-  primary_goal?: string
-  images: Array<{
+  content_type?: 'carousel' | 'quote' | 'single' | 'thread' | 'story'  // Old field
+  type?: 'carousel' | 'quote' | 'single' | 'thread' | 'story'  // New field
+  title?: string  // May be in metadata
+  description?: string  // May be in metadata
+  primary_goal?: string  // May be in metadata
+  images?: Array<{  // May not be present initially
     id: string
     url?: string
     type?: 'hero' | 'supporting'
@@ -264,7 +265,18 @@ interface PostSuggestion {
   }>
   visual_style?: string
   persona_integration?: string
-  copy_variants: Record<string, {
+  copy_variants?: Record<string, {
+    caption: string
+    hashtags: string[]
+    cta?: string
+    first_comment?: string
+    title?: string
+    description?: string
+    format_notes?: string
+    optimal_length?: number
+    algorithm_optimization?: string
+  }>
+  platform_copy?: Record<string, {
     caption: string
     hashtags: string[]
     cta?: string
@@ -281,7 +293,12 @@ interface PostSuggestion {
     optimization_tips?: string[]
     compliance_check?: boolean
   }>
-  eligible_platforms: string[]
+  eligible_platforms?: string[]  // May be in metadata for newer suggestions
+  eligibility?: Record<string, any>  // New field name in database
+  metadata?: {  // Additional metadata field
+    eligible_platforms?: string[]
+    [key: string]: any
+  }
   hook_variations?: string[]
   engagement_triggers?: string[]
   shareability_factors?: string[]
@@ -292,8 +309,8 @@ interface PostSuggestion {
   best_posting_times?: Record<string, string[]>
   production_checklist?: any
   required_assets?: string[]
-  status: string
-  persona_used: boolean
+  status?: string  // May be 'suggested', 'ready', 'approved', etc.
+  persona_used?: boolean  // May be in metadata
   persona_id?: string
   rating?: number
 }
@@ -366,19 +383,34 @@ export function EnhancedPostsGenerator({
 
   // Watch for content analysis changes and auto-generate if needed
   useEffect(() => {
-    if (!suggestionsLoaded) return // Wait for initial load
+    console.log('[EnhancedPostsGenerator] Auto-gen check:', {
+      suggestionsLoaded,
+      hasContentAnalysis: !!contentAnalysis,
+      hasTranscript: !!transcript,
+      suggestionsCount: suggestions.length,
+      hasAttemptedAutoGeneration,
+      isGenerating
+    })
+    
+    if (!suggestionsLoaded) {
+      console.log('[EnhancedPostsGenerator] Waiting for initial suggestions load...')
+      return // Wait for initial load
+    }
     
     const shouldAutoGenerate = 
       contentAnalysis && 
+      transcript &&
       suggestions.length === 0 && 
       !hasAttemptedAutoGeneration &&
       !isGenerating
     
     if (shouldAutoGenerate) {
-      console.log('[EnhancedPostsGenerator] Auto-generating posts with content analysis:', contentAnalysis)
+      console.log('[EnhancedPostsGenerator] TRIGGERING AUTO-GENERATION!')
       autoGeneratePostsIfNeeded()
+    } else if (!transcript) {
+      console.log('[EnhancedPostsGenerator] No transcript available, skipping auto-generation')
     }
-  }, [contentAnalysis, suggestions.length, suggestionsLoaded, hasAttemptedAutoGeneration, isGenerating])
+  }, [contentAnalysis, transcript, suggestions.length, suggestionsLoaded, hasAttemptedAutoGeneration, isGenerating])
 
   // Clear auto-generation flag when suggestions are manually deleted or project changes
   useEffect(() => {
@@ -454,11 +486,18 @@ export function EnhancedPostsGenerator({
     let progressInterval: NodeJS.Timeout | null = null
     
     try {
-      // Simulate progress
+      // Progress tracking with better updates and cap at 95%
       progressInterval = setInterval(() => {
-        setGenerationProgress(prev => Math.min(prev + 10, 90))
+        setGenerationProgress(prev => {
+          if (prev >= 95) return 95  // Cap at 95% until actual completion
+          if (prev < 30) return prev + 10
+          if (prev < 60) return prev + 5
+          if (prev < 80) return prev + 2
+          return prev + 1
+        })
       }, 500)
 
+      setOverlayMessage('Creating AI-powered content...')
       const response = await fetch('/api/posts/generate-smart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -477,22 +516,45 @@ export function EnhancedPostsGenerator({
         progressInterval = null
       }
       
-      setGenerationProgress(100)
-
       if (!response.ok) {
         const errorData = await response.text()
         console.error('Failed to generate posts:', errorData)
         throw new Error(`Failed to generate posts: ${response.status}`)
       }
 
+      setGenerationProgress(85)
+      setOverlayMessage('Processing suggestions...')
+      
       const result = await response.json()
       console.log('[EnhancedPostsGenerator] Generated posts:', result)
 
-      // Wait a moment for database to be updated
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Reload suggestions
-      await loadSuggestions()
+      // Check if we got suggestions in the response
+      if (result.suggestions && result.suggestions.length > 0) {
+        setSuggestions(result.suggestions)
+        setSuggestionsLoaded(true)
+        setGenerationProgress(100)
+        setOverlayMessage('Complete!')
+      } else {
+        // Wait a moment for database to be updated
+        setGenerationProgress(90)
+        setOverlayMessage('Saving suggestions...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        // Try to reload suggestions
+        setGenerationProgress(95)
+        setOverlayMessage('Loading your content...')
+        const loaded = await loadSuggestions()
+        
+        if (!loaded || loaded.length === 0) {
+          console.warn('No suggestions loaded after generation')
+          // Try once more
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          await loadSuggestions()
+        }
+        
+        setGenerationProgress(100)
+        setOverlayMessage('Complete!')
+      }
       
       // Subtle success notification
       toast.success('✨ AI posts ready!', {
@@ -734,21 +796,30 @@ export function EnhancedPostsGenerator({
     })
 
   const SuggestionCard = ({ suggestion }: { suggestion: PostSuggestion }) => {
-    const TypeIcon = contentTypeConfig[suggestion.content_type]?.icon || Layers
-    const typeConfig = contentTypeConfig[suggestion.content_type] || {
+    const contentType = suggestion.content_type || suggestion.type || 'single'
+    const TypeIcon = contentTypeConfig[contentType]?.icon || Layers
+    const typeConfig = contentTypeConfig[contentType] || {
       icon: Layers,
-      name: suggestion.content_type,
+      name: contentType,
       color: 'text-gray-600',
       bgColor: 'bg-gray-100 dark:bg-gray-900/20'
     }
     const isSelected = selectedBatch.includes(suggestion.id)
     
     // Calculate overall platform readiness
+    // Handle both old and new data structures
+    const eligiblePlatforms = suggestion.eligible_platforms || 
+                              suggestion.metadata?.eligible_platforms || 
+                              (suggestion.eligibility ? Object.keys(suggestion.eligibility) : []) ||
+                              []
+    
     const platformReadinessCount = suggestion.platform_readiness 
       ? Object.values(suggestion.platform_readiness).filter((p: any) => p.is_ready).length
-      : suggestion.eligible_platforms.length
+      : suggestion.eligibility
+      ? Object.values(suggestion.eligibility).filter((p: any) => p.is_ready).length
+      : eligiblePlatforms.length
     
-    const allPlatformsReady = platformReadinessCount === suggestion.eligible_platforms.length
+    const allPlatformsReady = platformReadinessCount === eligiblePlatforms.length
     
     return (
       <motion.div
@@ -772,17 +843,19 @@ export function EnhancedPostsGenerator({
                   <TypeIcon className={cn("h-4 w-4", typeConfig.color)} />
                 </div>
                 <div>
-                  <CardTitle className="text-base line-clamp-1">{suggestion.title}</CardTitle>
+                  <CardTitle className="text-base line-clamp-1">
+                    {suggestion.title || suggestion.metadata?.title || `${suggestion.type || 'Post'} Suggestion`}
+                  </CardTitle>
                   <div className="flex items-center gap-2 mt-0.5">
-                    {suggestion.description && (
+                    {(suggestion.description || suggestion.metadata?.description) && (
                       <CardDescription className="text-xs line-clamp-1">
-                        {suggestion.description}
+                        {suggestion.description || suggestion.metadata?.description}
                       </CardDescription>
                     )}
-                    {suggestion.primary_goal && (
+                    {(suggestion.primary_goal || suggestion.metadata?.primary_goal) && (
                       <Badge variant="outline" className="text-xs px-1.5 py-0">
                         <Target className="h-2.5 w-2.5 mr-1" />
-                        {suggestion.primary_goal}
+                        {suggestion.primary_goal || suggestion.metadata?.primary_goal}
                       </Badge>
                     )}
                   </div>
@@ -800,7 +873,7 @@ export function EnhancedPostsGenerator({
                     <Eye className="h-4 w-4 mr-2" />
                     View Details
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigator.clipboard.writeText(suggestion.copy_variants.instagram?.caption || '')}>
+                  <DropdownMenuItem onClick={() => navigator.clipboard.writeText((suggestion.copy_variants || suggestion.platform_copy)?.instagram?.caption || '')}>
                     <Copy className="h-4 w-4 mr-2" />
                     Copy Caption
                   </DropdownMenuItem>
@@ -832,21 +905,21 @@ export function EnhancedPostsGenerator({
                 {suggestion.status}
               </Badge>
               
-              {suggestion.persona_used && (
+              {(suggestion.persona_used || suggestion.metadata?.persona_used) && (
                 <Badge variant="outline" className="text-xs">
                   <User className="h-3 w-3 mr-1" />
                   Persona
                 </Badge>
               )}
 
-              {suggestion.engagement_prediction && suggestion.engagement_prediction > 0.8 && (
+              {(suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction) && (suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction || 0) > 0.8 && (
                 <Badge className="text-xs bg-gradient-to-r from-yellow-500 to-orange-500">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   High Impact
                 </Badge>
               )}
               
-              {suggestion.viral_potential === 'high' && (
+              {(suggestion.viral_potential || suggestion.metadata?.viral_potential) === 'high' && (
                 <Badge className="text-xs bg-gradient-to-r from-purple-500 to-pink-500">
                   <Zap className="h-3 w-3 mr-1" />
                   Viral
@@ -858,7 +931,7 @@ export function EnhancedPostsGenerator({
           <CardContent className="space-y-3">
             {/* Image Preview with smooth carousel */}
             <div className="relative group">
-              {suggestion.images.length > 0 ? (
+              {suggestion.images && suggestion.images.length > 0 ? (
                 <div className="relative overflow-hidden rounded-lg bg-muted aspect-[4/5]">
                   <AnimatePresence mode="wait">
                     <motion.img
@@ -873,9 +946,9 @@ export function EnhancedPostsGenerator({
                     />
                   </AnimatePresence>
                   
-                  {suggestion.images.length > 1 && (
+                  {(suggestion.images?.length || 0) > 1 && (
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs font-medium">
-                      +{suggestion.images.length - 1} more
+                      +{(suggestion.images?.length || 1) - 1} more
                     </div>
                   )}
 
@@ -923,7 +996,11 @@ export function EnhancedPostsGenerator({
                   if (!platform) return null
                   
                   const Icon = platform.icon
-                  const isEligible = suggestion.eligible_platforms.includes(platformId)
+                  const eligiblePlatforms = suggestion.eligible_platforms || 
+                                           suggestion.metadata?.eligible_platforms || 
+                                           (suggestion.eligibility ? Object.keys(suggestion.eligibility) : []) ||
+                                           []
+                  const isEligible = eligiblePlatforms.includes(platformId)
                   const readiness = suggestion.platform_readiness?.[platformId]
                   const isReady = readiness?.is_ready ?? isEligible
                   const hasIssues = readiness?.missing_elements && readiness.missing_elements.length > 0
@@ -983,33 +1060,33 @@ export function EnhancedPostsGenerator({
             </div>
 
             {/* Engagement metrics preview */}
-            {suggestion.engagement_prediction && (
+            {(suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction) && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Predicted engagement</span>
                   <span className="font-medium">
-                    {Math.round(suggestion.engagement_prediction * 100)}%
+                    {Math.round((suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction || 0) * 100)}%
                   </span>
                 </div>
-                <Progress value={suggestion.engagement_prediction * 100} className="h-1.5" />
+                <Progress value={(suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction || 0) * 100} className="h-1.5" />
               </div>
             )}
 
             {/* Caption preview with hashtags */}
-            {suggestion.copy_variants.instagram && (
+            {(suggestion.copy_variants || suggestion.platform_copy)?.instagram && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground line-clamp-2">
-                  {suggestion.copy_variants.instagram.caption}
+                  {(suggestion.copy_variants || suggestion.platform_copy)?.instagram?.caption || ''}
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {suggestion.copy_variants.instagram.hashtags.slice(0, 3).map(tag => (
+                  {((suggestion.copy_variants || suggestion.platform_copy)?.instagram?.hashtags || []).slice(0, 3).map(tag => (
                     <Badge key={tag} variant="outline" className="text-xs px-1.5 py-0">
                       #{tag}
                     </Badge>
                   ))}
-                  {suggestion.copy_variants.instagram.hashtags.length > 3 && (
+                  {((suggestion.copy_variants || suggestion.platform_copy)?.instagram?.hashtags?.length || 0) > 3 && (
                     <Badge variant="outline" className="text-xs px-1.5 py-0">
-                      +{suggestion.copy_variants.instagram.hashtags.length - 3}
+                      +{((suggestion.copy_variants || suggestion.platform_copy)?.instagram?.hashtags?.length || 0) - 3}
                     </Badge>
                   )}
                 </div>
@@ -1026,7 +1103,7 @@ export function EnhancedPostsGenerator({
               disabled={isGenerating}
             >
               <RefreshCw className="h-3 w-3 mr-1" />
-              {suggestion.images.length > 0 ? 'Regenerate Images' : 'Generate Images'}
+              {suggestion.images && suggestion.images.length > 0 ? 'Regenerate Images' : 'Generate Images'}
             </Button>
             <Button
               size="sm"
@@ -1628,7 +1705,7 @@ export function EnhancedPostsGenerator({
                 <TabsContent value="preview" className="space-y-4 mt-4">
                   {/* Platform previews in a beautiful grid */}
                   <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(selectedSuggestion.copy_variants).map(([platform, copy]) => {
+                    {Object.entries(selectedSuggestion.copy_variants || selectedSuggestion.platform_copy || {}).map(([platform, copy]) => {
                       const config = platformConfig[platform as keyof typeof platformConfig]
                       if (!config) return null
                       
@@ -1648,7 +1725,7 @@ export function EnhancedPostsGenerator({
                             {/* Mock phone preview */}
                             <div className="mx-auto w-48 bg-black rounded-2xl p-2">
                               <div className="bg-white rounded-xl overflow-hidden">
-                                {selectedSuggestion.images[0] && (
+                                {selectedSuggestion.images?.[0] && (
                                   <img
                                     src={selectedSuggestion.images[0].url}
                                     alt="Preview"
@@ -1676,7 +1753,7 @@ export function EnhancedPostsGenerator({
 
                 <TabsContent value="copy" className="space-y-4 mt-4">
                   {/* Enhanced copy editing interface */}
-                  {Object.entries(selectedSuggestion.copy_variants).map(([platform, copy]) => {
+                  {selectedSuggestion.copy_variants && Object.entries(selectedSuggestion.copy_variants).map(([platform, copy]) => {
                     const config = platformConfig[platform as keyof typeof platformConfig]
                     if (!config) return null
                     
@@ -1733,7 +1810,7 @@ export function EnhancedPostsGenerator({
 
                 <TabsContent value="images" className="mt-4">
                   <div className="grid grid-cols-2 gap-4">
-                    {selectedSuggestion.images.map((image, idx) => (
+                    {(selectedSuggestion.images || []).map((image, idx) => (
                       <Card key={image.id} className="overflow-hidden">
                         <div className="relative aspect-square">
                           <img
@@ -1742,7 +1819,7 @@ export function EnhancedPostsGenerator({
                             className="w-full h-full object-cover"
                           />
                           <Badge className="absolute top-2 left-2">
-                            {idx + 1} of {selectedSuggestion.images.length}
+                            {idx + 1} of {selectedSuggestion.images?.length || 0}
                           </Badge>
                         </div>
                         <CardFooter className="p-3 gap-2">
@@ -1779,7 +1856,10 @@ export function EnhancedPostsGenerator({
                         </div>
                         <div className="text-center">
                           <div className="text-3xl font-bold text-blue-600">
-                            {selectedSuggestion.eligible_platforms.length}
+                            {selectedSuggestion.eligible_platforms?.length || 
+                             selectedSuggestion.metadata?.eligible_platforms?.length || 
+                             (selectedSuggestion.eligibility ? Object.keys(selectedSuggestion.eligibility).length : 0) ||
+                             0}
                           </div>
                           <p className="text-sm text-muted-foreground">Platforms</p>
                         </div>

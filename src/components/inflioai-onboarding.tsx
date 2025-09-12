@@ -1,0 +1,672 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  CheckCircle2, Circle, User, Palette, Bot, UserCircle,
+  Upload, ArrowRight, Sparkles, Video, Zap, Play,
+  ChevronRight, Lock, CheckCheck, Wand2, Rocket,
+  FileVideo, Globe, DollarSign, TrendingUp, Clock,
+  Shield, Star, Mic, Camera, Brain, Lightbulb
+} from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { cn } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import Image from 'next/image'
+
+interface OnboardingStep {
+  id: string
+  title: string
+  description: string
+  benefit: string
+  timeEstimate: string
+  icon: React.ElementType
+  image?: string
+  path: string
+  status: 'completed' | 'current' | 'upcoming'
+  completedAt?: Date
+}
+
+interface InflioAIOnboardingProps {
+  userId: string
+  userName?: string
+  userEmail?: string
+}
+
+export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnboardingProps) {
+  const router = useRouter()
+  const [currentMessage, setCurrentMessage] = useState('')
+  const [fullMessage, setFullMessage] = useState('')
+  const [isThinking, setIsThinking] = useState(false)
+  const typewriterInterval = useRef<NodeJS.Timeout | null>(null)
+  const messageQueue = useRef<string>('')
+  const isUpdatingMessage = useRef(false)
+  const [steps, setSteps] = useState<OnboardingStep[]>([
+    {
+      id: 'onboarding',
+      title: 'Complete onboarding',
+      description: 'Set up your profile, brand, and AI avatar',
+      benefit: 'InflioAI learns everything about you and your brand',
+      timeEstimate: '',
+      icon: Rocket,
+      path: '/onboarding',
+      status: 'current'
+    },
+    {
+      id: 'review-brand',
+      title: 'Review your brand',
+      description: 'Check your brand colors, fonts, and guidelines',
+      benefit: 'Ensure everything matches your vision perfectly',
+      timeEstimate: '',
+      icon: Palette,
+      path: '/brand',
+      status: 'upcoming'
+    },
+    {
+      id: 'review-persona',
+      title: 'Review your AI avatar',
+      description: 'See your generated thumbnails and avatars',
+      benefit: 'Fine-tune your AI-generated visuals',
+      timeEstimate: '',
+      icon: Bot,
+      path: '/personas',
+      status: 'upcoming'
+    },
+    {
+      id: 'connect',
+      title: 'Connect your socials',
+      description: 'Link Instagram, TikTok, LinkedIn, and more',
+      benefit: 'Publish everywhere with one click',
+      timeEstimate: '',
+      icon: Globe,
+      path: '/settings/connections',
+      status: 'upcoming'
+    },
+    {
+      id: 'upload',
+      title: 'Upload your first video',
+      description: 'Watch InflioAI transform it into content',
+      benefit: 'One video becomes 30+ pieces of content',
+      timeEstimate: '',
+      icon: Upload,
+      path: '/studio/upload',
+      status: 'upcoming'
+    }
+  ])
+
+  // AI messages that InflioAI will cycle through
+  const aiMessages = {
+    welcome: `Hi ${userName?.split(' ')[0] || 'there'}! I'm InflioAI, your content creation copilot. Let's get your studio set up properly. I'll guide you through each step.`,
+    
+    onboarding: "Let's start by setting up your profile, brand, and AI avatar. This is where I learn everything about you - your style, your brand, your voice. It's the foundation for all the content we'll create together.",
+    
+    'review-brand': "Great! Now let's review your brand settings. Take a moment to ensure your colors, fonts, and guidelines are exactly how you want them. Every piece of content will follow these rules.",
+    
+    'review-persona': "Your AI avatar is ready! Review the thumbnails and avatars I've generated. These will be used across all your content to maintain a consistent visual presence.",
+    
+    connect: "Time to connect your social platforms! Link Instagram, TikTok, LinkedIn, YouTube - wherever your audience is. I'll optimize and publish content to each platform automatically.",
+    
+    upload: "Perfect! Everything is set up. Now comes the fun part - upload any video and watch me transform it into dozens of content pieces. Clips, blogs, posts, thumbnails - all created instantly.",
+    
+    completed: `Excellent work, ${userName?.split(' ')[0] || 'there'}! Your content studio is fully configured. From now on, just upload videos and I'll handle the rest. Ready to create amazing content together!`
+  }
+
+  // Load user progress
+  useEffect(() => {
+    let mounted = true
+    const initializeOnboarding = async () => {
+      await loadUserProgress()
+      // Initial message will be set by loadUserProgress
+    }
+    
+    if (mounted) {
+      initializeOnboarding()
+    }
+    
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const loadUserProgress = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('clerk_user_id', userId)
+        .single()
+
+      if (profile) {
+        const updatedSteps = [...steps]
+        let currentStepIndex = 0
+        
+        // Check if user completed the main onboarding flow
+        if (profile.onboarding_completed && profile.brand_identity && profile.persona_id) {
+          // User has completed the full onboarding (profile, brand, avatar)
+          updatedSteps[0].status = 'completed'
+          updatedSteps[0].completedAt = new Date(profile.updated_at)
+          
+          // Move to review brand step
+          updatedSteps[1].status = 'current'
+          currentStepIndex = 1
+          
+          // Check if they've reviewed/confirmed their brand
+          if (profile.brand_reviewed) {
+            updatedSteps[1].status = 'completed'
+            updatedSteps[2].status = 'current'
+            currentStepIndex = 2
+          }
+          
+          // Check if they've reviewed their persona
+          if (profile.persona_reviewed) {
+            updatedSteps[2].status = 'completed'
+            updatedSteps[3].status = 'current'
+            currentStepIndex = 3
+          }
+          
+          // Check if they've connected socials
+          if (profile.socials_connected) {
+            updatedSteps[3].status = 'completed'
+            updatedSteps[4].status = 'current'
+            currentStepIndex = 4
+          }
+          
+          // Check if they've uploaded their first video
+          const { data: projects } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('user_id', profile.clerk_user_id)
+            .limit(1)
+            
+          if (projects && projects.length > 0) {
+            updatedSteps[4].status = 'completed'
+            currentStepIndex = 5 // All done
+          }
+        }
+        
+        setSteps(updatedSteps)
+        
+        // Update AI message based on current step after a small delay to prevent race conditions
+        setTimeout(() => {
+          const currentStep = updatedSteps.find(s => s.status === 'current')
+          updateAIMessage(currentStep?.id || 'completed')
+        }, 100)
+      } else {
+        // No profile yet, show welcome message
+        setTimeout(() => {
+          updateAIMessage('welcome')
+        }, 100)
+      }
+    } catch (error) {
+      console.error('Error loading progress:', error)
+      // Show welcome on error
+      setTimeout(() => {
+        updateAIMessage('welcome')
+      }, 100)
+    }
+  }
+
+  const updateAIMessage = async (stepId: string) => {
+    // Prevent concurrent updates
+    if (isUpdatingMessage.current) {
+      return
+    }
+    isUpdatingMessage.current = true
+    
+    // Clear any existing typewriter animation
+    if (typewriterInterval.current) {
+      clearInterval(typewriterInterval.current)
+      typewriterInterval.current = null
+    }
+    
+    // Start thinking state without clearing message immediately
+    setIsThinking(true)
+    
+    try {
+      // Get real guidance from InflioAI
+      const response = await fetch('/api/inflioai/guidance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName,
+          currentStep: stepId,
+          completedSteps: steps.filter(s => s.status === 'completed').map(s => s.id),
+          totalSteps: steps.length
+        })
+      })
+      
+      let message = aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.message && !data.fallback) {
+          // Use the AI-generated message
+          message = `${userName?.split(' ')[0] || 'Hey there'}! ${data.message}`
+        }
+      }
+      
+      // Store the full message
+      setFullMessage(message)
+      messageQueue.current = message
+      
+      // Clear current message only now, right before typewriter starts
+      setCurrentMessage('')
+      
+      // Start typewriter effect
+      let index = 0
+      typewriterInterval.current = setInterval(() => {
+        if (messageQueue.current !== message) {
+          // Message changed, stop this animation
+          if (typewriterInterval.current) {
+            clearInterval(typewriterInterval.current)
+            typewriterInterval.current = null
+          }
+          return
+        }
+        
+        setCurrentMessage(message.slice(0, index))
+        index++
+        
+        if (index > message.length) {
+          if (typewriterInterval.current) {
+            clearInterval(typewriterInterval.current)
+            typewriterInterval.current = null
+          }
+          setIsThinking(false)
+          isUpdatingMessage.current = false
+        }
+      }, 20)
+    } catch (error) {
+      console.error('Error getting AI guidance:', error)
+      // Use fallback message
+      const message = aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome
+      setFullMessage(message)
+      setCurrentMessage(message)
+      setIsThinking(false)
+      isUpdatingMessage.current = false
+    }
+  }
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (typewriterInterval.current) {
+        clearInterval(typewriterInterval.current)
+      }
+    }
+  }, [])
+
+  const handleStepClick = async (step: OnboardingStep) => {
+    if (step.status === 'upcoming') {
+      const currentIndex = steps.findIndex(s => s.status === 'current')
+      const clickedIndex = steps.findIndex(s => s.id === step.id)
+      
+      if (clickedIndex > currentIndex) {
+        // Don't trigger a new AI message, just update the current one
+        const warningMessage = `Please complete "${steps[currentIndex].title}" first. Each step builds on the previous one.`
+        setFullMessage(warningMessage)
+        setCurrentMessage(warningMessage)
+        return
+      }
+    }
+    
+    // Mark review steps as completed when clicked
+    if (step.id === 'review-brand' && step.status === 'current') {
+      await fetch('/api/onboarding/mark-reviewed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'brand_reviewed' })
+      })
+    } else if (step.id === 'review-persona' && step.status === 'current') {
+      await fetch('/api/onboarding/mark-reviewed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'persona_reviewed' })
+      })
+    } else if (step.id === 'connect' && step.status === 'current') {
+      await fetch('/api/onboarding/mark-reviewed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'socials_connected' })
+      })
+    }
+    
+    router.push(step.path)
+  }
+
+  const completedSteps = steps.filter(s => s.status === 'completed').length
+  const progress = (completedSteps / steps.length) * 100
+
+  // Auto-redirect when everything is complete
+  useEffect(() => {
+    if (completedSteps === steps.length) {
+      // Give user a moment to see the completion message
+      setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 3000)
+    }
+  }, [completedSteps, steps.length])
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
+      <div className="max-w-6xl mx-auto p-6 space-y-8">
+        
+        {/* InflioAI Speaking Section */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative"
+        >
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background overflow-hidden">
+            <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]" />
+            
+            <CardContent className="relative p-8">
+              <div className="flex items-start gap-6">
+                {/* InflioAI Avatar */}
+                <motion.div
+                  animate={{ 
+                    scale: isThinking ? [1, 1.05, 1] : 1,
+                  }}
+                  transition={{ 
+                    duration: 2,
+                    repeat: isThinking ? Infinity : 0 
+                  }}
+                  className="relative"
+                >
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary via-purple-600 to-pink-600 flex items-center justify-center shadow-2xl">
+                    <Brain className="h-10 w-10 text-white" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full",
+                      isThinking ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+                    )} />
+                  </div>
+                </motion.div>
+
+                {/* Message Content */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                      InflioAI
+                    </h2>
+                    <Badge variant="secondary" className="text-xs">
+                      Your Content Copilot
+                    </Badge>
+                    {isThinking && (
+                      <Badge variant="outline" className="text-xs animate-pulse">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Thinking...
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  <div className="text-lg leading-relaxed text-foreground/90 min-h-[60px] transition-opacity duration-300">
+                    {isThinking && currentMessage.length === 0 ? (
+                      <motion.span 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center text-muted-foreground"
+                      >
+                        <span className="animate-pulse">Analyzing your progress</span>
+                        <span className="ml-2 flex space-x-1">
+                          <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </span>
+                      </motion.span>
+                    ) : (
+                      <motion.div
+                        key={fullMessage}
+                        initial={{ opacity: 0.8 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        {currentMessage || fullMessage}
+                        {isThinking && currentMessage.length > 0 && currentMessage.length < fullMessage.length && (
+                          <span className="inline-block w-0.5 h-5 bg-primary animate-pulse ml-0.5" />
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Quick Stats */}
+                  {completedSteps === 0 && (
+                    <div className="flex items-center gap-6 mt-6">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Zap className="h-4 w-4" />
+                        <span>Set up once, use forever</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Shield className="h-4 w-4" />
+                        <span>Your data is secure</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Brain className="h-4 w-4" />
+                        <span>AI learns from your content</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Progress Overview */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">
+              Your content studio setup
+            </h1>
+            <p className="text-muted-foreground">
+              {completedSteps === steps.length 
+                ? "Everything is ready! Start creating amazing content."
+                : completedSteps === 0
+                ? "Let's get your studio configured properly"
+                : `${completedSteps} of ${steps.length} steps complete`
+              }
+            </p>
+          </div>
+          
+          <div className="text-right">
+            <div className="text-3xl font-bold text-primary">{Math.round(progress)}%</div>
+            <Progress value={progress} className="w-32 h-2 mt-2" />
+          </div>
+        </div>
+
+        {/* Setup Steps */}
+        <div className="grid gap-4">
+          {steps.map((step, index) => (
+            <motion.div
+              key={step.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <Card 
+                className={cn(
+                  "group cursor-pointer transition-all duration-200 overflow-hidden",
+                  step.status === 'completed' && "border-green-500/50 bg-green-50/5",
+                  step.status === 'current' && "border-primary shadow-lg shadow-primary/20 bg-primary/5",
+                  step.status === 'upcoming' && "border-muted hover:border-muted-foreground/30"
+                )}
+                onClick={() => handleStepClick(step)}
+              >
+                <CardContent className="p-0">
+                  <div className="flex items-center">
+                    {/* Left Section - Icon & Status */}
+                    <div className={cn(
+                      "w-24 h-full flex flex-col items-center justify-center p-6 border-r",
+                      step.status === 'completed' && "bg-green-500/10 border-green-500/20",
+                      step.status === 'current' && "bg-primary/10 border-primary/20",
+                      step.status === 'upcoming' && "bg-muted/50"
+                    )}>
+                      <div className={cn(
+                        "w-14 h-14 rounded-xl flex items-center justify-center mb-2",
+                        step.status === 'completed' && "bg-green-500 text-white",
+                        step.status === 'current' && "bg-primary text-primary-foreground",
+                        step.status === 'upcoming' && "bg-muted text-muted-foreground"
+                      )}>
+                        {step.status === 'completed' ? (
+                          <CheckCircle2 className="h-7 w-7" />
+                        ) : (
+                          <step.icon className="h-7 w-7" />
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        step.status === 'completed' && "text-green-600",
+                        step.status === 'current' && "text-primary",
+                        step.status === 'upcoming' && "text-muted-foreground"
+                      )}>
+                        {step.status === 'completed' ? 'Done' : `Step ${index + 1}`}
+                      </span>
+                    </div>
+
+                    {/* Middle Section - Content */}
+                    <div className="flex-1 p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-semibold">
+                              {step.title}
+                            </h3>
+                            {step.status === 'current' && (
+                              <Badge className="animate-pulse">
+                                <ArrowRight className="h-3 w-3 mr-1" />
+                                Current
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <p className="text-sm text-muted-foreground mb-3">
+                            {step.description}
+                          </p>
+                          
+                          <div className="flex items-center gap-2">
+                            <div className={cn(
+                              "px-3 py-1.5 rounded-lg text-xs font-medium",
+                              "bg-gradient-to-r from-primary/10 to-purple-500/10",
+                              "border border-primary/20"
+                            )}>
+                              <Lightbulb className="h-3 w-3 inline mr-1.5" />
+                              Why this matters: {step.benefit}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right Section - Action */}
+                        <div className="ml-6">
+                          {step.status === 'completed' ? (
+                            <div className="text-center">
+                              <CheckCheck className="h-8 w-8 text-green-500 mx-auto mb-1" />
+                              <span className="text-xs text-green-600">Complete</span>
+                            </div>
+                          ) : step.status === 'current' ? (
+                            <Button 
+                              size="default"
+                              className="group shadow-lg"
+                            >
+                              Start
+                              <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                            </Button>
+                          ) : (
+                            <div className="text-center">
+                              <Lock className="h-6 w-6 text-muted-foreground mx-auto mb-1" />
+                              <span className="text-xs text-muted-foreground">Locked</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* What Happens Next */}
+        <Card className="bg-gradient-to-br from-primary/5 via-background to-purple-500/5 border-primary/20">
+          <CardContent className="p-8">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Rocket className="h-5 w-5 text-primary" />
+              What happens after setup?
+            </h3>
+            
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                  <Video className="h-6 w-6 text-primary" />
+                </div>
+                <h4 className="font-semibold">Upload any video</h4>
+                <p className="text-sm text-muted-foreground">
+                  Podcasts, tutorials, vlogs - any format works
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center mb-3">
+                  <Wand2 className="h-6 w-6 text-purple-500" />
+                </div>
+                <h4 className="font-semibold">InflioAI works its magic</h4>
+                <p className="text-sm text-muted-foreground">
+                  Creates clips, blogs, posts, thumbnails automatically
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center mb-3">
+                  <TrendingUp className="h-6 w-6 text-green-500" />
+                </div>
+                <h4 className="font-semibold">Publish everywhere</h4>
+                <p className="text-sm text-muted-foreground">
+                  One click to post on all your connected platforms
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+              <p className="text-sm text-center">
+                <Star className="h-4 w-4 inline mr-1 text-primary" />
+                <strong>Remember:</strong> Set up once, create forever. 
+                InflioAI learns and improves with every video you upload.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Skip Setup Option (for returning users) */}
+        {completedSteps < steps.length && (
+          <div className="text-center">
+            <Button 
+              variant="ghost" 
+              onClick={async () => {
+                // Mark that user wants to skip for now
+                try {
+                  const { OnboardingClientService } = await import('@/lib/services/onboarding-client-service')
+                  await OnboardingClientService.skipOnboarding(userId)
+                } catch (error) {
+                  console.error('Error saving skip state:', error)
+                }
+                
+                // Reload to show regular dashboard
+                window.location.href = '/dashboard'
+              }}
+              className="text-muted-foreground"
+            >
+              I'll finish setup later
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
