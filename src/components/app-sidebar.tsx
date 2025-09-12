@@ -11,9 +11,6 @@ import {
   IconVideo,
   IconTrendingUp,
   IconShare2,
-  IconFileText,
-  IconHelp,
-  IconPalette
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -275,7 +272,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
           </div>
         </div>
-
       </SidebarContent>
       
       <SidebarFooter className="flex-shrink-0 border-t border-sidebar-border/40 bg-sidebar/60 backdrop-blur-sm">
