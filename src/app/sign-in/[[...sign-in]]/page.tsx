@@ -1,22 +1,45 @@
 "use client";
 
-import { SignIn } from "@clerk/nextjs";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useSignIn } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { SignInPage, Testimonial } from "@/components/ui/sign-in";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
-  Layers,
   ArrowRight,
   CheckCircle,
-  Sparkles,
-  Video,
-  Clock,
-  Users,
 } from "lucide-react";
+import { InflioLogo } from "@/components/inflio-logo";
 
-export default function SignInPage() {
-  const { isLoaded, isSignedIn, userId } = useAuth();
+const testimonials: Testimonial[] = [
+  {
+    avatarSrc: "https://ui-avatars.com/api/?name=Sarah+Chen&background=6366f1&color=fff",
+    name: "Sarah Chen",
+    handle: "@sarahcreates",
+    text: "Cut my editing time from 8 hours to 30 minutes. The AI clips are spot-on!"
+  },
+  {
+    avatarSrc: "https://ui-avatars.com/api/?name=Marcus+Johnson&background=8b5cf6&color=fff",
+    name: "Dr. Marcus Johnson",
+    handle: "@drmarcus",
+    text: "The transcription accuracy is incredible. Handles technical content perfectly!"
+  },
+  {
+    avatarSrc: "https://ui-avatars.com/api/?name=Emily+Rodriguez&background=ec4899&color=fff",
+    name: "Emily Rodriguez",
+    handle: "@emilymarketing",
+    text: "One video becomes 20+ pieces of content. My engagement tripled!"
+  }
+];
+
+export default function ClerkSignInPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { signIn, setActive } = useSignIn();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
 
   // If already signed in, redirect
   if (isLoaded && isSignedIn) {
@@ -46,179 +69,86 @@ export default function SignInPage() {
     );
   }
 
+  // Handle email/password sign in
+  const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    
+    if (!isLoaded || !signIn) return;
+    
+    setIsLoading(true);
+    const formData = new FormData(event.currentTarget);
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+    
+    try {
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
+      
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      console.error('Sign in error:', err);
+      toast.error(err.errors?.[0]?.message || 'Invalid email or password');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle Google OAuth
+  const handleGoogleSignIn = async () => {
+    if (!isLoaded || !signIn) return;
+    
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: 'oauth_google',
+        redirectUrl: '/sso-callback',
+        redirectUrlComplete: '/dashboard',
+      });
+    } catch (err: any) {
+      console.error('Google sign in error:', err);
+      toast.error('Failed to sign in with Google');
+    }
+  };
+  
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-black flex flex-col">
-      {/* Simple Navigation */}
-      <nav className="p-6">
-        <Link href="/" className="flex items-center space-x-2 w-fit">
-          <Layers className="h-6 w-6 text-primary" />
-          <span className="text-xl font-semibold text-gray-900 dark:text-white">Inflio</span>
-        </Link>
-      </nav>
-
-      {/* Main Content - Centered */}
-      <div className="flex-1 flex items-center justify-center px-6 pb-12">
-        <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left side - Sign in form */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4 }}
-            className="w-full max-w-md mx-auto lg:mx-0"
-          >
-            <div className="mb-8">
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                Welcome back
-              </h1>
-              <p className="text-lg text-gray-600 dark:text-gray-400">
-                Sign in to continue creating amazing content
-              </p>
-            </div>
-
-            {!isLoaded ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="w-8 h-8 border-2 border-gray-300 dark:border-gray-700 rounded-full animate-spin border-t-primary" />
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
-                <SignIn 
-                  appearance={{
-                    elements: {
-                      rootBox: "mx-auto",
-                      card: "shadow-none border-0 bg-transparent p-0",
-                      headerTitle: "hidden",
-                      headerSubtitle: "hidden",
-                      socialButtonsBlockButton: "bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white h-11 px-4 rounded-xl font-medium transition-colors",
-                      socialButtonsBlockButtonText: "font-medium",
-                      dividerRow: "hidden",
-                      formFieldLabel: "text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5",
-                      formFieldInput: "h-11 w-full rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
-                      formButtonPrimary: "h-11 w-full rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors",
-                      footerActionLink: "text-primary hover:text-primary/80 font-medium transition-colors",
-                      identityPreviewText: "text-sm text-gray-600 dark:text-gray-400",
-                      identityPreviewEditButton: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
-                      formFieldInputShowPasswordButton: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors",
-                      otpCodeFieldInput: "h-11 w-11 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-colors",
-                      formResendCodeLink: "text-primary hover:text-primary/80 text-sm font-medium transition-colors",
-                    },
-                    layout: {
-                      socialButtonsPlacement: "top",
-                      showOptionalFields: false,
-                    },
-                  }}
-                  redirectUrl="/dashboard"
-                />
-                
-                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
-                  <p className="text-center text-gray-600 dark:text-gray-400 mb-3">
-                    Don't have an account?
-                  </p>
-                  <Link href="/sign-up" className="block">
-                    <Button 
-                      variant="outline" 
-                      className="w-full h-11 rounded-xl"
-                    >
-                      Create an account
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </motion.div>
-
-          {/* Right side - Value props */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-            className="hidden lg:block"
-          >
-            <div className="space-y-8">
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
-                    <Video className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">2.5M+</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Videos Processed</div>
-                </div>
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
-                    <Users className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">15K+</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Active Creators</div>
-                </div>
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-2">
-                    <Clock className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">10min</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Avg. Processing</div>
-                </div>
-              </div>
-
-              {/* Feature list */}
-              <div className="bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-6">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
-                  Everything you need to grow:
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">AI-Powered Clips</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Extract viral moments automatically from long videos
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">Perfect Transcriptions</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        99% accuracy in 50+ languages with speaker detection
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">Multi-Platform Publishing</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Schedule to YouTube, TikTok, Instagram & more
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Testimonial */}
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                <div className="flex items-center gap-1 mb-3">
-                  {[...Array(5)].map((_, i) => (
-                    <Sparkles key={i} className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                  ))}
-                </div>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                  "Inflio cut my editing time from 8 hours to 30 minutes. The AI clips are spot-on!"
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-                    SC
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">Sarah Chen</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">2.3M YouTube subscribers</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+    <>
+      {/* Navigation Bar */}
+      <nav className="fixed top-0 z-50 w-full bg-white/80 dark:bg-black/40 backdrop-blur-xl border-b border-gray-200 dark:border-white/10">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between">
+            <Link href="/" className="flex items-center space-x-2 group">
+              <InflioLogo size="sm" />
+            </Link>
+            <Link href="/sign-up">
+              <Button variant="outline" className="rounded-xl">
+                Create Account
+              </Button>
+            </Link>
+          </div>
         </div>
+      </nav>
+      
+      {/* Sign In Component */}
+      <div className="pt-16">
+        <SignInPage
+          title={
+            <span className="font-light text-foreground tracking-tighter">
+              Welcome back to <span className="font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">Inflio</span>
+            </span>
+          }
+          description="Sign in to continue creating amazing content that goes viral"
+          heroImageSrc="https://images.unsplash.com/photo-1642615835477-d303d7dc9ee9?w=2160&q=80"
+          testimonials={testimonials}
+          onSignIn={handleSignIn}
+          onGoogleSignIn={handleGoogleSignIn}
+          onResetPassword={() => router.push('/reset-password')}
+          onCreateAccount={() => router.push('/sign-up')}
+        />
       </div>
-    </div>
+    </>
   );
 }
