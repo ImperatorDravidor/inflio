@@ -824,9 +824,9 @@ export function AIAvatarTraining({
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 pb-24">
+      <div className="space-y-8 pb-24 max-w-4xl mx-auto">
         {/* Header */}
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
           <h2 className="text-3xl font-bold">Train Your AI Avatar</h2>
           <p className="text-muted-foreground">
             Upload or capture photos to create your personalized AI model

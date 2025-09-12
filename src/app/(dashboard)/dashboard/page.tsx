@@ -48,6 +48,9 @@ import {
   AchievementBadge,
   CelebrationOverlay
 } from "@/components/dashboard-enhancements"
+import { DashboardAIAssistant } from "@/components/dashboard-ai-assistant"
+import { InflioAIOnboarding } from "@/components/inflioai-onboarding"
+import { OnboardingReminder } from "@/components/onboarding-reminder"
 import { format, startOfWeek, addDays, isToday, isSameDay } from "date-fns"
 import { cn } from "@/lib/utils"
 import { 
@@ -129,6 +132,10 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
+  const [isNewUser, setIsNewUser] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
+  const [showOnboardingReminder, setShowOnboardingReminder] = useState(false)
+  const [onboardingProgress, setOnboardingProgress] = useState(0)
 
   // Load scheduled posts from database
   const loadScheduledPosts = async () => {
@@ -282,6 +289,60 @@ export default function DashboardPage() {
       
       try {
         setLoading(true)
+        
+        // Check if user is new or needs onboarding
+        const supabase = createSupabaseBrowserClient()
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('clerk_user_id', userId)
+          .single()
+        
+        setUserProfile(profile)
+        
+        // Calculate onboarding progress
+        let progress = 0
+        if (profile?.onboarding_completed) progress += 20
+        if (profile?.brand_identity) progress += 20
+        if (profile?.persona_id) progress += 20
+        if (profile?.brand_reviewed) progress += 10
+        if (profile?.persona_reviewed) progress += 10
+        if (profile?.socials_connected) progress += 10
+        // Check if they have uploaded a video
+        const { data: projects } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('user_id', userId)
+          .limit(1)
+        if (projects && projects.length > 0) progress += 10
+        
+        setOnboardingProgress(progress)
+        
+        // Determine if user needs onboarding
+        const needsFullOnboarding = !profile || (!profile.onboarding_completed && !profile.onboarding_skipped)
+        const hasIncompleteSetup = progress < 100 && !profile?.onboarding_reminder_dismissed
+        const shouldShowLaunchpad = profile?.show_launchpad === true
+        
+        // If user clicked "Continue Setup", show the launchpad
+        if (shouldShowLaunchpad) {
+          setIsNewUser(true)
+          setShowOnboardingReminder(false)
+          // Clear the flag
+          await supabase
+            .from('user_profiles')
+            .update({ show_launchpad: false })
+            .eq('clerk_user_id', userId)
+        } else {
+          setIsNewUser(needsFullOnboarding)
+          setShowOnboardingReminder(hasIncompleteSetup && !needsFullOnboarding)
+        }
+        
+        // If showing onboarding, return early
+        if (needsFullOnboarding || shouldShowLaunchpad) {
+          setLoading(false)
+          return
+        }
+        
         const allProjects = await ProjectService.getAllProjects(userId)
         setProjects(allProjects)
 
@@ -533,10 +594,70 @@ export default function DashboardPage() {
 
   const recentProjects = projects.slice(0, 3)
 
+  // Show InflioAI onboarding for new users
+  if (isNewUser && !loading) {
+    return (
+      <InflioAIOnboarding 
+        userId={userId!}
+        userName={userProfile?.full_name}
+        userEmail={userProfile?.email}
+      />
+    )
+  }
+
+  // Only show platform metrics for users with actual data
+  const platformMetrics = scheduledPosts.length > 0 ? [
+    // This would be populated from real analytics
+    { platform: 'LinkedIn', views: 0, followers: 0, engagement: 0 },
+    { platform: 'Instagram', views: 0, followers: 0, engagement: 0 },
+    { platform: 'TikTok', views: 0, followers: 0, engagement: 0 },
+    { platform: 'YouTube', views: 0, followers: 0, engagement: 0 }
+  ] : []
+
+  const totalViews = platformMetrics.reduce((sum, p) => sum + p.views, 0)
+  const totalNewFollowers = platformMetrics.reduce((sum, p) => sum + p.followers, 0)
+  const weeklyGrowth = 0 // Calculate from actual data
+
+  const pendingTasks = projects
+    .filter(p => p.status === 'processing')
+    .map(p => `Review ${p.title}`)
+    .slice(0, 3)
+
   return (
     <div className="space-y-4 sm:space-y-6 pb-8">
       {/* Celebration Overlay */}
       <CelebrationOverlay show={showCelebration} />
+
+      {/* Onboarding Reminder - Show if setup is incomplete */}
+      {showOnboardingReminder && (
+        <OnboardingReminder
+          progress={onboardingProgress}
+          userId={userId!}
+          onDismiss={() => setShowOnboardingReminder(false)}
+          onComplete={() => {
+            setShowOnboardingReminder(false)
+            window.location.reload()
+          }}
+        />
+      )}
+
+      {/* AI Dashboard Assistant - Only show for users with content */}
+      {projects.length > 0 && !showOnboardingReminder && (
+        <DashboardAIAssistant
+          userName={userProfile?.full_name || 'there'}
+          totalViews={totalViews}
+          totalFollowers={totalNewFollowers}
+          weeklyGrowth={weeklyGrowth}
+          platformMetrics={platformMetrics}
+          scheduledPosts={scheduledPosts.length}
+          pendingTasks={pendingTasks}
+          onRefresh={async () => {
+            const allProjects = await ProjectService.getAllProjects(userId!)
+            setProjects(allProjects)
+            await loadScheduledPosts()
+          }}
+        />
+      )}
 
       {/* Enhanced Header with Streak */}
       <motion.div 

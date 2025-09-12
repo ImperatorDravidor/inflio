@@ -130,6 +130,8 @@ export function SmartPostsGenerator({
   const [generationStep, setGenerationStep] = useState('')
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState('content')
+  const [generationInProgress, setGenerationInProgress] = useState(false)
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(true)
   
   const [settings, setSettings] = useState<ContentSettings>({
     contentTypes: ['carousel', 'quote', 'single'],
@@ -203,15 +205,25 @@ export function SmartPostsGenerator({
   }
 
   const loadExistingSuggestions = async () => {
+    setIsLoadingSuggestions(true)
     try {
+      console.log('[SmartPostsGenerator] Loading suggestions for project:', projectId)
       const response = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
+      console.log('[SmartPostsGenerator] Response status:', response.status)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('[SmartPostsGenerator] Loaded suggestions:', data)
         setSuggestions(data.suggestions || [])
         return data.suggestions || []
+      } else {
+        const errorData = await response.text()
+        console.error('[SmartPostsGenerator] Failed to load suggestions:', errorData)
       }
     } catch (error) {
-      console.error('Failed to load suggestions:', error)
+      console.error('[SmartPostsGenerator] Error loading suggestions:', error)
+    } finally {
+      setIsLoadingSuggestions(false)
     }
     return []
   }
@@ -220,16 +232,65 @@ export function SmartPostsGenerator({
     // First, try to load existing suggestions
     const existingSuggestions = await loadExistingSuggestions()
     
-    // If no suggestions exist and we have content analysis, auto-generate
-    if (existingSuggestions.length === 0 && contentAnalysis && transcript) {
+    // Check if generation is already in progress for this project
+    const generationStatus = await checkGenerationStatus()
+    
+    if (generationStatus === 'in_progress') {
+      setGenerationInProgress(true)
+      setIsGenerating(true)
+      setGenerationStep('Generation in progress...')
+      // Poll for completion
+      pollForCompletion()
+    } else if (existingSuggestions.length === 0 && contentAnalysis && transcript) {
       // Auto-trigger generation with smart defaults
       await autoGeneratePosts()
     }
+  }
+  
+  const checkGenerationStatus = async () => {
+    try {
+      const response = await fetch(`/api/posts/generation-status?projectId=${projectId}`)
+      if (response.ok) {
+        const data = await response.json()
+        return data.status
+      }
+    } catch (error) {
+      console.error('Failed to check generation status:', error)
+    }
+    return 'idle'
+  }
+  
+  const pollForCompletion = async () => {
+    const interval = setInterval(async () => {
+      const status = await checkGenerationStatus()
+      if (status === 'completed') {
+        clearInterval(interval)
+        setIsGenerating(false)
+        setGenerationInProgress(false)
+        await loadExistingSuggestions()
+        toast.success('✨ AI posts created successfully!')
+      } else if (status === 'failed') {
+        clearInterval(interval)
+        setIsGenerating(false)
+        setGenerationInProgress(false)
+        toast.error('Generation failed. Please try again.')
+      }
+    }, 2000)
   }
 
   const autoGeneratePosts = async () => {
     setIsGenerating(true)
     setGenerationStep('Analyzing content...')
+    
+    // Mark generation as in progress in database
+    await fetch('/api/posts/generation-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        projectId, 
+        status: 'in_progress' 
+      })
+    })
     
     // Show subtle notification
     toast.info('✨ Creating AI-powered posts for you...', {
@@ -287,27 +348,55 @@ export function SmartPostsGenerator({
         })
       })
 
-      if (!response.ok) throw new Error('Failed to generate posts')
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('[SmartPostsGenerator] Generation failed:', errorText)
+        throw new Error('Failed to generate posts')
+      }
 
+      const data = await response.json()
+      console.log('[SmartPostsGenerator] Generation response:', data)
+      
       setGenerationStep('Optimizing for each platform...')
       await new Promise(resolve => setTimeout(resolve, 1000))
 
+      // Reload suggestions from database to ensure we have the latest
       await loadExistingSuggestions()
       
       toast.success('🎉 Smart posts ready!', {
         duration: 2000
       })
       
-      if (onPostsGenerated) {
-        const data = await response.json()
+      if (onPostsGenerated && data.suggestions) {
         onPostsGenerated(data.suggestions)
       }
     } catch (error) {
       console.error('Auto-generation error:', error)
+      // Mark generation as failed
+      await fetch('/api/posts/generation-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          projectId, 
+          status: 'failed' 
+        })
+      })
       // Don't show error toast for auto-generation
     } finally {
       setIsGenerating(false)
       setGenerationStep('')
+      // Mark generation as completed if not already marked as failed
+      const status = await checkGenerationStatus()
+      if (status === 'in_progress') {
+        await fetch('/api/posts/generation-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            projectId, 
+            status: 'completed' 
+          })
+        })
+      }
     }
   }
 
@@ -822,8 +911,35 @@ export function SmartPostsGenerator({
           </DialogContent>
         </Dialog>
 
+        {/* Loading State */}
+        {isLoadingSuggestions && (
+          <Card className="animate-pulse">
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto" />
+                <p className="text-muted-foreground">Loading suggestions...</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State */}
+        {!isLoadingSuggestions && suggestions.length === 0 && !isGenerating && !generationInProgress && (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
+              <p className="text-muted-foreground mb-4">
+                {contentAnalysis && transcript 
+                  ? "Click 'Generate Smart Posts' to create AI-powered content"
+                  : "Waiting for video analysis to complete..."}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Generated Suggestions Display */}
-        {suggestions.length > 0 && (
+        {!isLoadingSuggestions && suggestions.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Generated Posts</h3>

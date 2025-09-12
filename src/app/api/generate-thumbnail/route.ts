@@ -148,7 +148,11 @@ export async function POST(req: NextRequest) {
           .eq('id', profile.default_persona_id)
           .single()
         
-        if (persona?.lora_model_url) {
+        if (persona?.model_ref && persona?.metadata?.lora_model_url) {
+          // Extract LoRA details from metadata
+          const loraModelUrl = persona.metadata.lora_model_url
+          const loraTriggerPhrase = persona.metadata.lora_trigger_phrase || persona.name
+          
           // Build smart prompt with GPT-5 and correct trigger phrase order
           const smartPrompt = await ThumbnailPromptService.generateSmartPrompt(
             {
@@ -157,16 +161,21 @@ export async function POST(req: NextRequest) {
               name: persona.name,
               description: persona.description,
               status: persona.status,
-              loraModelUrl: persona.lora_model_url,
-              loraConfigUrl: persona.lora_config_url,
-              loraTriggerPhrase: persona.lora_trigger_phrase,
+              loraModelUrl: loraModelUrl,
+              loraConfigUrl: persona.metadata.lora_config_url,
+              loraTriggerPhrase: loraTriggerPhrase,
               createdAt: persona.created_at,
               updatedAt: persona.updated_at
             } as any,
             project.content_analysis || {}
           )
           thumbnailPrompt = smartPrompt || thumbnailPrompt
-          loraConfig = { path: persona.lora_model_url, scale: 1.0 }
+          loraConfig = { path: loraModelUrl, scale: 1.0 }
+          
+          // Add trigger phrase to the prompt if not already included
+          if (!thumbnailPrompt.includes(loraTriggerPhrase)) {
+            thumbnailPrompt = `${loraTriggerPhrase}, ${thumbnailPrompt}`
+          }
         }
       }
     } catch (e) {

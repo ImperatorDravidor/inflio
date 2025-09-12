@@ -12,7 +12,8 @@ import {
   IconTrendingUp,
   IconShare2,
   IconFileText,
-  IconHelp
+  IconHelp,
+  IconPalette
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -35,7 +36,6 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { ProjectService, UsageService } from "@/lib/services"
 import type { UsageData } from "@/lib/usage-service"
-import { GlobalPersonaSelector } from "@/components/global-persona-selector"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
@@ -149,6 +149,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "/profile",
       icon: IconUser,
       description: "Creator settings"
+    },
+    {
+      title: "Brand",
+      url: "/brand",
+      icon: IconPalette,
+      description: "Brand identity"
     },
     {
       title: "Settings",
@@ -269,19 +275,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
           </div>
         </div>
-        
-        <SidebarSeparator />
-        
-        {/* AI Persona Selector */}
-        <SidebarGroup>
-          <SidebarGroupLabel>AI Persona</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="px-2">
-              <GlobalPersonaSelector />
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        
 
       </SidebarContent>
       

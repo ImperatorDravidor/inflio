@@ -99,7 +99,7 @@ import {
 } from '@/components/ui/popover'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { OnboardingService } from '@/lib/services/onboarding-service'
+import { OnboardingClientService } from '@/lib/services/onboarding-client-service'
 import { PersonaUploadService } from '@/lib/services/persona-upload-service'
 import { PersonaService } from '@/lib/services/persona-service'
 import { designSystem } from '@/lib/design-system'
@@ -170,20 +170,6 @@ const ONBOARDING_FLOW = [
         id: 'photos',
         title: 'Train Your AI Face',
         description: 'Create stunning thumbnails with your likeness'
-      }
-    ]
-  },
-  {
-    id: 'platforms',
-    title: 'Content Distribution',
-    icon: Share2,
-    gradient: 'from-green-600 to-emerald-600',
-    duration: '30 seconds',
-    sections: [
-      {
-        id: 'connect',
-        title: 'Platform Connections',
-        description: 'Where will your content live?'
       }
     ]
   },
@@ -339,7 +325,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     if (Object.keys(formData).length > 0 && currentStep > 0) {
       const timer = setTimeout(() => {
         setIsSaving(true)
-        OnboardingService.saveProgress(userId, currentStep, formData)
+        OnboardingClientService.saveProgress(userId, currentStep, currentStepData.id, formData)
           .then(() => setIsSaving(false))
           .catch(console.error)
       }, 1000)
@@ -467,10 +453,15 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
         }
       }
       
-      await OnboardingService.completeOnboarding(userId, {
+      // Save final progress with completion flag
+      await OnboardingClientService.saveProgress(userId, currentStep, 'complete', {
         ...formData,
+        onboardingCompleted: true,
         completedAt: new Date().toISOString()
       })
+      
+      // Mark as complete
+      await OnboardingClientService.completeOnboarding(userId)
       
       // Celebration animation
       confetti({
@@ -557,9 +548,9 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
             />
           </div>
           
-          {/* Floating header */}
-          <div className="bg-background/80 backdrop-blur-xl border-b border-border">
-            <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          {/* Floating header - transparent, no border */}
+          <div className="bg-transparent">
+            <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <InflioLogo size="sm" />
             
@@ -604,9 +595,9 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
           </div>
         </div>
 
-        {/* Main content */}
-        <div className="pt-20 pb-32 px-6">
-          <div className="max-w-4xl mx-auto">
+        {/* Main content - better centered */}
+        <div className="pt-32 pb-32 px-6 min-h-screen flex items-center">
+          <div className="max-w-4xl mx-auto w-full">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${currentStep}-${currentSection}`}
@@ -856,81 +847,8 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                   />
                 )}
 
-                {/* Platforms Step */}
+                {/* Launch Step - Now Step 4 after removing platforms */}
                 {currentStep === 4 && (
-                  <div className="space-y-8">
-                    <div className="text-center space-y-2">
-                      <h2 className="text-3xl font-bold">Connect Your Platforms</h2>
-                      <p className="text-muted-foreground">
-                        Where will your content live?
-                      </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {PLATFORM_CONFIGS.map((platform) => {
-                        const Icon = platform.icon
-                        const isSelected = formData.platforms?.includes(platform.id)
-                        
-                        return (
-                          <motion.div
-                            key={platform.id}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            <Card
-                              className={cn(
-                                "p-6 cursor-pointer transition-all",
-                                isSelected && "border-primary shadow-lg"
-                              )}
-                              onClick={() => {
-                                const platforms = formData.platforms || []
-                                const updated = isSelected
-                                  ? platforms.filter((p: string) => p !== platform.id)
-                                  : [...platforms, platform.id]
-                                updateFormData('platforms', updated)
-                              }}
-                            >
-                              <div className="flex items-start justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className="w-10 h-10 rounded-lg flex items-center justify-center"
-                                    style={{ backgroundColor: platform.color }}
-                                  >
-                                    <Icon className="h-6 w-6 text-white" />
-                                  </div>
-                                  <div>
-                                    <h3 className="font-semibold">{platform.name}</h3>
-                                    <p className="text-xs text-muted-foreground">
-                                      {platform.audienceSize}
-                                    </p>
-                                  </div>
-                                </div>
-                                {isSelected && (
-                                  <CheckCircle className="h-5 w-5 text-primary" />
-                                )}
-                              </div>
-                              
-                              <p className="text-xs text-muted-foreground mb-3">
-                                {platform.bestFor}
-                              </p>
-                              
-                              <div className="flex flex-wrap gap-1">
-                                {platform.features.slice(0, 3).map((feature, i) => (
-                                  <Badge key={i} variant="secondary" className="text-xs">
-                                    {feature}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </Card>
-                          </motion.div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Launch Step - Now Step 5 after removing AI Preferences */}
-                {currentStep === 5 && (
                   <div className="min-h-[60vh] flex flex-col justify-center">
                     <motion.div
                       initial={{ scale: 0.9, opacity: 0 }}
@@ -1010,9 +928,9 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
           </div>
         </div>
 
-        {/* Bottom navigation */}
-        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border">
-          <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        {/* Bottom navigation - transparent, no border */}
+        <div className="fixed bottom-0 left-0 right-0 bg-transparent">
+          <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
             <Button
               variant="ghost"
               onClick={handleBack}

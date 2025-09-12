@@ -16,6 +16,17 @@ export interface ContentAnalysis {
     socialMediaHooks: string[]
     shortFormContent: string[]
   }
+  postSuggestions?: Array<{
+    type: 'carousel' | 'quote' | 'single' | 'thread' | 'reel' | 'story'
+    title: string
+    description: string
+    hook: string
+    mainContent: string
+    platforms: string[]
+    visualPrompt: string
+    hashtags: string[]
+    engagementScore: number
+  }>
   thumbnailIdeas?: {
     concepts: Array<{
       id: string
@@ -61,6 +72,8 @@ export interface ContentAnalysis {
       bestTimeToPost?: string
       platform: string[]
       synergies?: string[]
+      visualPrompt?: string
+      hashtags?: string[]
     }>
     contentStrategy: {
       primaryTheme: string
@@ -102,6 +115,7 @@ Provide analysis including:
 5. Thumbnail Ideas (3-5 creative concepts with visual details)
 6. Deep Analysis (content pillars, viral potential, demographics)
 7. Custom Post Ideas (5-7 platform-specific posts with engagement predictions)
+8. Post Suggestions (6-8 ready-to-create social media posts with full details)
 
 Return in this exact JSON format:
 {
@@ -162,7 +176,9 @@ Return in this exact JSON format:
         "estimatedEngagement": "high|medium|low",
         "bestTimeToPost": "optimal posting time",
         "platform": ["instagram", "twitter"],
-        "synergies": ["connection to other content"]
+        "synergies": ["connection to other content"],
+        "visualPrompt": "detailed AI image generation prompt",
+        "hashtags": ["#hashtag1", "#hashtag2"]
       }
     ],
     "contentStrategy": {
@@ -172,6 +188,19 @@ Return in this exact JSON format:
       "crossPromotionOpportunities": ["opportunity1", "opportunity2"]
     }
   },
+  "postSuggestions": [
+    {
+      "type": "carousel|quote|single|thread|reel|story",
+      "title": "Post title for dashboard",
+      "description": "What this post does",
+      "hook": "Attention-grabbing opening",
+      "mainContent": "Full post content with emojis and formatting",
+      "platforms": ["instagram", "twitter", "linkedin"],
+      "visualPrompt": "Detailed prompt for AI image generation (150+ words)",
+      "hashtags": ["#trending", "#niche", "#branded"],
+      "engagementScore": 85
+    }
+  ],
   "modelVersion": "gpt-5"
 }`
 
@@ -197,6 +226,30 @@ Return in this exact JSON format:
 
       const analysis = JSON.parse(response) as ContentAnalysis
       
+      // Process post suggestions from multiple sources
+      const postSuggestions: ContentAnalysis['postSuggestions'] = []
+      
+      // Add explicit postSuggestions from the response
+      if (analysis.postSuggestions && Array.isArray(analysis.postSuggestions)) {
+        postSuggestions.push(...analysis.postSuggestions)
+      }
+      
+      // Also convert customPostIdeas to postSuggestions format
+      if (analysis.deepAnalysis?.customPostIdeas && Array.isArray(analysis.deepAnalysis.customPostIdeas)) {
+        const convertedSuggestions = analysis.deepAnalysis.customPostIdeas.map(idea => ({
+          type: 'single' as const,
+          title: idea.hook.substring(0, 50),
+          description: `${idea.type} post for ${idea.platform.join(', ')}`,
+          hook: idea.hook,
+          mainContent: idea.mainContent,
+          platforms: idea.platform,
+          visualPrompt: idea.visualPrompt || `Create a visually striking image for a ${idea.type} social media post about: ${idea.hook}. Style: modern, professional, eye-catching. Include relevant imagery that represents the main message.`,
+          hashtags: idea.hashtags || analysis.keywords?.slice(0, 5).map(k => `#${k.replace(/\s+/g, '')}`) || [],
+          engagementScore: idea.estimatedEngagement === 'high' ? 90 : idea.estimatedEngagement === 'medium' ? 70 : 50
+        }))
+        postSuggestions.push(...convertedSuggestions)
+      }
+      
       // Validate and enhance the response
       return {
         ...analysis,
@@ -210,7 +263,8 @@ Return in this exact JSON format:
           blogPostIdeas: Array.isArray(analysis.contentSuggestions?.blogPostIdeas) ? analysis.contentSuggestions.blogPostIdeas : [],
           socialMediaHooks: Array.isArray(analysis.contentSuggestions?.socialMediaHooks) ? analysis.contentSuggestions.socialMediaHooks : [],
           shortFormContent: Array.isArray(analysis.contentSuggestions?.shortFormContent) ? analysis.contentSuggestions.shortFormContent : []
-        }
+        },
+        postSuggestions: postSuggestions.length > 0 ? postSuggestions : undefined
       }
     } catch (error) {
       console.error('Error analyzing transcript:', error)

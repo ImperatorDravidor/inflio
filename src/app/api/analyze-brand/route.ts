@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
     console.log('[Brand Analysis] User authenticated:', userId)
 
     const formData = await request.formData()
-    const files = formData.getAll('files') as File[]
+    let files = formData.getAll('files') as File[]
+    // Backward compatibility: accept single 'file' field too
+    const singleFile = formData.get('file') as File | null
+    if (files.length === 0 && singleFile) {
+      files = [singleFile]
+    }
     console.log('[Brand Analysis] Files received:', files.length, files.map(f => ({ name: f.name, type: f.type, size: f.size })))
     
     if (files.length === 0) {
@@ -117,51 +122,109 @@ export async function POST(request: NextRequest) {
     // Add the text prompt for analysis
     messageContent.push({
       type: 'text',
-      text: `Analyze this brand guideline document and extract all brand identity information.
+      text: `Analyze this brand guideline document comprehensively and extract ALL brand identity information in extreme detail.
 
-Extract everything available including:
-- Colors (with exact hex codes)
-- Typography (font families, styles)
-- Brand voice and personality
-- Visual style and aesthetics
-- Target audience
-- Mission, vision, values
-- Competitors
-- Brand positioning
+CRITICAL: Be thorough and extract EVERYTHING. Look for:
 
-Return ONLY a JSON object with this structure (include only sections with data). Do not include any explanations, markdown, or code fences. Do not wrap in \u0060\u0060\u0060 or say "json". Output must be minified JSON only:
+1. COLORS - ALL colors with exact hex codes, RGB values, color names. Include primary, secondary, accent, neutral colors with usage guidelines.
+
+2. TYPOGRAPHY - Extract exact font family names, weights, sizes. Include all font types and their specific use cases.
+
+3. BRAND VOICE - Extract tone attributes, personality traits, communication guidelines, example phrases.
+
+4. VISUAL STYLE - Design principles, photography style, imagery guidelines, composition rules.
+
+5. TARGET AUDIENCE - Demographics, psychographics, personas, needs, pain points.
+
+6. BRAND STRATEGY - Mission, vision, values, positioning, brand story.
+
+Return a comprehensive JSON object. Be extremely detailed. Output must be valid minified JSON only:
 {
   "colors": {
-    "primary": ["#hex codes"],
-    "secondary": [],
-    "accent": [],
-    "descriptions": {}
+    "primary": {
+      "hex": ["#000000"],
+      "name": ["Brand Blue"],
+      "usage": "Main brand color for headers and CTAs"
+    },
+    "secondary": {
+      "hex": [],
+      "name": [],
+      "usage": ""
+    },
+    "accent": {
+      "hex": [],
+      "name": [],
+      "usage": ""
+    },
+    "neutral": {
+      "hex": [],
+      "name": [],
+      "usage": ""
+    },
+    "guidelines": []
   },
   "typography": {
-    "primaryFont": "Font name",
-    "secondaryFont": "Font name",
-    "headingStyle": "",
-    "bodyStyle": "",
-    "recommendations": []
+    "primary": {
+      "family": "Font Name",
+      "weights": ["400", "600", "700"],
+      "fallback": "Arial, sans-serif",
+      "usage": "Headlines and primary text"
+    },
+    "secondary": {
+      "family": "",
+      "weights": [],
+      "fallback": "",
+      "usage": ""
+    },
+    "body": {
+      "family": "",
+      "size": "16px",
+      "lineHeight": "1.5"
+    },
+    "headings": {
+      "h1": {"size": "", "weight": ""},
+      "h2": {"size": "", "weight": ""},
+      "h3": {"size": "", "weight": ""}
+    }
   },
   "voice": {
     "tone": [],
     "personality": [],
-    "emotions": [],
-    "keywords": [],
-    "examples": []
+    "attributes": [],
+    "phrases": [],
+    "dos": [],
+    "donts": [],
+    "guidelines": []
   },
   "visualStyle": {
-    "aesthetic": [],
+    "principles": [],
+    "photography": {
+      "style": [],
+      "mood": [],
+      "composition": []
+    },
     "imagery": [],
-    "composition": [],
-    "mood": []
+    "iconography": "",
+    "patterns": []
   },
   "targetAudience": {
-    "demographics": [],
+    "demographics": {
+      "age": "",
+      "location": "",
+      "interests": []
+    },
     "psychographics": [],
     "painPoints": [],
-    "aspirations": []
+    "needs": [],
+    "personas": []
+  },
+  "brandStrategy": {
+    "mission": "",
+    "vision": "",
+    "values": [],
+    "positioning": "",
+    "pillars": [],
+    "story": ""
   },
   "competitors": {
     "direct": [],
@@ -169,11 +232,11 @@ Return ONLY a JSON object with this structure (include only sections with data).
     "positioning": "",
     "differentiators": []
   },
-  "mission": {
-    "statement": "",
-    "values": [],
-    "vision": "",
-    "purpose": ""
+  "logoUsage": {
+    "guidelines": [],
+    "clearSpace": "",
+    "minimumSize": "",
+    "variations": []
   }
 }`
     })
@@ -185,9 +248,9 @@ Return ONLY a JSON object with this structure (include only sections with data).
     try {
       message = await (anthropic.beta.messages.create as any)({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
+      max_tokens: 4000,
       temperature: 0,
-      system: 'You extract brand identity data. Respond with minified JSON only. No markdown, no backticks, no prose. Omit unknown fields.',
+      system: 'You are a brand expert extracting comprehensive brand identity data. Analyze thoroughly and extract ALL available information. Include colors with hex codes and names, exact font family names, detailed brand voice, visual guidelines, audience insights, and brand strategy. Respond with minified JSON only. No markdown, no backticks, no prose. Be extremely detailed and comprehensive.',
       messages: [
         {
           role: 'user',

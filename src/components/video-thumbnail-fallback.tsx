@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { IconVideo } from "@tabler/icons-react"
-import { generateVideoThumbnailFromUrl } from "@/lib/video-utils"
+import { generateVideoThumbnailFromUrl } from "@/lib/video-thumbnail-fix"
 
 interface VideoThumbnailFallbackProps {
   videoUrl?: string
