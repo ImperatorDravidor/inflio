@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { TranscriptionData } from '@/lib/project-types'
 import { withRetry } from '@/lib/retry-utils'
+import { v4 as uuidv4 } from 'uuid'
 
 // Mock content analysis
 const mockContentAnalysis = {
@@ -426,46 +427,102 @@ export async function processTranscription(params: {
           .limit(1)
         
         if (!checkError && (!existingPosts || existingPosts.length === 0)) {
-          console.log('[TranscriptionProcessor] No existing posts found, generating AI posts...')
+          console.log('[TranscriptionProcessor] No existing posts found, generating AI posts directly...')
           
-          // Trigger post generation with default settings
-          const postGenerationPayload = {
-            projectId,
-            projectTitle: project.title,
-            contentAnalysis,
-            transcript: transcription.text?.substring(0, 3000), // Limit transcript size
-            settings: {
-              contentTypes: ['carousel', 'quote', 'single'], // Default content types
-              platforms: ['instagram', 'twitter', 'linkedin'], // Default platforms
-              creativity: 0.7,
-              tone: 'professional',
-              includeEmojis: true,
-              includeHashtags: true,
-              optimizeForEngagement: true,
-              usePersona: false // Will be false unless a persona is set up
+          // Get user_id for the project if not provided
+          let userId = params.userId
+          if (!userId) {
+            const { data: projectWithUser } = await supabaseAdmin
+              .from('projects')
+              .select('user_id')
+              .eq('id', projectId)
+              .single()
+            userId = projectWithUser?.user_id
+          }
+
+          // Generate post suggestions directly from content analysis
+          const postSuggestionsToCreate = []
+          
+          // Default post types to generate
+          const defaultPostTypes = ['carousel', 'quote', 'single']
+          const defaultPlatforms = ['instagram', 'twitter', 'linkedin']
+          
+          // Use postSuggestions from AI analysis if available
+          const postSuggestions = (contentAnalysis as any).postSuggestions
+          if (postSuggestions && postSuggestions.length > 0) {
+            console.log(`[TranscriptionProcessor] Found ${postSuggestions.length} post suggestions from AI analysis`)
+            
+            for (const suggestion of postSuggestions) {
+              const suggestionId = uuidv4()
+              
+              // Build platform copy
+              const platformCopy: Record<string, any> = {}
+              for (const platform of suggestion.platforms) {
+                platformCopy[platform] = {
+                  caption: suggestion.mainContent,
+                  hashtags: suggestion.hashtags,
+                  cta: 'Follow for more insights!',
+                  title: suggestion.title,
+                  description: suggestion.description
+                }
+              }
+              
+              // Build eligibility
+              const eligibility: Record<string, any> = {}
+              for (const platform of suggestion.platforms) {
+                eligibility[platform] = {
+                  is_ready: true,
+                  missing_elements: [],
+                  optimization_tips: []
+                }
+              }
+              
+              postSuggestionsToCreate.push({
+                id: suggestionId,
+                project_id: projectId,
+                user_id: userId,
+                type: suggestion.type,
+                images: [{
+                  id: uuidv4(),
+                  type: 'hero',
+                  prompt: suggestion.visualPrompt,
+                  text_overlay: suggestion.hook,
+                  dimensions: '1080x1080',
+                  position: 0
+                }],
+                platform_copy: platformCopy,
+                eligibility: eligibility,
+                status: 'suggested',
+                metadata: {
+                  title: suggestion.title,
+                  description: suggestion.description,
+                  hook: suggestion.hook,
+                  engagement_score: suggestion.engagementScore,
+                  ai_generated: true,
+                  generation_source: 'transcription_analysis'
+                },
+                created_at: new Date().toISOString(),
+                created_by: 'ai_system'
+              })
             }
+          } else {
+            // No fallback generation - only use high-quality AI suggestions
+            console.log('[TranscriptionProcessor] No post suggestions available from AI analysis')
           }
           
-          // Call the smart posts generation endpoint internally
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-                         'http://localhost:3000')
-          
-          const response = await fetch(`${baseUrl}/api/posts/generate-smart`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              // Include internal API key if available for authentication
-              ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {})
-            },
-            body: JSON.stringify(postGenerationPayload)
-          })
-          
-          if (response.ok) {
-            const result = await response.json()
-            console.log(`[TranscriptionProcessor] Successfully generated ${result.suggestions?.length || 0} AI posts`)
-          } else {
-            console.error('[TranscriptionProcessor] Failed to generate AI posts:', await response.text())
+          // Save all post suggestions to database
+          if (postSuggestionsToCreate.length > 0) {
+            console.log(`[TranscriptionProcessor] Inserting ${postSuggestionsToCreate.length} post suggestions`)
+            
+            const { error: insertError } = await supabaseAdmin
+              .from('post_suggestions')
+              .insert(postSuggestionsToCreate)
+            
+            if (insertError) {
+              console.error('[TranscriptionProcessor] Error inserting post suggestions:', insertError)
+            } else {
+              console.log(`[TranscriptionProcessor] Successfully created ${postSuggestionsToCreate.length} post suggestions`)
+            }
           }
         } else {
           console.log('[TranscriptionProcessor] Posts already exist for this project, skipping auto-generation')

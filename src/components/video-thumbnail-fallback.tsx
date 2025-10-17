@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { IconVideo } from "@tabler/icons-react"
-import { generateVideoThumbnailFromUrl } from "@/lib/video-utils"
+import { generateVideoThumbnailFromUrl } from "@/lib/video-thumbnail-fix"
 
 interface VideoThumbnailFallbackProps {
   videoUrl?: string
@@ -23,13 +23,18 @@ export function VideoThumbnailFallback({
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState(false)
 
+  // Log the video URL for debugging
+  console.log('VideoThumbnailFallback:', { videoUrl, thumbnailUrl, title })
+
   useEffect(() => {
     async function generateThumbnail() {
       if (!thumbnailUrl && videoUrl && !generatedThumbnail && !isGenerating && !error) {
+        console.log('Generating thumbnail for:', videoUrl)
         setIsGenerating(true)
         try {
           // Try to generate thumbnail from video at 2 seconds mark
           const thumbnail = await generateVideoThumbnailFromUrl(videoUrl, 2)
+          console.log('Generated thumbnail result:', thumbnail ? 'success' : 'empty')
           setGeneratedThumbnail(thumbnail)
         } catch (err) {
           console.error("Failed to generate thumbnail:", err)
@@ -45,23 +50,34 @@ export function VideoThumbnailFallback({
 
   // If we have a thumbnail URL, use it
   if (thumbnailUrl) {
-    if (thumbnailUrl.startsWith('http')) {
-      return (
-        <img
-          src={thumbnailUrl}
-          alt={title}
-          className={className}
-        />
-      )
-    } else {
-      return (
-        <img
-          src={thumbnailUrl}
-          alt={title}
-          className={className}
-        />
-      )
-    }
+    return (
+      <img
+        src={thumbnailUrl}
+        alt={title}
+        className={className}
+        onError={(e) => {
+          console.error('Thumbnail image failed to load:', thumbnailUrl)
+          e.currentTarget.style.display = 'none'
+        }}
+      />
+    )
+  }
+
+  // If we have a video URL but no thumbnail, show the video element directly
+  if (videoUrl && !isGenerating) {
+    return (
+      <video
+        src={videoUrl}
+        className={className}
+        muted
+        playsInline
+        preload="metadata"
+        onError={(e) => {
+          console.error('Video failed to load:', videoUrl)
+          setError(true)
+        }}
+      />
+    )
   }
 
   // If we generated a thumbnail, use it

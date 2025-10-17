@@ -100,6 +100,15 @@ export function ThumbnailCreatorV2({
   const [progress, setProgress] = useState(0)
   const [usePersona, setUsePersona] = useState(true)
   
+  // Detect if selected persona has a trained LoRA model
+  const loRAActive = !!(
+    (selectedPersona as any)?.lora_model_url ||
+    (selectedPersona as any)?.loraModelUrl ||
+    (selectedPersona as any)?.lora_training_status === 'trained' ||
+    (selectedPersona as any)?.loraTrainingStatus === 'trained' ||
+    (selectedPersona as any)?.status === 'trained'
+  )
+  
   // Video frame extraction states
   const [showVideoFrames, setShowVideoFrames] = useState(false)
   const [videoFrames, setVideoFrames] = useState<VideoFrame[]>([])
@@ -111,6 +120,8 @@ export function ThumbnailCreatorV2({
   // Add state for streaming
   const [streamingMessage, setStreamingMessage] = useState("")
   const [useStreaming, setUseStreaming] = useState(true)
+  const [showFullScreenOverlay, setShowFullScreenOverlay] = useState(false)
+  const [overlayMessage, setOverlayMessage] = useState<string>("")
 
   // Reset state when dialog closes
   const handleClose = () => {
@@ -171,6 +182,10 @@ export function ThumbnailCreatorV2({
 
     setIsGenerating(true)
     setProgress(0)
+    // Take user off the form immediately
+    setOverlayMessage("Starting thumbnail generation...")
+    setShowFullScreenOverlay(true)
+    setOpen(false)
 
     try {
       let prompt = ""
@@ -260,12 +275,17 @@ export function ThumbnailCreatorV2({
                   if (data.type === 'progress') {
                     setProgress(data.progress)
                     setStreamingMessage(data.message)
+                    setOverlayMessage(data.message)
                   } else if (data.type === 'complete') {
                     setGeneratedUrl(data.url)
                     setCurrentStep('preview')
                     toast.success(data.message)
+                    // Bring dialog back with preview ready
+                    setShowFullScreenOverlay(false)
+                    setOpen(true)
                   } else if (data.type === 'error') {
                     toast.error(data.error)
+                    setOverlayMessage(data.error)
                   }
                 } catch (e) {
                   // Skip invalid JSON
@@ -304,11 +324,16 @@ export function ThumbnailCreatorV2({
           setGeneratedUrl(result.url)
           setCurrentStep('preview')
           toast.success("Thumbnail generated successfully!")
+          setShowFullScreenOverlay(false)
+          setOpen(true)
+        } else {
+          throw new Error('No URL in response')
         }
       }
     } catch (error) {
       console.error("Generation error:", error)
       toast.error(error instanceof Error ? error.message : "Failed to generate thumbnail")
+      setOverlayMessage(error instanceof Error ? error.message : 'Generation failed')
     } finally {
       setIsGenerating(false)
       setStreamingMessage("")
@@ -374,7 +399,25 @@ export function ThumbnailCreatorV2({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      {/* Full-screen overlay during generation */}
+      {showFullScreenOverlay && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+          <div className="w-full max-w-md mx-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center shadow-2xl">
+            <div className="mb-3 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+            </div>
+            <p className="text-white/90 font-medium">Generating thumbnail...</p>
+            <p className="text-white/60 text-sm mt-1">{overlayMessage || 'This can take up to 30 seconds'}</p>
+            <div className="mt-4">
+              <Progress value={progress} className="h-2" />
+              <p className="text-xs text-white/50 mt-2">{Math.max(0, Math.min(100, Math.round(progress)))}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button 
           variant="ghost" 
@@ -435,6 +478,17 @@ export function ThumbnailCreatorV2({
                     <IconUser className="h-3 w-3 text-primary" />
                   </div>
                   <span>{selectedPersona.name}</span>
+                  <span className="inline-flex items-center gap-1 ml-2">
+                    <span
+                      className={cn(
+                        "inline-block h-2 w-2 rounded-full",
+                        loRAActive ? "bg-green-500" : "bg-yellow-500"
+                      )}
+                    />
+                    <span className={cn("text-xs", loRAActive ? "text-green-600" : "text-yellow-600")}> 
+                      {loRAActive ? 'Model ready' : 'Training pending'}
+                    </span>
+                  </span>
                 </div>
               </div>
             )}
@@ -567,6 +621,14 @@ export function ThumbnailCreatorV2({
                         <p className="font-medium">Using {selectedPersona.name} persona</p>
                         <p className="text-xs text-muted-foreground">
                           AI will incorporate these photos into your thumbnail
+                        </p>
+                        <p className="text-xs mt-1">
+                          {loRAActive 
+                            ? (
+                              <span className="text-green-600">Trained AI model detected. Likeness will be preserved via LoRA.</span>
+                            ) : (
+                              <span className="text-yellow-700">Your AI model is still training. We will use your photos; results improve after training completes.</span>
+                            )}
                         </p>
                       </div>
                     </div>
@@ -986,5 +1048,6 @@ export function ThumbnailCreatorV2({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 } 

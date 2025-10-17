@@ -19,17 +19,40 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Get all post suggestions for the project
+    console.log('[suggestions API] Fetching suggestions for project:', projectId, 'user:', userId)
+    
+    // First verify the project belongs to the user
+    const { data: project } = await supabaseAdmin
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single()
+    
+    if (!project) {
+      console.log('[suggestions API] Project not found or not owned by user')
+      return NextResponse.json(
+        { error: 'Project not found or unauthorized' },
+        { status: 404 }
+      )
+    }
+    
+    // Get all post suggestions for the project (without user_id filter since it might be stored differently)
     const { data: suggestions, error } = await supabaseAdmin
       .from('post_suggestions')
       .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
 
+    console.log('[suggestions API] Query result:', { 
+      count: suggestions?.length || 0, 
+      error: error?.message 
+    })
+
     if (error) {
-      console.error('Failed to fetch post suggestions:', error)
+      console.error('[suggestions API] Database error:', error)
       return NextResponse.json(
-        { error: 'Failed to fetch suggestions' },
+        { error: 'Failed to fetch suggestions', details: error.message },
         { status: 500 }
       )
     }

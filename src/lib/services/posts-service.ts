@@ -207,14 +207,8 @@ export class PostsService {
     if (suggestionError) throw suggestionError
 
     try {
-      // Generate images
-      const images = await this.generatePostImages({
-        suggestionId: suggestion.id,
-        contentType,
-        contentIdea,
-        personaId,
-        userId
-      })
+      // Defer image generation until user selects a post.
+      const images: any[] = []
 
       // Generate platform-specific copy
       const copyVariants = await this.generatePlatformCopy({
@@ -512,7 +506,7 @@ Return a JSON object with:
     contentType: PostContentType
     additionalContext?: string
   }) {
-    const { suggestionId, contentIdea, platforms, contentType, additionalContext } = params
+    const { suggestionId, contentIdea, platforms, contentType, additionalContext = '' } = params
     const adminSupabase = supabaseAdmin
     const openai = getOpenAI()
 
@@ -549,35 +543,30 @@ Return JSON:
   ${platform === 'youtube' || platform === 'linkedin' ? '"description": "Detailed description"' : ''}
 }`
 
+      let copy: PlatformCopy;
+      
       try {
-        let copy: PlatformCopy
-        
-        // Check if we should use AI or mock data
-        if (process.env.OPENAI_API_KEY) {
-          const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-            max_tokens: 500
-          })
+        // Generate copy using AI or mock
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-5',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_completion_tokens: 1000,
+          temperature: 1.0,
+          response_format: { type: 'json_object' }
+        });
 
-          const response = completion.choices[0].message.content
-          if (response) {
-            copy = JSON.parse(response) as PlatformCopy
-          } else {
-            // Fallback to mock if no response
-            copy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
-          }
+        const response = completion.choices[0].message.content;
+        if (response) {
+          copy = JSON.parse(response) as PlatformCopy;
         } else {
-          // Use mock generator
-          copy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
+          // Fallback to mock if no response
+          copy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType });
         }
         
-        copyVariants[platform] = copy
+        copyVariants[platform] = copy;
 
         // Store in database
         await adminSupabase
@@ -586,16 +575,16 @@ Return JSON:
             suggestion_id: suggestionId,
             platform,
             caption: copy.caption,
-            hashtags: copy.hashtags,
-            cta: copy.cta,
-            title: copy.title,
-            description: copy.description,
-            total_length: copy.caption.length + copy.hashtags.join(' ').length
+            hashtags: copy.hashtags || [],
+            cta: (copy as any).cta || '',
+            title: (copy as any).title || null,
+            description: (copy as any).description || null,
+            total_length: copy.caption.length + (copy.hashtags?.join(' ').length || 0)
           })
       } catch (error) {
         console.error(`Failed to generate ${platform} copy:`, error)
         // Use mock data as fallback
-        const mockCopy: PlatformCopy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType }) as PlatformCopy
+        const mockCopy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType });
         copyVariants[platform] = mockCopy
         
         // Still try to store in database
@@ -606,11 +595,11 @@ Return JSON:
               suggestion_id: suggestionId,
               platform,
               caption: mockCopy.caption,
-              hashtags: mockCopy.hashtags,
-              cta: mockCopy.cta,
-              title: mockCopy.title,
-              description: mockCopy.description,
-              total_length: mockCopy.caption.length + mockCopy.hashtags.join(' ').length
+              hashtags: mockCopy.hashtags || [],
+              cta: (mockCopy as any).cta || '',
+              title: (mockCopy as any).title || null,
+              description: (mockCopy as any).description || null,
+              total_length: mockCopy.caption.length + (mockCopy.hashtags?.join(' ').length || 0)
             })
         } catch (dbError) {
           console.error(`Failed to store ${platform} copy in database:`, dbError)

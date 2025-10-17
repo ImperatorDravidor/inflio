@@ -51,41 +51,150 @@ export class OnboardingService {
         lastSaved: new Date().toISOString()
       }
       
-      // Save to database - using user_profiles table
-      const { error } = await supabase
-        .from('user_profiles')
-        .upsert({
-          clerk_user_id: userId,
-          onboarding_progress: updatedProgress,
-          onboarding_step: step,
-          onboarding_completed: false,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'clerk_user_id'
-        })
+      // Prepare profile update with real-time sync to profile tabs
+      const profileUpdate: any = {
+        clerk_user_id: userId,
+        onboarding_progress: updatedProgress,
+        onboarding_step: step,
+        onboarding_step_id: stepId,
+        onboarding_completed: false,
+        updated_at: new Date().toISOString()
+      }
       
-      if (error) {
-        // Only log meaningful error details, not empty objects
-        const errorDetails: any = {
-          message: error.message || 'Unknown error',
-          code: error.code,
-          table: 'user_profiles',
+      // Mark completion if at final step
+      if (step === 4 && stepId === 'review') {
+        profileUpdate.onboarding_completed = true
+        profileUpdate.onboarding_completed_at = new Date().toISOString()
+      }
+      
+      // Sync specific fields to profile tabs based on current step
+      // This ensures profile tabs are updated in real-time during onboarding
+      if (formData.fullName || formData.name) {
+        profileUpdate.full_name = formData.fullName || formData.name
+      }
+      if (formData.title) {
+        profileUpdate.title = formData.title
+      }
+      if (formData.companyName) {
+        profileUpdate.company_name = formData.companyName
+      }
+      if (formData.industry) {
+        profileUpdate.industry = formData.industry
+      }
+      if (formData.bio) {
+        profileUpdate.bio = formData.bio
+      }
+      if (formData.contentPillars) {
+        profileUpdate.content_pillars = formData.contentPillars
+      }
+      if (formData.audience) {
+        profileUpdate.target_audience = formData.audience
+      }
+      
+      // Sync brand data if available
+      if (formData.brandIdentity || formData.brandAnalysis || formData.brandColors || formData.primaryColor || formData.brandVoice) {
+        const existingBrand = (existingProfile as any)?.brand_identity || {}
+        
+        // If we have the new comprehensive brand identity data
+        if (formData.brandIdentity) {
+          profileUpdate.brand_identity = {
+            ...existingBrand,
+            ...formData.brandIdentity,
+            extractedAt: new Date().toISOString()
+          }
+        } else {
+          // Fallback to old format
+          profileUpdate.brand_identity = {
+            ...existingBrand,
+            ...(formData.brandColors && { colors: formData.brandColors }),
+            ...(formData.primaryColor && { primaryColor: formData.primaryColor }),
+            ...(formData.fonts && { fonts: formData.fonts }),
+            ...(formData.brandVoice && { voice: formData.brandVoice }),
+            ...(formData.tagline && { tagline: formData.tagline })
+          }
+        }
+        
+        // Store the full analysis separately for reference
+        if (formData.brandAnalysis) {
+          profileUpdate.brand_analysis = formData.brandAnalysis
+        }
+      }
+      
+      // Sync platform connections
+      if (formData.platforms) {
+        profileUpdate.platform_connections = formData.platforms
+      }
+      
+      // Track persona completion
+      if (formData.personaId) {
+        profileUpdate.persona_id = formData.personaId
+      }
+      
+      // Track review states
+      if (formData.brandReviewed) {
+        profileUpdate.brand_reviewed = true
+      }
+      if (formData.personaReviewed) {
+        profileUpdate.persona_reviewed = true
+      }
+      if (formData.socialsConnected) {
+        profileUpdate.socials_connected = true
+      }
+      
+      // First check if profile exists
+      const { data: existingCheck, error: checkError } = await supabase
+        .from('user_profiles')
+        .select('clerk_user_id')
+        .eq('clerk_user_id', userId)
+        .single()
+      
+      // If check fails with anything other than PGRST116 (no rows), there's a real error
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking profile existence:', {
+          code: checkError.code,
+          message: checkError.message,
+          details: checkError.details,
+          hint: checkError.hint
+        })
+        return false
+      }
+      
+      // Determine if we should insert or update
+      let saveError
+      if (existingCheck) {
+        // Profile exists, update it
+        const { error } = await supabase
+          .from('user_profiles')
+          .update(profileUpdate)
+          .eq('clerk_user_id', userId)
+        saveError = error
+      } else {
+        // Profile doesn't exist, insert it
+        const { error } = await supabase
+          .from('user_profiles')
+          .insert(profileUpdate)
+        saveError = error
+      }
+      
+      if (saveError) {
+        console.error('Error saving onboarding progress:', {
+          operation: existingCheck ? 'update' : 'insert',
+          code: saveError.code,
+          message: saveError.message,
+          details: saveError.details,
+          hint: saveError.hint,
           userId,
           step,
           stepId
-        }
-        
-        // Add additional details only if they exist
-        if (error.details) errorDetails.details = error.details
-        if (error.hint) errorDetails.hint = error.hint
-        
-        console.error('Error saving onboarding progress:', errorDetails)
+        })
         
         // Provide specific guidance based on error code
-        if (error.code === '42P01') {
-          console.error('Database migration needed: Run the migration in /migrations/fix-onboarding-errors.sql')
-        } else if (error.code === '42703') {
-          console.error('Missing column in user_profiles table. Run the migration to add onboarding_progress column.')
+        if (saveError.code === '42P01') {
+          console.error('Table does not exist. Ensure user_profiles table is created.')
+        } else if (saveError.code === '42703') {
+          console.error('Column does not exist. Run: supabase db push migrations/add-onboarding-tracking-fields.sql')
+        } else if (saveError.code === '23505') {
+          console.error('Duplicate key violation. Profile already exists.')
         }
         
         return false
@@ -191,15 +300,6 @@ export class OnboardingService {
         }
         break
         
-      case 'ai':
-        if (!data.captionStyle) {
-          warnings.push('Selecting a caption style helps personalize your content')
-        }
-        if (!data.ctaPreferences || data.ctaPreferences.length === 0) {
-          warnings.push('Adding CTAs improves engagement')
-        }
-        break
-        
       case 'legal':
         if (!data.consentRepurpose) {
           errors.push('Content repurposing consent is required')
@@ -224,7 +324,7 @@ export class OnboardingService {
    * Calculate overall onboarding completion percentage
    */
   static calculateCompletion(progress: OnboardingProgress): number {
-    const totalSteps = 8 // Including welcome
+    const totalSteps = 6 // Including welcome (AI Preferences removed)
     const requiredFields = [
       'platforms',
       'fullName',
@@ -368,12 +468,7 @@ export class OnboardingService {
           distributionMode: finalData.distributionMode,
           historicalContent: finalData.historicalContent,
           
-          // AI Personalization
-          captionStyle: finalData.captionStyle,
-          ctaPreferences: finalData.ctaPreferences,
-          newsletterStyle: finalData.newsletterStyle,
-          languagePreferences: finalData.languagePreferences,
-          toneReferences: finalData.toneReferences,
+          // AI Personalization - Removed (AI Preferences step removed)
           
           // Legal
           consentRepurpose: finalData.consentRepurpose,
@@ -409,15 +504,60 @@ export class OnboardingService {
       
       const result = await response.json()
       
-      // Clear local progress after successful completion
+      // Ensure profile data is properly synced to tabs
       const supabase = createSupabaseBrowserClient()
-      await supabase
+      
+      // Update user profile with organized data for profile tabs
+      const profileUpdate = {
+        // Clear onboarding progress
+        onboarding_progress: null,
+        onboarding_step: 6,
+        onboarding_completed: true,
+        
+        // Profile Tab Data
+        full_name: finalData.fullName || finalData.name,
+        title: finalData.title,
+        company_name: finalData.companyName,
+        industry: finalData.industry,
+        bio: finalData.bio,
+        content_purpose: finalData.contentPurpose,
+        content_pillars: finalData.contentPillars,
+        target_audience: finalData.audience,
+        
+        // Brand Tab Data (stored as JSONB)
+        brand_identity: {
+          colors: finalData.brandColors,
+          primaryColor: finalData.primaryColor,
+          fonts: finalData.fonts,
+          voice: finalData.brandVoice,
+          tagline: finalData.tagline,
+          missionStatement: finalData.missionStatement,
+          competitors: finalData.competitors,
+          inspirationLinks: finalData.inspirationLinks,
+          logoUrl: finalData.logoUrl
+        },
+        
+        // Platform/Integration Tab Data
+        platform_connections: finalData.platforms,
+        content_types: finalData.contentTypes,
+        
+        // Settings/Preferences
+        content_goals: finalData.goal ? [finalData.goal] : [],
+        
+        updated_at: new Date().toISOString()
+      }
+      
+      const { error: updateError } = await supabase
         .from('user_profiles')
-        .update({
-          onboarding_progress: null,
-          onboarding_step: 8
-        })
+        .update(profileUpdate)
         .eq('clerk_user_id', userId)
+      
+      if (updateError) {
+        console.error('Profile sync error:', updateError)
+        // Don't fail the onboarding, just log the error
+      } else {
+        console.log('Profile data synced to tabs successfully')
+      }
       
       return result.success === true
     } catch (error) {

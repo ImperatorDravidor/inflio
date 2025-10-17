@@ -71,7 +71,8 @@ import { ProjectService } from "@/lib/services"
 import { Project, ClipData, BlogPost, SocialPost, TranscriptionData } from "@/lib/project-types"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/empty-state"
-import { formatDuration, generateVideoThumbnailFromUrl, createPlaceholderThumbnail } from "@/lib/video-utils"
+import { formatDuration, createPlaceholderThumbnail } from "@/lib/video-utils"
+import { generateVideoThumbnailFromUrl } from "@/lib/video-thumbnail-fix"
 import { toast } from "sonner"
 import { AnimatedBackground } from "@/components/animated-background"
 import { motion, AnimatePresence } from "framer-motion"
@@ -109,7 +110,8 @@ import { predefinedStyles, type ImageSuggestion } from "@/lib/ai-image-service"
 import { BlogGenerationDialog, type BlogGenerationOptions } from "@/components/blog-generation-dialog"
 import { ImageCarousel } from "@/components/image-carousel"
 import { ThumbnailCreatorV2 } from "@/components/thumbnail-creator-v2"
-import { EnhancedPostsGenerator } from "@/components/posts/enhanced-posts-generator"
+// import { EnhancedPostsGenerator } from "@/components/posts/enhanced-posts-generator"
+import { SimplePostsGenerator } from "@/components/posts/simple-posts-generator"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { StagingReview } from "@/components/staging/staging-review"
@@ -1614,7 +1616,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
               <EnhancedVideoPlayer
                 ref={videoRef}
                 videoUrl={project.video_url}
-                thumbnailUrl={project.thumbnail_url || thumbnailUrl || defaultThumbnail}
+                thumbnailUrl={project.thumbnail_url || thumbnailUrl}
                 onLoadedMetadata={(duration) => {
                   if (!project.metadata?.duration || project.metadata.duration !== duration) {
                     setProject(prev => prev ? {
@@ -2891,12 +2893,11 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     </TabsContent>
 
                     <TabsContent value="posts" className="mt-0">
-                      <EnhancedPostsGenerator
+                      <SimplePostsGenerator
                         projectId={project.id}
                         projectTitle={project.title}
                         contentAnalysis={project.content_analysis}
                         transcript={project.transcription?.text}
-                        personaId={selectedPersona?.id}
                       />
                     </TabsContent>
 

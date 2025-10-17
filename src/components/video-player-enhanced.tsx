@@ -26,11 +26,14 @@ export const EnhancedVideoPlayer = forwardRef<HTMLVideoElement, EnhancedVideoPla
   
   // Forward the ref
   useImperativeHandle(forwardedRef, () => internalVideoRef.current!, [])
+  
+  // Debug logging
+  console.log('EnhancedVideoPlayer:', { videoUrl, thumbnailUrl })
   const [isLoading, setIsLoading] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasError, setHasError] = useState(false)
   const [posterImage, setPosterImage] = useState<string>("")
-  const [showOverlay, setShowOverlay] = useState(true)
+  const [showOverlay, setShowOverlay] = useState(false)
 
   // Generate or use placeholder thumbnail
   useEffect(() => {
@@ -38,15 +41,18 @@ export const EnhancedVideoPlayer = forwardRef<HTMLVideoElement, EnhancedVideoPla
       // No video, use placeholder
       if (autoGenerateThumbnail) {
         setPosterImage(createPlaceholderThumbnail())
+        setShowOverlay(true)
       }
       return
     }
 
     if (thumbnailUrl) {
       setPosterImage(thumbnailUrl)
-    } else if (autoGenerateThumbnail) {
-      // Generate a placeholder if no thumbnail provided
-      setPosterImage(createPlaceholderThumbnail())
+      setShowOverlay(true) // Only show overlay when we have a poster
+    } else {
+      // Don't use a placeholder - let the video show its own preview
+      setPosterImage("")
+      setShowOverlay(false) // No overlay without a poster
     }
   }, [videoUrl, thumbnailUrl, autoGenerateThumbnail])
 
@@ -124,7 +130,7 @@ export const EnhancedVideoPlayer = forwardRef<HTMLVideoElement, EnhancedVideoPla
         </div>
       )}
 
-      {/* Thumbnail/Poster Overlay with Play Button */}
+      {/* Thumbnail/Poster Overlay with Play Button - Only show if we have a poster */}
       {showOverlay && !isPlaying && posterImage && !hasError && (
         <div 
           className="absolute inset-0 z-20 cursor-pointer"
@@ -174,11 +180,10 @@ export const EnhancedVideoPlayer = forwardRef<HTMLVideoElement, EnhancedVideoPla
       <video
         ref={internalVideoRef}
         src={videoUrl}
-        poster={posterImage || undefined}
+        poster={posterImage ? posterImage : undefined}
         className="w-full h-full object-contain"
         controls
         controlsList="nodownload"
-        crossOrigin="anonymous"
         playsInline
         preload="metadata"
         onLoadStart={() => setIsLoading(true)}

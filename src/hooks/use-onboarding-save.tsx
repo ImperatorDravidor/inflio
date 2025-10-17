@@ -61,7 +61,7 @@ export function useOnboardingSave({ userId, currentStep, stepId }: UseOnboarding
         })
       }
     }
-  }, [userId, currentStep, stepId, toast])
+  }, [userId, currentStep, stepId])
   
   // Auto-save function with debouncing
   const autoSave = useCallback((formData: any) => {

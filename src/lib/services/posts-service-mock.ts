@@ -46,20 +46,20 @@ export class MockPostsGenerator {
         prompt: 'Professional thread visuals with consistent branding'
       },
       reel: {
-        title: `Quick Tips from ${projectTitle}`,
-        description: 'Short-form vertical video with quick tips',
-        visual_elements: ['Opening hook', 'Tip 1', 'Tip 2', 'Tip 3', 'Call to action'],
-        key_message: 'Quick valuable tips in under 60 seconds',
+        title: `Quick Tips: ${projectTitle}`,
+        description: 'Short-form vertical video content',
+        visual_elements: ['Hook scene', 'Main content', 'Call to action'],
+        key_message: 'Quick valuable insights in under 60 seconds',
         hook: '⚡ Watch this before you scroll!',
-        prompt: 'Dynamic, fast-paced reel with trending audio'
+        prompt: 'Dynamic, fast-paced video with captions'
       },
       story: {
         title: `Behind the Scenes: ${projectTitle}`,
-        description: '24-hour story content with behind-the-scenes',
-        visual_elements: ['Story slide 1', 'Poll/Question', 'Story slide 2', 'Swipe up CTA'],
-        key_message: 'Exclusive behind-the-scenes content',
+        description: 'Authentic, temporary content for stories',
+        visual_elements: ['Opening frame', 'Process shots', 'Result reveal'],
+        key_message: 'Raw, authentic behind-the-scenes content',
         hook: '👀 Exclusive look inside...',
-        prompt: 'Casual, authentic story slides with interactive elements'
+        prompt: 'Casual, authentic story format with interactive elements'
       }
     }
     

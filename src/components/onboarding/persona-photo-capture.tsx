@@ -63,25 +63,54 @@ export function PersonaPhotoCapture({
   const startCamera = async () => {
     try {
       setError(null)
-      
-      // Request camera permission
+      // Basic capability checks
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('BROWSER_NOT_SUPPORTED')
+      }
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        throw new Error('HTTPS_REQUIRED')
+      }
+      // Permission pre-check (best effort)
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        try {
+          const perm = await (navigator.permissions as any).query({ name: 'camera' })
+          if (perm.state === 'denied') throw new Error('PERMISSION_DENIED')
+        } catch {}
+      }
+      // Request camera
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'user'
-        }
+        },
+        audio: false
       })
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        videoRef.current.play()
+        const playPromise = (videoRef.current as HTMLVideoElement).play()
+        if (playPromise && typeof (playPromise as any).catch === 'function') {
+          await (playPromise as Promise<void>).catch(() => {})
+        }
         streamRef.current = stream
         setCameraActive(true)
       }
     } catch (err) {
       console.error('Camera error:', err)
-      const errorMessage = err instanceof Error ? err.message : 'Failed to access camera'
+      let errorMessage = 'Failed to access camera'
+      if (err instanceof Error) {
+        if (err.message === 'BROWSER_NOT_SUPPORTED') {
+          errorMessage = 'Your browser does not support camera access.'
+        } else if (err.message === 'HTTPS_REQUIRED') {
+          errorMessage = 'Camera requires HTTPS. Please use a secure connection.'
+        } else if (err.message === 'PERMISSION_DENIED') {
+          errorMessage = 'Camera permission denied in browser settings.'
+        } else if ((err as any).name === 'NotAllowedError') {
+          errorMessage = 'Camera permission was blocked. Allow access and retry.'
+        } else if ((err as any).name === 'NotFoundError') {
+          errorMessage = 'No camera device found.'
+        }
+      }
       setError(`Camera access failed: ${errorMessage}`)
       toast.error('Could not access camera. Please check permissions.')
     }
@@ -226,10 +255,10 @@ export function PersonaPhotoCapture({
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
+    <div className="w-full max-w-4xl mx-auto p-4 space-y-8">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Capture Your Photos</h2>
+      <div className="text-center space-y-4">
+        <h2 className="text-3xl font-bold">Capture Your Photos</h2>
         <p className="text-muted-foreground">
           Take or upload at least {minPhotos} photos for {personaName || 'your AI persona'}
         </p>

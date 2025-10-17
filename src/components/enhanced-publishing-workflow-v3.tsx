@@ -105,6 +105,7 @@ interface ContentItem {
   thumbnail?: string
   duration?: number
   wordCount?: number
+  hasSubtitles?: boolean
   tags?: string[]
   platforms?: string[]
   createdAt: string

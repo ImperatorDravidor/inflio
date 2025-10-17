@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
-import { generateVideoThumbnail, extractVideoMetadata, formatDuration, formatFileSize, generateVideoThumbnailAlternative } from "@/lib/video-utils"
+import { extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils-simple"
+import { generateVideoThumbnail } from "@/lib/video-thumbnail-fix"
 import { UploadProgress } from "@/components/loading-states"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { VideoMetadata } from "@/lib/project-types"
@@ -19,7 +20,6 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
-import { VideoPlaceholder } from "@/components/video-placeholder"
 
 export default function UploadPage() {
   const router = useRouter()
@@ -39,7 +39,6 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false)
   const [showMetadata, setShowMetadata] = useState(false)
   const [showWorkflowSelection, setShowWorkflowSelection] = useState(false)
-  const [videoLoading, setVideoLoading] = useState(false)
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowOptions>({
     transcription: true,
     clips: true,  // Changed from false to true
@@ -82,64 +81,33 @@ export default function UploadPage() {
       
       // Create preview URL
       const url = URL.createObjectURL(file)
+      console.log('Created video preview URL:', url)
       setVideoPreview(url)
-      setVideoLoading(true) // Start loading state
       
       // Extract video metadata
-      toast.info("Extracting video metadata...")
       const metadata = await extractVideoMetadata(file)
       
       // Convert to our VideoMetadata type
       const formattedMetadata: VideoMetadata = {
-        duration: metadata.duration || 0,
-        width: metadata.width || 1920,
-        height: metadata.height || 1080,
+        duration: metadata.duration,
+        width: metadata.width,
+        height: metadata.height,
         fps: 30, // Default FPS - browser doesn't provide this
         codec: 'h264', // Default codec - browser doesn't provide this
         bitrate: 0, // Browser doesn't provide bitrate
         size: file.size,
-        format: file.type.split('/')[1] || 'mp4'
+        format: metadata.format
       }
       
       setVideoMetadata(formattedMetadata)
       
-      // Generate thumbnail with error handling and fallback
-      toast.info("Generating thumbnail...")
-      let thumbnailGenerated = false
+      // Generate thumbnail - simple and reliable
+      const thumbnailUrl = await generateVideoThumbnail(file)
+      setThumbnail(thumbnailUrl)
       
-      try {
-        const thumbnailUrl = await generateVideoThumbnail(file)
-        
-        // Verify thumbnail is not empty or invalid
-        if (thumbnailUrl && thumbnailUrl !== 'data:,' && thumbnailUrl.length > 100) {
-          setThumbnail(thumbnailUrl)
-          thumbnailGenerated = true
-          console.log('Thumbnail generated successfully')
-        } else {
-          console.warn('Generated thumbnail is empty, trying alternative method')
-        }
-      } catch (thumbnailError) {
-        console.error('Primary thumbnail generation failed:', thumbnailError)
-      }
-      
-      // Try alternative method if primary failed
-      if (!thumbnailGenerated) {
-        try {
-          const altThumbnail = await generateVideoThumbnailAlternative(file)
-          if (altThumbnail && altThumbnail.length > 100) {
-            setThumbnail(altThumbnail)
-            thumbnailGenerated = true
-            console.log('Alternative thumbnail generation successful')
-          }
-        } catch (altError) {
-          console.error('Alternative thumbnail generation also failed:', altError)
-        }
-      }
-      
-      // If still no thumbnail, set empty string to indicate failure
-      if (!thumbnailGenerated) {
-        setThumbnail("")
-        console.warn('All thumbnail generation methods failed')
+      // If no thumbnail was generated, that's okay - we'll show the video preview instead
+      if (!thumbnailUrl) {
+        console.log('No thumbnail generated, will use video preview')
       }
       
       toast.success("Video processed successfully!")
@@ -181,7 +149,6 @@ export default function UploadPage() {
     setProjectTitle("")
     setShowMetadata(false)
     setShowWorkflowSelection(false)
-    setVideoLoading(false)
     setWorkflowOptions({
       transcription: true,
       clips: true,  // Changed from false to true
@@ -407,55 +374,31 @@ export default function UploadPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Video Preview with Thumbnail */}
+                  {/* Video Preview */}
                   {videoPreview && (
                     <div className="relative mx-auto max-w-3xl">
                       <div className="grid gap-4">
-                        {/* Video */}
-                        <div className="relative group aspect-video rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
-                          {/* Video Loading Overlay */}
-                          {videoLoading && (
-                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
-                              <div className="text-center">
-                                <LoadingSpinner size="lg" />
-                                <p className="text-sm text-muted-foreground mt-2">Loading video preview...</p>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Fallback placeholder - shows when no thumbnail */}
-                          {!thumbnail && !videoLoading && (
-                            <div className="absolute inset-0 z-10">
-                              <VideoPlaceholder message="" />
-                            </div>
-                          )}
-                          
+                        {/* Simple Video Player */}
+                        <div className="relative group aspect-video rounded-xl overflow-hidden bg-gray-900">
                           <video
+                            key={`video-${videoPreview}`}
                             ref={videoRef}
-                            src={videoPreview}
-                            poster={thumbnail || undefined}
-                            className="absolute inset-0 w-full h-full object-contain"
+                            className="w-full h-full"
+                            style={{ backgroundColor: '#000' }}
                             controls
-                            controlsList="nodownload"
-                            crossOrigin="anonymous"
-                            preload="metadata"
-                            playsInline
                             muted
-                            onLoadStart={() => setVideoLoading(true)}
-                            onLoadedData={() => setVideoLoading(false)}
-                            onCanPlay={() => setVideoLoading(false)}
-                            onError={(e) => {
-                              setVideoLoading(false)
-                              console.error("Video error:", e)
-                              toast.error("Failed to load video preview")
-                            }}
-                          />
+                            playsInline
+                            poster={thumbnail || undefined}
+                          >
+                            <source src={videoPreview} type={file?.type || 'video/mp4'} />
+                            Your browser does not support the video tag.
+                          </video>
                           
                           {/* Remove button */}
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="absolute top-3 right-3 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-3 right-3 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity z-10"
                             onClick={removeFile}
                             disabled={uploading || processing}
                           >
@@ -503,41 +446,23 @@ export default function UploadPage() {
                         )}
                         
                         {/* Thumbnail Preview */}
-                        {thumbnail && thumbnail !== 'data:,' && thumbnail.length > 100 ? (
+                        {thumbnail ? (
                           <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-white/80 dark:bg-background rounded-2xl border border-primary/10 shadow-lg">
                             <div className="flex-shrink-0">
                               <Image 
                                 src={thumbnail} 
-                                alt="Generated thumbnail" 
+                                alt="Video thumbnail" 
                                 width={120}
                                 height={80}
                                 className="w-28 h-20 object-cover rounded-xl border border-border shadow-md"
-                                onError={() => {
-                                  console.error('Failed to display thumbnail')
-                                  setThumbnail("")
-                                }}
                               />
                             </div>
                             <div className="flex flex-col items-center sm:items-start text-center sm:text-left mt-2 sm:mt-0">
                               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm font-semibold mb-2 shadow-sm">
                                 <IconCheck className="h-4 w-4" />
-                                Thumbnail generated
+                                Thumbnail ready
                               </span>
-                              <span className="text-base text-muted-foreground font-medium">This will be used as your project thumbnail</span>
-                            </div>
-                          </div>
-                        ) : videoMetadata ? (
-                          <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl border border-yellow-200 dark:border-yellow-800 shadow-sm">
-                            <div className="flex-shrink-0">
-                              <IconVideo className="h-8 w-8 text-yellow-600 dark:text-yellow-500" />
-                            </div>
-                            <div className="flex-1 text-center sm:text-left">
-                              <p className="font-semibold text-base text-yellow-700 dark:text-yellow-400">
-                                Thumbnail generation skipped
-                              </p>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                A thumbnail will be generated during processing
-                              </p>
+                              <span className="text-base text-muted-foreground font-medium">Natural thumbnail extracted from video</span>
                             </div>
                           </div>
                         ) : null}
