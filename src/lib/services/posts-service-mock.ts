@@ -44,10 +44,26 @@ export class MockPostsGenerator {
         key_message: 'Complete breakdown of the topic',
         hook: '🧵 Thread: Everything you need to know about this',
         prompt: 'Professional thread visuals with consistent branding'
+      },
+      reel: {
+        title: `Quick Tips from ${projectTitle}`,
+        description: 'Short-form vertical video with quick tips',
+        visual_elements: ['Opening hook', 'Tip 1', 'Tip 2', 'Tip 3', 'Call to action'],
+        key_message: 'Quick valuable tips in under 60 seconds',
+        hook: '⚡ Watch this before you scroll!',
+        prompt: 'Dynamic, fast-paced reel with trending audio'
+      },
+      story: {
+        title: `Behind the Scenes: ${projectTitle}`,
+        description: '24-hour story content with behind-the-scenes',
+        visual_elements: ['Story slide 1', 'Poll/Question', 'Story slide 2', 'Swipe up CTA'],
+        key_message: 'Exclusive behind-the-scenes content',
+        hook: '👀 Exclusive look inside...',
+        prompt: 'Casual, authentic story slides with interactive elements'
       }
     }
     
-    return mockIdeas[contentType] || mockIdeas.single
+    return mockIdeas[contentType as keyof typeof mockIdeas] || mockIdeas.single
   }
 
   static generateMockPlatformCopy(params: {
@@ -83,6 +99,7 @@ export class MockPostsGenerator {
       youtube: {
         caption: '',
         hashtags: [],
+        cta: undefined,
         title: contentIdea.title,
         description: `${contentIdea.description}\n\nIn this video, we explore ${contentIdea.key_message}`
       },

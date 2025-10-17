@@ -98,7 +98,7 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 
 interface ContentItem {
   id: string
-  type: 'clip' | 'blog' | 'image' | 'social' | 'caption' | 'thread' | 'quote'
+  type: 'clip' | 'blog' | 'image' | 'social' | 'caption' | 'thread' | 'quote' | 'longform'
   title: string
   description?: string
   content?: string
@@ -122,6 +122,7 @@ interface ContentItem {
   thread?: string[]
   quoteText?: string
   quoteAuthor?: string
+  hasSubtitles?: boolean
 }
 
 interface EnhancedPublishingWorkflowV3Props {

@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getOpenAI } from '@/lib/openai'
 import { AIImageService } from '@/lib/ai-image-service'
+import { MockPostsGenerator } from './posts-service-mock'
 
 export type PostContentType = 'carousel' | 'quote' | 'single' | 'thread' | 'reel' | 'story'
 export type Platform = 'instagram' | 'twitter' | 'linkedin' | 'facebook' | 'youtube' | 'tiktok'
@@ -511,7 +512,9 @@ Return a JSON object with:
     contentType: PostContentType
     additionalContext?: string
   }) {
+    const { suggestionId, contentIdea, platforms, contentType, additionalContext } = params
     const adminSupabase = supabaseAdmin
+    const openai = getOpenAI()
 
     const platformLimits = {
       instagram: { caption: 2200, hashtags: 30 },
@@ -547,6 +550,20 @@ Return JSON:
 }`
 
       try {
+        let copy: PlatformCopy
+        
+        // Check if we should use AI or mock data
+        if (process.env.OPENAI_API_KEY) {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+            max_tokens: 500
+          })
 
           const response = completion.choices[0].message.content
           if (response) {
@@ -562,24 +579,23 @@ Return JSON:
         
         copyVariants[platform] = copy
 
-          // Store in database
-          await adminSupabase
-            .from('post_copy')
-            .insert({
-              suggestion_id: suggestionId,
-              platform,
-              caption: copy.caption,
-              hashtags: copy.hashtags,
-              cta: copy.cta,
-              title: copy.title,
-              description: copy.description,
-              total_length: copy.caption.length + copy.hashtags.join(' ').length
-            })
-        }
+        // Store in database
+        await adminSupabase
+          .from('post_copy')
+          .insert({
+            suggestion_id: suggestionId,
+            platform,
+            caption: copy.caption,
+            hashtags: copy.hashtags,
+            cta: copy.cta,
+            title: copy.title,
+            description: copy.description,
+            total_length: copy.caption.length + copy.hashtags.join(' ').length
+          })
       } catch (error) {
         console.error(`Failed to generate ${platform} copy:`, error)
         // Use mock data as fallback
-        const mockCopy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType })
+        const mockCopy: PlatformCopy = MockPostsGenerator.generateMockPlatformCopy({ contentIdea, platform, contentType }) as PlatformCopy
         copyVariants[platform] = mockCopy
         
         // Still try to store in database

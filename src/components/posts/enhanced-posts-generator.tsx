@@ -491,6 +491,23 @@ export function EnhancedPostsGenerator({
     setShowGenerateDialog(false)
 
     try {
+      const response = await fetch('/api/posts/generate-smart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: projectId,
+          projectTitle: projectTitle,
+          contentAnalysis: contentAnalysis,
+          transcript: transcript,
+          settings: {
+            platforms: selectedPlatforms,
+            contentTypes: selectedContentTypes,
+            numberOfSuggestions: 5,
+            usePersona: !!selectedPersonaForGeneration,
+            selectedPersonaId: selectedPersonaForGeneration
+          }
+        })
+      })
 
       const data = await response.json()
 

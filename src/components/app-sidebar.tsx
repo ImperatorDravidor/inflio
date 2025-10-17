@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sidebar"
 import { InflioLogo } from "@/components/inflio-logo"
 import { Progress } from "@/components/ui/progress"
+import { GlobalPersonaSelector } from "@/components/global-persona-selector"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { ProjectService, UsageService } from "@/lib/services"
@@ -287,7 +288,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenuButton asChild className="h-10 px-3 rounded-xl hover:bg-sidebar-accent/60 transition-colors">
                 <Link href="/docs" className="flex items-center">
                   <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-sidebar-accent/50 mr-3">
-                    <IconHelp className="h-4 w-4" />
+                    <IconHelpCircle className="h-4 w-4" />
                   </div>
                   <span className="text-sm font-medium">Help & Docs</span>
                 </Link>

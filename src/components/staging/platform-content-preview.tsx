@@ -553,13 +553,10 @@ export function PlatformContentPreview({ content, platform, scheduledDate }: Pla
       case 'tiktok':
         return renderTikTokPreview()
       case 'youtube':
-      case 'youtube-short':
-      case 'youtube-shorts':
         return renderYouTubePreview()
       case 'linkedin':
         return renderLinkedInPreview()
       case 'x':
-      case 'twitter':
         return renderXPreview()
       case 'facebook':
         return renderFacebookPreview()

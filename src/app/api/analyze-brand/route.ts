@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
-import pdf from 'pdf-parse'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
+// Dynamic import to avoid build issues
+// import pdf from 'pdf-parse'
+// import mammoth from 'mammoth'
+// import * as XLSX from 'xlsx'
 import { z } from 'zod'
 
 // Initialize OpenAI with GPT-5 [[memory:4799270]]
@@ -77,19 +78,22 @@ export async function POST(request: NextRequest) {
     try {
       // Handle PDFs
       if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-        const data = await pdf(Buffer.from(buffer))
+        const pdf = await import('pdf-parse')
+        const data = await pdf.default(Buffer.from(buffer))
         textContent = data.text
       }
       // Handle Word documents (.docx)
       else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
                fileName.endsWith('.docx')) {
+        const mammoth = await import('mammoth')
         const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
         textContent = result.value
       }
       // Handle older Word documents (.doc)
       else if (fileType === 'application/msword' || fileName.endsWith('.doc')) {
         try {
-          const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
+          const mammoth = await import('mammoth')
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
           textContent = result.value
         } catch {
           // Fallback for .doc files that mammoth can't handle
@@ -100,6 +104,7 @@ export async function POST(request: NextRequest) {
       else if (fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
                fileType === 'application/vnd.ms-excel' ||
                fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'buffer' })
         const texts: string[] = []
         
