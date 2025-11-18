@@ -1,70 +1,68 @@
 import { inngest } from './client'
-import { KlapAPIService } from '@/lib/klap-api'
+import { SubmagicAPIService } from '@/lib/submagic-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
- * Process Klap video clips with proper async handling
+ * Process video clips with Submagic AI
  */
-export const processKlapVideo = inngest.createFunction(
+export const processSubmagicVideo = inngest.createFunction(
   {
-    id: 'process-klap-video',
-    name: 'Process Klap Video',
+    id: 'process-submagic-video',
+    name: 'Process Submagic Video',
     throttle: {
       limit: 5,
       period: '1m',
       key: 'event.data.userId'
     }
   },
-  { event: 'klap/video.process' },
+  { event: 'submagic/video.process' },
   async ({ event, step }) => {
-    const { projectId, videoUrl, userId } = event.data
+    const { projectId, videoUrl, userId, title } = event.data
 
-    // Step 1: Create Klap task
-    const task = await step.run('create-klap-task', async () => {
-      console.log('[Inngest] Creating Klap task for project:', projectId)
-      const klapTask = await KlapAPIService.createVideoTask(videoUrl)
+    // Step 1: Create Submagic project
+    const project = await step.run('create-submagic-project', async () => {
+      console.log('[Inngest] Creating Submagic project for:', projectId)
       
-      // Update project with task ID
+      const submagicProject = await SubmagicAPIService.createProject({
+        title: title || `Project ${projectId}`,
+        videoUrl,
+        language: 'en',
+        generateClips: true,
+        maxClips: 10,
+        clipDuration: 30,
+        autoCaption: true
+      })
+      
+      // Update project with Submagic project ID
       await ProjectService.updateProject(projectId, {
-        klap_project_id: klapTask.id
+        submagic_project_id: submagicProject.id
       })
       
       // Update task progress
       await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
       
-      return klapTask
+      return submagicProject
     })
 
-    // Step 2: Poll for completion (Inngest handles the waiting)
-    const result = await step.run('wait-for-klap-completion', async () => {
-      console.log('[Inngest] Polling Klap task:', task.id)
+    // Step 2: Poll for completion
+    const result = await step.run('wait-for-submagic-completion', async () => {
+      console.log('[Inngest] Polling Submagic project:', project.id)
       
-      // Poll with exponential backoff
       let attempts = 0
       const maxAttempts = 180 // 30 minutes max
+      const pollInterval = 10 // seconds
       
       while (attempts < maxAttempts) {
         try {
-          const response = await fetch(`https://api.klap.app/v2/tasks/${task.id}`, {
-            headers: {
-              'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-              'Content-Type': 'application/json',
-            }
-          })
+          const status = await SubmagicAPIService.getProjectStatus(project.id)
           
-          if (!response.ok) {
-            throw new Error(`Klap API error: ${response.status}`)
+          if (status.status === 'error') {
+            throw new Error(`Submagic processing failed: ${status.error || 'Unknown error'}`)
           }
           
-          const status = await response.json()
-          
-          if (status.status === 'failed' || status.status === 'error') {
-            throw new Error(`Klap processing failed: ${status.error || 'Unknown error'}`)
-          }
-          
-          if (status.status === 'ready' && status.output_id) {
-            console.log('[Inngest] Klap task completed! Output ID:', status.output_id)
+          if (status.status === 'ready') {
+            console.log('[Inngest] Submagic project completed!')
             return status
           }
           
@@ -72,53 +70,46 @@ export const processKlapVideo = inngest.createFunction(
           const progress = Math.min(10 + Math.floor((attempts / maxAttempts) * 80), 90)
           await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
           
-          // Wait before next attempt (10 seconds)
-          await step.sleep('poll-wait', '10s')
+          // Wait before next attempt
+          await step.sleep('poll-wait', `${pollInterval}s`)
           attempts++
         } catch (error) {
-          console.error('[Inngest] Error polling Klap:', error)
-          if (attempts >= 3) throw error // Fail after 3 consecutive errors
+          console.error('[Inngest] Error polling Submagic:', error)
+          // Fail after 3 consecutive errors in a row
+          if (attempts >= 3) throw error
           attempts++
           await step.sleep('error-wait', '30s')
         }
       }
       
-      throw new Error('Klap processing timeout after 30 minutes')
+      throw new Error('Submagic processing timeout after 30 minutes')
     })
 
     // Step 3: Process and store clips
     await step.run('process-and-store-clips', async () => {
-      console.log('[Inngest] Processing clips from folder:', result.output_id)
+      console.log('[Inngest] Processing clips from Submagic project:', result.id)
       
-      // Get clips from Klap
-      const klapClips = await KlapAPIService.getClipsFromFolder(result.output_id)
+      // Get clips from Submagic
+      const submagicClips = await SubmagicAPIService.getProjectClips(result.id)
       const processedClips = []
       
-      for (let i = 0; i < klapClips.length; i++) {
-        const klapClip = klapClips[i]
-        const klapId = typeof klapClip === 'string' ? klapClip : klapClip.id
+      for (let i = 0; i < submagicClips.length; i++) {
+        const submagicClip = submagicClips[i]
         
-        if (!klapId) continue
+        if (!submagicClip.id) continue
         
         try {
-          // Get clip details
-          const details = await KlapAPIService.getClipDetails(result.output_id, klapId).catch(() => ({}))
+          // Get the video URL (Submagic provides this directly)
+          let videoUrl = submagicClip.videoUrl
           
-          // Export clip to get URL
-          const exported = await KlapAPIService.exportMultipleClips(result.output_id, [klapId])
-          if (!exported[0]?.url) {
-            console.error(`Failed to export clip ${klapId}`)
-            continue
-          }
-          
-          // Download and store if not skipping
-          let videoUrl = exported[0].url
-          if (!process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true') {
+          // Optionally download and store in Supabase
+          // Can be disabled with SKIP_VIDEO_REUPLOAD env var
+          if (!process.env.SKIP_VIDEO_REUPLOAD || process.env.SKIP_VIDEO_REUPLOAD !== 'true') {
             try {
-              const response = await fetch(exported[0].url)
+              const response = await fetch(submagicClip.videoUrl)
               const buffer = await response.arrayBuffer()
               
-              const fileName = `clip_${i}_${klapId}.mp4`
+              const fileName = `clip_${i}_${submagicClip.id}.mp4`
               const filePath = `${projectId}/clips/${fileName}`
               
               const { error: uploadError } = await supabaseAdmin.storage
@@ -137,37 +128,39 @@ export const processKlapVideo = inngest.createFunction(
               }
             } catch (error) {
               console.error(`[Inngest] Failed to download/store clip ${i}:`, error)
+              // Continue with Submagic URL if storage fails
             }
           }
           
           // Create clip object with all metadata
+          // Normalize Submagic data to our internal format
           const clip = {
             id: `${projectId}_clip_${i}`,
-            title: details.title || details.name || `Clip ${i + 1}`,
-            description: details.virality_score_explanation || details.description || '',
-            startTime: details.start_time || 0,
-            endTime: details.end_time || 0,
-            duration: details.duration || 30,
-            thumbnail: details.thumbnail || `https://klap.app/player/${klapId}/thumbnail`,
-            tags: details.tags || [],
-            score: typeof details.virality_score === 'number' ? details.virality_score / 100 : 0.5,
+            title: submagicClip.title || `Clip ${i + 1}`,
+            description: submagicClip.description || '',
+            startTime: submagicClip.startTime || 0,
+            endTime: submagicClip.endTime || 0,
+            duration: submagicClip.duration || 30,
+            thumbnail: submagicClip.thumbnailUrl || videoUrl,
+            tags: [],
+            score: submagicClip.viralityScore || 0.5,
             type: 'highlight' as const,
-            klapProjectId: klapId,
-            klapFolderId: result.output_id,
+            submagicProjectId: result.id,
+            submagicClipId: submagicClip.id,
             exportUrl: videoUrl,
             exported: true,
-            storedInSupabase: !process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true',
+            storedInSupabase: !process.env.SKIP_VIDEO_REUPLOAD || process.env.SKIP_VIDEO_REUPLOAD !== 'true',
             createdAt: new Date().toISOString(),
-            // Additional metadata from Klap
-            viralityExplanation: details.virality_score_explanation || details.description || '',
-            transcript: details.transcript || details.subtitle || details.text || '',
-            rawKlapData: details, // Store raw response for debugging
-            publicationCaptions: details.publication_captions || details.captions || undefined
+            // Additional metadata from Submagic
+            viralityExplanation: submagicClip.description || '',
+            transcript: submagicClip.transcript || '',
+            rawSubmagicData: submagicClip, // Store raw response for debugging
+            publicationCaptions: submagicClip.captions || undefined
           }
           
           processedClips.push(clip)
         } catch (error) {
-          console.error(`[Inngest] Failed to process clip ${klapId}:`, error)
+          console.error(`[Inngest] Failed to process clip ${submagicClip.id}:`, error)
         }
       }
       
@@ -199,37 +192,36 @@ export const processKlapVideo = inngest.createFunction(
 
 
 /**
- * Check Klap processing status (for manual polling)
+ * Check Submagic processing status (for manual polling)
  */
-export const checkKlapStatus = inngest.createFunction(
+export const checkSubmagicStatus = inngest.createFunction(
   {
-    id: 'check-klap-status',
-    name: 'Check Klap Status',
+    id: 'check-submagic-status',
+    name: 'Check Submagic Status',
   },
-  { event: 'klap/status.check' },
+  { event: 'submagic/status.check' },
   async ({ event, step }) => {
     const { projectId } = event.data
     
     const project = await ProjectService.getProject(projectId)
-    if (!project?.klap_project_id) {
+    if (!project?.submagic_project_id) {
       return { status: 'not_started' }
     }
     
     try {
-      const response = await fetch(`https://api.klap.app/v2/tasks/${project.klap_project_id}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-        }
-      })
-      
-      const status = await response.json()
+      const status = await SubmagicAPIService.getProjectStatus(project.submagic_project_id)
       return { 
         status: status.status,
         ready: status.status === 'ready',
-        outputId: status.output_id 
+        projectId: status.id 
       }
     } catch (error: any) {
       return { status: 'error', error: error?.message || 'Unknown error' }
     }
   }
-) 
+)
+
+// Keep legacy Klap function names as aliases for backward compatibility
+// These will use Submagic under the hood
+export const processKlapVideo = processSubmagicVideo
+export const checkKlapStatus = checkSubmagicStatus 

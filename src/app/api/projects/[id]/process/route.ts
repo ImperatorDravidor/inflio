@@ -71,25 +71,26 @@ export async function POST(
       promises.push(
         (async () => {
           try {
-            console.log('[Process Route] Queueing Klap job with Inngest...')
+            console.log('[Process Route] Queueing Submagic job with Inngest...')
             
-            // Send event to Inngest
+            // Send event to Inngest (using Submagic)
             await inngest.send({
-              name: 'klap/video.process',
+              name: 'submagic/video.process',
               data: {
                 projectId,
                 videoUrl: project.video_url,
-                userId
+                userId,
+                title: project.title || project.name || `Project ${projectId}`
               }
             });
             
-            console.log('[Process Route] Klap job queued successfully')
+            console.log('[Process Route] Submagic job queued successfully')
             
             // Update task progress to show it's queued
             await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
             return { type: 'clips', success: true };
           } catch (error) {
-            console.error('[Process Route] Failed to queue Klap processing:', error);
+            console.error('[Process Route] Failed to queue clips processing:', error);
             return { type: 'clips', success: false, error };
           }
         })()

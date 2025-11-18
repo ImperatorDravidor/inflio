@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { KlapAPIService } from '@/lib/klap-api'
+import { SubmagicAPIService } from '@/lib/submagic-api'
 import { ProjectService } from '@/lib/services'
 import { auth } from '@clerk/nextjs/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
 import { inngest } from '@/inngest/client'
 
 // Quick response - just queue the job
@@ -10,7 +9,8 @@ export const maxDuration = 10
 
 /**
  * POST /api/process-klap
- * Queue Klap processing job with Inngest
+ * Queue Submagic processing job with Inngest
+ * (Keeping route name for backward compatibility)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -42,13 +42,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Send event to Inngest
+    // Send event to Inngest (using Submagic event)
     await inngest.send({
-      name: 'klap/video.process',
+      name: 'submagic/video.process',
       data: {
         projectId,
         videoUrl: project.video_url,
-        userId
+        userId,
+        title: project.title || project.name || `Project ${projectId}`
       }
     })
     
@@ -57,10 +58,11 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ 
       success: true,
-      message: 'Clip generation queued successfully'
+      message: 'Clip generation queued successfully',
+      provider: 'submagic'
     })
   } catch (error) {
-    console.error('[Process Klap] Error:', error)
+    console.error('[Process Clips] Error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to queue processing' },
       { status: 500 }
@@ -94,10 +96,11 @@ export async function GET(request: NextRequest) {
       success: true,
       status: clipsTask?.status || 'idle',
       progress: clipsTask?.progress || 0,
-      clips: project.folders?.clips || []
+      clips: project.folders?.clips || [],
+      provider: 'submagic'
     })
   } catch (error) {
-    console.error('[Process Klap GET] Error:', error)
+    console.error('[Process Clips GET] Error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to check status' },
       { status: 500 }
