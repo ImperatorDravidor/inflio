@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sidebar"
 import { InflioLogo } from "@/components/inflio-logo"
 import { Progress } from "@/components/ui/progress"
+import { GlobalPersonaSelector } from "@/components/global-persona-selector"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { ProjectService, UsageService } from "@/lib/services"

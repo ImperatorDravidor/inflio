@@ -99,6 +99,7 @@ export class MockPostsGenerator {
       youtube: {
         caption: '',
         hashtags: [],
+        cta: undefined,
         title: contentIdea.title,
         description: `${contentIdea.description}\n\nIn this video, we explore ${contentIdea.key_message}`
       },
