@@ -29,7 +29,7 @@ The migration from Klap to Submagic is **complete**! Here's what was accomplishe
 2. Sign up or log in
 3. Navigate to Settings → API
 4. Generate a new API key
-5. Copy it (looks like `sm_xxxxxxxxx`)
+5. Copy it (looks like `sk-xxxxxxxxx`)
 
 ### Step 2: Set Environment Variable (2 minutes)
 
@@ -37,7 +37,7 @@ Add to your `.env.local` file:
 
 ```env
 # Submagic Configuration
-SUBMAGIC_API_KEY=sm_your_actual_api_key_here
+SUBMAGIC_API_KEY=sk-your_actual_api_key_here
 SUBMAGIC_API_URL=https://api.submagic.co/v1
 
 # Optional: Set to true to use Submagic URLs directly (faster)
@@ -111,7 +111,7 @@ START_HERE.md (this file)          ← Quick start
 
 ### Environment Variables
 ```env
-SUBMAGIC_API_KEY=sm_xxxxx          # REQUIRED
+SUBMAGIC_API_KEY=sk-xxxxx          # REQUIRED
 SUBMAGIC_API_URL=https://api.submagic.co/v1  # Optional
 SKIP_VIDEO_REUPLOAD=false          # Optional
 ```

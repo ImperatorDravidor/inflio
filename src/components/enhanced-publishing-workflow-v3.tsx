@@ -123,7 +123,6 @@ interface ContentItem {
   thread?: string[]
   quoteText?: string
   quoteAuthor?: string
-  hasSubtitles?: boolean
 }
 
 interface EnhancedPublishingWorkflowV3Props {

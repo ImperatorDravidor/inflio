@@ -14,7 +14,7 @@ This guide will help you set up the Submagic integration for clip generation.
 1. Go to [Submagic](https://www.submagic.co/) and sign up/sign in
 2. Navigate to **Settings** → **API** (or **Developer**)
 3. Click **Generate API Key**
-4. Copy the API key (it will look like `sm_xxxxxxxxxxxxx`)
+4. Copy the API key (it will look like `sk-xxxxxxxxxxxxx`)
 
 ## Step 2: Configure Environment Variables
 
@@ -22,7 +22,7 @@ Add this to your `.env.local` file:
 
 ```env
 # Submagic Configuration
-SUBMAGIC_API_KEY=sm_your_actual_api_key_here
+SUBMAGIC_API_KEY=sk-your_actual_api_key_here
 SUBMAGIC_API_URL=https://api.submagic.co/v1
 
 # Optional: Skip video reupload to Supabase (uses Submagic URLs directly)
@@ -211,7 +211,7 @@ For a 2-minute video:
 
 1. **Set production environment variables** in your hosting provider:
    ```env
-   SUBMAGIC_API_KEY=sm_your_production_key
+   SUBMAGIC_API_KEY=sk-your_production_key
    SUBMAGIC_API_URL=https://api.submagic.co/v1
    ```
 

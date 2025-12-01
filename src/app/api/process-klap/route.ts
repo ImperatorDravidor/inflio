@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         projectId,
         videoUrl: project.video_url,
         userId,
-        title: project.title || project.name || `Project ${projectId}`
+        title: project.title || `Project ${projectId}`
       }
     })
     

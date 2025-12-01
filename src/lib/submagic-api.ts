@@ -7,10 +7,29 @@ import { fetchWithRetry } from './retry-utils'
 interface SubmagicProject {
   id: string
   title: string
-  status: 'processing' | 'ready' | 'error' | 'pending'
-  videoUrl?: string
-  outputUrl?: string
-  error?: string
+  status: 'processing' | 'transcribing' | 'exporting' | 'completed' | 'failed'
+  language?: string
+  webhookUrl?: string
+  templateName?: string
+  userThemeId?: string
+  downloadUrl?: string
+  directUrl?: string
+  previewUrl?: string
+  transcriptionStatus?: 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  failureReason?: string
+  videoMetaData?: {
+    width: number
+    height: number
+    duration: number
+    fps?: number
+  }
+  words?: Array<{
+    id: string
+    text: string
+    type: 'word' | 'silence' | 'punctuation'
+    startTime: number
+    endTime: number
+  }>
   createdAt?: string
   updatedAt?: string
 }
@@ -36,11 +55,42 @@ interface CreateProjectRequest {
   videoUrl: string
   templateName?: string
   webhookUrl?: string
-  // Additional options for clip generation
-  generateClips?: boolean
-  maxClips?: number
-  clipDuration?: number
-  autoCaption?: boolean
+}
+
+interface CreateMagicClipsRequest {
+  title: string
+  language: string
+  youtubeUrl: string
+  webhookUrl?: string
+  userThemeId?: string
+  minClipLength?: number  // 15-300 seconds
+  maxClipLength?: number  // 15-300 seconds
+}
+
+interface MagicClipsProject {
+  id: string
+  title: string
+  language: string
+  status: 'processing'
+  webhookUrl?: string
+  createdAt: string
+}
+
+interface MagicClip {
+  id: string
+  title: string
+  duration: number
+  viralityScores: {
+    total: number
+    shareability: number
+    hook_strength: number
+    story_quality: number
+    emotional_impact: number
+  }
+  status: 'processing' | 'completed' | 'failed'
+  previewUrl?: string
+  downloadUrl?: string
+  directUrl?: string
 }
 
 interface SubmagicConfig {
@@ -93,7 +143,7 @@ export class SubmagicAPIService {
         {
           ...options,
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
+            'x-api-key': apiKey,
             'Content-Type': 'application/json',
             'User-Agent': `Inflio/1.0 (${process.env.NODE_ENV || 'development'})`,
             ...options.headers,
@@ -168,7 +218,7 @@ export class SubmagicAPIService {
    * Create a new video processing project
    */
   static async createProject(params: CreateProjectRequest): Promise<SubmagicProject> {
-    logger.info('[Submagic] Creating project', {
+    logger.info('[Submagic] Creating Magic Clips project', {
       action: 'create_project',
       metadata: { 
         title: params.title,
@@ -180,21 +230,17 @@ export class SubmagicAPIService {
     try {
       const { webhookUrl } = this.getConfig()
       
+      // Submagic Magic Clips API expects youtubeUrl, not videoUrl
+      // For non-YouTube videos, we may need to use a different approach
       const payload: any = {
         title: params.title,
         language: params.language || 'en',
-        videoUrl: params.videoUrl,
+        videoUrl: params.videoUrl, // Direct video URL from Supabase
       }
 
-      // Add optional parameters
+      // Add optional parameters if provided
       if (params.templateName) payload.templateName = params.templateName
       if (webhookUrl || params.webhookUrl) payload.webhookUrl = params.webhookUrl || webhookUrl
-      
-      // Submagic-specific options for clip generation
-      if (params.generateClips !== undefined) payload.generateClips = params.generateClips
-      if (params.maxClips) payload.maxClips = params.maxClips
-      if (params.clipDuration) payload.clipDuration = params.clipDuration
-      if (params.autoCaption !== undefined) payload.autoCaption = params.autoCaption
 
       const project = await this.request<SubmagicProject>('/projects', {
         method: 'POST',
@@ -213,6 +259,57 @@ export class SubmagicAPIService {
         metadata: { 
           error: error instanceof Error ? error.message : 'Unknown error',
           videoUrl: params.videoUrl
+        }
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Create Magic Clips project (generates multiple short clips from YouTube video)
+   */
+  static async createMagicClips(params: CreateMagicClipsRequest): Promise<MagicClipsProject> {
+    logger.info('[Submagic] Creating Magic Clips project', {
+      action: 'create_magic_clips',
+      metadata: { 
+        title: params.title,
+        youtubeUrl: params.youtubeUrl,
+        language: params.language
+      }
+    })
+
+    try {
+      const { webhookUrl: defaultWebhookUrl } = this.getConfig()
+      
+      const payload: any = {
+        title: params.title,
+        language: params.language,
+        youtubeUrl: params.youtubeUrl,
+        webhookUrl: params.webhookUrl || defaultWebhookUrl,
+      }
+
+      // Add optional parameters
+      if (params.userThemeId) payload.userThemeId = params.userThemeId
+      if (params.minClipLength) payload.minClipLength = params.minClipLength
+      if (params.maxClipLength) payload.maxClipLength = params.maxClipLength
+
+      const project = await this.request<MagicClipsProject>('/projects/magic-clips', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+
+      logger.info('[Submagic] Magic Clips project created successfully', {
+        action: 'magic_clips_created',
+        metadata: { projectId: project.id }
+      })
+
+      return project
+    } catch (error) {
+      logger.error('[Submagic] Failed to create Magic Clips project', {
+        action: 'create_magic_clips_failed',
+        metadata: { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          youtubeUrl: params.youtubeUrl
         }
       })
       throw error
@@ -263,7 +360,7 @@ export class SubmagicAPIService {
       try {
         const project = await this.getProjectStatus(projectId)
         
-        if (project.status === 'ready') {
+        if (project.status === 'completed') {
           logger.info('[Submagic] Project processing complete', {
             action: 'project_ready',
             metadata: { 
@@ -274,8 +371,8 @@ export class SubmagicAPIService {
           return project
         }
         
-        if (project.status === 'error') {
-          throw new Error(`Submagic processing failed: ${project.error || 'Unknown error'}`)
+        if (project.status === 'failed') {
+          throw new Error(`Submagic processing failed: ${project.failureReason || 'Unknown error'}`)
         }
 
         // Reset consecutive errors on successful poll
@@ -392,14 +489,15 @@ export class SubmagicAPIService {
   }
 
   /**
-   * High-level orchestrator for the entire Submagic video processing flow
+   * High-level orchestrator for regular Submagic project (captions only)
+   * For clip generation, use createMagicClips() instead
    */
   static async processVideo(
     videoUrl: string,
     title: string,
     options: Partial<CreateProjectRequest> = {}
-  ): Promise<{ clips: SubmagicClip[]; projectId: string }> {
-    logger.info('[Submagic] Starting video processing', {
+  ): Promise<{ project: SubmagicProject; projectId: string }> {
+    logger.info('[Submagic] Starting video processing (captions)', {
       action: 'process_video',
       metadata: { title, videoUrl }
     })
@@ -410,59 +508,20 @@ export class SubmagicAPIService {
         title,
         videoUrl,
         language: options.language || 'en',
-        generateClips: true,
-        maxClips: options.maxClips || 10,
-        clipDuration: options.clipDuration || 30,
-        autoCaption: options.autoCaption !== false,
         ...options
       })
       
       // Step 2: Poll until ready
       const completedProject = await this.pollProjectUntilReady(project.id)
       
-      // Step 3: Get clips with retry logic
-      let clips: SubmagicClip[] = []
-      let retryCount = 0
-      const maxRetries = 10
-      
-      while (retryCount < maxRetries) {
-        try {
-          clips = await this.getProjectClips(completedProject.id)
-          if (clips && clips.length > 0) {
-            break
-          }
-        } catch (error) {
-          logger.warn(`[Submagic] Error fetching clips (attempt ${retryCount + 1}/${maxRetries})`, {
-            action: 'fetch_clips_retry',
-            metadata: { 
-              projectId: completedProject.id,
-              error: error instanceof Error ? error.message : 'Unknown error'
-            }
-          })
-        }
-        
-        retryCount++
-        if (retryCount < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 15000))
-        }
-      }
-      
-      if (clips.length === 0) {
-        logger.warn('[Submagic] No clips generated', {
-          action: 'no_clips_generated',
-          metadata: { projectId: completedProject.id }
-        })
-      }
-      
       logger.info('[Submagic] Video processing complete', {
         action: 'process_video_complete',
         metadata: { 
-          projectId: completedProject.id,
-          clipCount: clips.length
+          projectId: completedProject.id
         }
       })
       
-      return { clips, projectId: completedProject.id }
+      return { project: completedProject, projectId: completedProject.id }
     } catch (error) {
       logger.error('[Submagic] Video processing failed', {
         action: 'process_video_failed',

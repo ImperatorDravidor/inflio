@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "mcp__supabase__list_organizations",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__execute_sql",
+      "Bash(node scripts/setup-youtube-oauth.js:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

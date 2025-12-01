@@ -130,7 +130,7 @@ interface Clip {
 
 ### Added
 ```env
-SUBMAGIC_API_KEY=sm_xxxxx           # Required
+SUBMAGIC_API_KEY=sk-xxxxx           # Required
 SUBMAGIC_API_URL=https://api.submagic.co/v1  # Optional, has default
 SUBMAGIC_WEBHOOK_URL=...            # Optional
 SKIP_VIDEO_REUPLOAD=false           # Optional
