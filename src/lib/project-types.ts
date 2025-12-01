@@ -218,8 +218,11 @@ export interface Project {
   status: 'draft' | 'processing' | 'ready' | 'published'
   tags: string[]
   user_id?: string
-  klap_project_id?: string // Klap API project ID for tracking
-  klap_folder_id?: string // Klap API folder ID for exports
+  klap_project_id?: string // Klap API project ID for tracking (deprecated)
+  klap_folder_id?: string // Klap API folder ID for exports (deprecated)
+  submagic_project_id?: string // Submagic Magic Clips project ID for tracking
+  youtube_video_id?: string // YouTube video ID (for Magic Clips integration)
+  youtube_video_url?: string // Full YouTube video URL
 }
 
 export interface ProjectSettings {

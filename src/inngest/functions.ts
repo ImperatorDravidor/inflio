@@ -1,235 +1,140 @@
 import { inngest } from './client'
-import { KlapAPIService } from '@/lib/klap-api'
+import { SubmagicAPIService } from '@/lib/submagic-api'
+import { YouTubeUploadService } from '@/lib/youtube-upload-service'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
- * Process Klap video clips with proper async handling
+ * Process video clips with Submagic Magic Clips (via YouTube)
+ * Flow: Upload to YouTube → Generate Magic Clips → Webhook receives results
  */
-export const processKlapVideo = inngest.createFunction(
+export const processSubmagicVideo = inngest.createFunction(
   {
-    id: 'process-klap-video',
-    name: 'Process Klap Video',
+    id: 'process-submagic-video',
+    name: 'Process Submagic Video',
     throttle: {
       limit: 5,
       period: '1m',
       key: 'event.data.userId'
     }
   },
-  { event: 'klap/video.process' },
+  { event: 'submagic/video.process' },
   async ({ event, step }) => {
-    const { projectId, videoUrl, userId } = event.data
+    const { projectId, videoUrl, userId, title } = event.data
 
-    // Step 1: Create Klap task
-    const task = await step.run('create-klap-task', async () => {
-      console.log('[Inngest] Creating Klap task for project:', projectId)
-      const klapTask = await KlapAPIService.createVideoTask(videoUrl)
-      
-      // Update project with task ID
-      await ProjectService.updateProject(projectId, {
-        klap_project_id: klapTask.id
+    // Step 1: Upload video to YouTube
+    let youtubeUrl
+    try {
+      const uploadResult = await step.run('upload-to-youtube', async () => {
+        console.log('[Inngest] Uploading video to YouTube for:', projectId)
+        
+        await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
+        
+        const result = await YouTubeUploadService.uploadVideo({
+          videoUrl,
+          title: title || `Project ${projectId}`,
+          description: 'Uploaded for AI clip generation with Submagic',
+          privacy: 'unlisted'
+        })
+        
+        console.log('[Inngest] Video uploaded to YouTube:', result.videoUrl)
+        await ProjectService.updateTaskProgress(projectId, 'clips', 15, 'processing')
+        
+        return result
       })
       
-      // Update task progress
-      await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
-      
-      return klapTask
-    })
+      youtubeUrl = uploadResult.videoUrl
+    } catch (error) {
+      // Mark task as failed so polling stops
+      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
+      console.error('[Inngest] Failed to upload to YouTube:', error)
+      throw error
+    }
 
-    // Step 2: Poll for completion (Inngest handles the waiting)
-    const result = await step.run('wait-for-klap-completion', async () => {
-      console.log('[Inngest] Polling Klap task:', task.id)
-      
-      // Poll with exponential backoff
-      let attempts = 0
-      const maxAttempts = 180 // 30 minutes max
-      
-      while (attempts < maxAttempts) {
-        try {
-          const response = await fetch(`https://api.klap.app/v2/tasks/${task.id}`, {
-            headers: {
-              'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-              'Content-Type': 'application/json',
-            }
-          })
-          
-          if (!response.ok) {
-            throw new Error(`Klap API error: ${response.status}`)
-          }
-          
-          const status = await response.json()
-          
-          if (status.status === 'failed' || status.status === 'error') {
-            throw new Error(`Klap processing failed: ${status.error || 'Unknown error'}`)
-          }
-          
-          if (status.status === 'ready' && status.output_id) {
-            console.log('[Inngest] Klap task completed! Output ID:', status.output_id)
-            return status
-          }
-          
-          // Update progress smoothly
-          const progress = Math.min(10 + Math.floor((attempts / maxAttempts) * 80), 90)
-          await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
-          
-          // Wait before next attempt (10 seconds)
-          await step.sleep('poll-wait', '10s')
-          attempts++
-        } catch (error) {
-          console.error('[Inngest] Error polling Klap:', error)
-          if (attempts >= 3) throw error // Fail after 3 consecutive errors
-          attempts++
-          await step.sleep('error-wait', '30s')
-        }
-      }
-      
-      throw new Error('Klap processing timeout after 30 minutes')
-    })
-
-    // Step 3: Process and store clips
-    await step.run('process-and-store-clips', async () => {
-      console.log('[Inngest] Processing clips from folder:', result.output_id)
-      
-      // Get clips from Klap
-      const klapClips = await KlapAPIService.getClipsFromFolder(result.output_id)
-      const processedClips = []
-      
-      for (let i = 0; i < klapClips.length; i++) {
-        const klapClip = klapClips[i]
-        const klapId = typeof klapClip === 'string' ? klapClip : klapClip.id
+    // Step 2: Create Submagic Magic Clips project
+    try {
+      await step.run('create-magic-clips-project', async () => {
+        console.log('[Inngest] Creating Submagic Magic Clips project for:', projectId)
         
-        if (!klapId) continue
+        const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/submagic`
         
-        try {
-          // Get clip details
-          const details = await KlapAPIService.getClipDetails(result.output_id, klapId).catch(() => ({}))
-          
-          // Export clip to get URL
-          const exported = await KlapAPIService.exportMultipleClips(result.output_id, [klapId])
-          if (!exported[0]?.url) {
-            console.error(`Failed to export clip ${klapId}`)
-            continue
-          }
-          
-          // Download and store if not skipping
-          let videoUrl = exported[0].url
-          if (!process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true') {
-            try {
-              const response = await fetch(exported[0].url)
-              const buffer = await response.arrayBuffer()
-              
-              const fileName = `clip_${i}_${klapId}.mp4`
-              const filePath = `${projectId}/clips/${fileName}`
-              
-              const { error: uploadError } = await supabaseAdmin.storage
-                .from('videos')
-                .upload(filePath, buffer, {
-                  contentType: 'video/mp4',
-                  upsert: true
-                })
-              
-              if (!uploadError) {
-                const { data: urlData } = supabaseAdmin.storage
-                  .from('videos')
-                  .getPublicUrl(filePath)
-                videoUrl = urlData.publicUrl
-                console.log(`[Inngest] Clip stored at: ${videoUrl}`)
-              }
-            } catch (error) {
-              console.error(`[Inngest] Failed to download/store clip ${i}:`, error)
-            }
-          }
-          
-          // Create clip object with all metadata
-          const clip = {
-            id: `${projectId}_clip_${i}`,
-            title: details.title || details.name || `Clip ${i + 1}`,
-            description: details.virality_score_explanation || details.description || '',
-            startTime: details.start_time || 0,
-            endTime: details.end_time || 0,
-            duration: details.duration || 30,
-            thumbnail: details.thumbnail || `https://klap.app/player/${klapId}/thumbnail`,
-            tags: details.tags || [],
-            score: typeof details.virality_score === 'number' ? details.virality_score / 100 : 0.5,
-            type: 'highlight' as const,
-            klapProjectId: klapId,
-            klapFolderId: result.output_id,
-            exportUrl: videoUrl,
-            exported: true,
-            storedInSupabase: !process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true',
-            createdAt: new Date().toISOString(),
-            // Additional metadata from Klap
-            viralityExplanation: details.virality_score_explanation || details.description || '',
-            transcript: details.transcript || details.subtitle || details.text || '',
-            rawKlapData: details, // Store raw response for debugging
-            publicationCaptions: details.publication_captions || details.captions || undefined
-          }
-          
-          processedClips.push(clip)
-        } catch (error) {
-          console.error(`[Inngest] Failed to process clip ${klapId}:`, error)
-        }
-      }
-      
-      // Update project with clips
-      await ProjectService.updateProject(projectId, {
-        folders: {
-          clips: processedClips,
-          images: [],
-          social: [],
-          blog: []
-        }
+        const magicClipsProject = await SubmagicAPIService.createMagicClips({
+          title: title || `Project ${projectId}`,
+          youtubeUrl,
+          language: 'en',
+          webhookUrl,
+          minClipLength: 15,  // 15 seconds minimum
+          maxClipLength: 60,  // 60 seconds maximum
+        })
+        
+        // Update project with Submagic project ID
+        await ProjectService.updateProject(projectId, {
+          submagic_project_id: magicClipsProject.id
+        })
+        
+        // Update task progress
+        await ProjectService.updateTaskProgress(projectId, 'clips', 25, 'processing')
+        
+        console.log('[Inngest] Magic Clips project created:', magicClipsProject.id)
+        console.log('[Inngest] Webhook will be called at:', webhookUrl)
+        console.log('[Inngest] Processing will continue in background. Clips will appear when ready.')
+        
+        return magicClipsProject
       })
-      
-      // Mark task as complete
-      await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-      
-      console.log(`[Inngest] Successfully processed ${processedClips.length} clips for project ${projectId}`)
-      
-      return { clipCount: processedClips.length }
-    })
+    } catch (error) {
+      // Mark task as failed so polling stops
+      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
+      console.error('[Inngest] Failed to create Magic Clips project:', error)
+      throw error
+    }
 
-    // Step 4: Send notification (optional)
-    await step.run('send-notification', async () => {
-      // TODO: Implement email/push notification
-      console.log(`[Inngest] Clips ready for user ${userId}, project ${projectId}`)
-    })
+    // Note: Clips processing happens in background
+    // Webhook will be called when complete at /api/webhooks/submagic
+    // The webhook handler will update the project with clips
+    
+    console.log('[Inngest] Magic Clips job submitted successfully')
+    console.log('[Inngest] Clips will be processed by Submagic and delivered via webhook')
+    
+    return {
+      success: true,
+      message: 'Magic Clips processing started. Results will be delivered via webhook.',
+      youtubeUrl
+    }
   }
 )
 
 
 /**
- * Check Klap processing status (for manual polling)
+ * Check Submagic processing status (for manual polling)
  */
-export const checkKlapStatus = inngest.createFunction(
+export const checkSubmagicStatus = inngest.createFunction(
   {
-    id: 'check-klap-status',
-    name: 'Check Klap Status',
+    id: 'check-submagic-status',
+    name: 'Check Submagic Status',
   },
-  { event: 'klap/status.check' },
+  { event: 'submagic/status.check' },
   async ({ event, step }) => {
     const { projectId } = event.data
     
     const project = await ProjectService.getProject(projectId)
-    if (!project?.klap_project_id) {
+    if (!project?.submagic_project_id) {
       return { status: 'not_started' }
     }
     
     try {
-      const response = await fetch(`https://api.klap.app/v2/tasks/${project.klap_project_id}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-        }
-      })
-      
-      const status = await response.json()
+      const status = await SubmagicAPIService.getProjectStatus(project.submagic_project_id)
       return { 
         status: status.status,
-        ready: status.status === 'ready',
-        outputId: status.output_id 
+        ready: status.status === 'completed',
+        projectId: status.id 
       }
     } catch (error: any) {
       return { status: 'error', error: error?.message || 'Unknown error' }
     }
   }
-) 
+)
+
+// Deprecated: Old Klap functions - keeping for backward compatibility
+// These are no longer used but kept to prevent breaking changes
+export const processKlapVideo = processSubmagicVideo
+export const checkKlapStatus = checkSubmagicStatus 

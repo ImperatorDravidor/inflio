@@ -18,7 +18,7 @@ Inflio is a comprehensive video content platform that leverages cutting-edge AI 
 ### 🎯 Key Features
 
 - **🎥 Smart Video Processing** - Handle videos up to 2GB with URL-based processing
-- **✂️ AI Clip Generation** - Extract viral moments with Klap AI's virality scoring
+- **✂️ AI Clip Generation** - Extract viral moments with Submagic AI's intelligent clip detection
 - **📝 Intelligent Transcription** - High-accuracy speech-to-text with speaker detection
 - **📰 SEO-Optimized Blogs** - Convert videos into engaging blog posts with AI
 - **📱 Multi-Platform Publishing** - Schedule and publish to 6+ social platforms
@@ -44,7 +44,7 @@ Inflio is a comprehensive video content platform that leverages cutting-edge AI 
 - **AI**:
   - Transcription: OpenAI Whisper
   - Content Analysis: OpenAI GPT-4.1
-  - Video Clips: Klap AI
+  - Video Clips: Submagic AI
   - Content Generation: Google Gemini
 
 ### Infrastructure
@@ -121,7 +121,7 @@ src/
    
    # AI Services
    OPENAI_API_KEY=sk-xxxxx
-   KLAP_API_KEY=klap_xxxxx
+   SUBMAGIC_API_KEY=your_submagic_api_key
    GOOGLE_GENERATIVE_AI_API_KEY=xxxxx
    
    # Social Media OAuth (Optional)
@@ -190,7 +190,7 @@ src/
 
 #### Video Processing
 - `POST /api/upload` - Upload video to storage
-- `POST /api/process-klap` - Generate clips with Klap AI
+- `POST /api/process-klap` - Generate clips with Submagic AI
 - `POST /api/process-transcription` - Transcribe with Whisper
 
 #### Content Generation
@@ -246,16 +246,16 @@ Supports publishing to:
 
 ## 📊 Architecture
 
-### Klap-First Processing
+### AI-Powered Clip Processing
 ```
-Video Upload → Supabase Storage → URL to Klap API → AI Processing → Results
+Video Upload → Supabase Storage → URL to Submagic API → AI Processing → Results
 ```
 
 Benefits:
 - No file size limits
-- Parallel processing
-- Built for video content
-- Automatic retries
+- Parallel processing with Inngest
+- Built for viral video content
+- Automatic retries and error handling
 
 ### Event-Driven Updates
 - Real-time progress tracking
@@ -310,9 +310,9 @@ We welcome contributions! Please follow these steps:
 
 ### Common Issues
 
-**"Klap API key not configured"**
-- Ensure `KLAP_API_KEY` is set in `.env.local`
-- Verify API key is active
+**"Submagic API key not configured"**
+- Ensure `SUBMAGIC_API_KEY` is set in `.env.local`
+- Verify API key is active at https://www.submagic.co/
 
 **"Failed to upload video"**
 - Check file size (<2GB)
@@ -338,9 +338,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Klap AI](https://klap.app) for video clip generation
+- [Submagic](https://www.submagic.co) for AI-powered video clip generation
 - [OpenAI](https://openai.com) for transcription and analysis
 - [Supabase](https://supabase.com) for backend infrastructure
+- [Inngest](https://www.inngest.com) for background job processing
 - [Vercel](https://vercel.com) for hosting
 - [shadcn/ui](https://ui.shadcn.com) for UI components
 

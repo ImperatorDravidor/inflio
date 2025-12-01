@@ -60,6 +60,7 @@
     "date-fns": "^4.1.0",
     "file-type": "^21.0.0",
     "framer-motion": "^12.18.1",
+    "googleapis": "^166.0.0",
     "gsap": "^3.13.0",
     "inngest": "^3.40.1",
     "jszip": "^3.10.1",
