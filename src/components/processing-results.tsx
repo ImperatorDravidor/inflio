@@ -134,7 +134,15 @@ export function ProcessingResults({ results, videoTitle }: ProcessingResultsProp
   }
 
   const ClipsResult = ({ result }: { result: ProcessingResult }) => {
+    const [selectedClip, setSelectedClip] = useState<any>(null)
+
     if (result.status !== 'completed' || !result.data) return null
+
+    const formatTime = (seconds: number) => {
+      const mins = Math.floor(seconds / 60)
+      const secs = Math.floor(seconds % 60)
+      return `${mins}:${String(secs).padStart(2, '0')}`
+    }
 
     return (
       <Card>
@@ -142,57 +150,112 @@ export function ProcessingResults({ results, videoTitle }: ProcessingResultsProp
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <IconScissors className="h-5 w-5 text-purple-500" />
-              <CardTitle className="text-lg">Smart Clips</CardTitle>
+              <CardTitle className="text-lg">AI-Generated Clips</CardTitle>
             </div>
-            <Badge variant="secondary">{result.data.clips?.length || 0} clips generated</Badge>
+            <Badge variant="secondary">{result.data.clips?.length || 0} clips</Badge>
           </div>
           <CardDescription>
-            AI-generated short clips perfect for social media
+            Viral-optimized clips powered by Vizard AI • Ready for social media
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {result.data.clips?.map((clip: any, index: number) => (
-              <Card key={index} className="overflow-hidden">
-                <div className="relative aspect-video bg-muted">
-                  <img
-                    src={clip.thumbnail}
-                    alt={clip.title}
-                    className="object-cover w-full h-full"
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                    <Button size="sm" variant="secondary">
-                      <IconPlayerPlay className="h-4 w-4 mr-1" />
-                      Preview
-                    </Button>
-                  </div>
-                  <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1 py-0.5 rounded">
-                    {Math.floor((clip.endTime - clip.startTime) / 60)}:{String(Math.floor((clip.endTime - clip.startTime) % 60)).padStart(2, '0')}
-                  </div>
+              <Card key={clip.id || index} className="overflow-hidden hover:shadow-lg transition-shadow">
+                {/* Video Player - Proper vertical video display */}
+                <div className="relative w-full bg-black rounded-t-lg overflow-hidden">
+                  {clip.exportUrl ? (
+                    <div className="relative" style={{ paddingBottom: '177.78%' /* 9:16 aspect ratio */ }}>
+                      <video
+                        src={clip.exportUrl}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        controls
+                        preload="metadata"
+                        playsInline
+                      >
+                        <source src={clip.exportUrl} type="video/mp4" />
+                        Your browser does not support video playback.
+                      </video>
+                    </div>
+                  ) : (
+                    <div className="w-full" style={{ paddingBottom: '177.78%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <IconPlayerPlay className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">Video unavailable</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Duration Badge */}
+                  {clip.duration > 0 && (
+                    <div className="absolute bottom-2 right-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2 py-1 rounded flex items-center gap-1 pointer-events-none">
+                      <IconClock className="h-3 w-3" />
+                      {formatTime(clip.duration)}
+                    </div>
+                  )}
+
+                  {/* Virality Score Badge */}
+                  {clip.score > 0 && (
+                    <div className="absolute top-2 left-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs px-2 py-1 rounded font-semibold pointer-events-none shadow-lg">
+                      🔥 {Math.min(Math.round(clip.score > 10 ? clip.score / 10 : clip.score * 10), 100)}/100
+                    </div>
+                  )}
                 </div>
-                <CardContent className="p-4">
-                  <h4 className="font-semibold mb-2">{clip.title}</h4>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {clip.highlights?.map((highlight: string, i: number) => (
-                      <Badge key={i} variant="outline" className="text-xs">
-                        {highlight}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <IconDownload className="h-3 w-3 mr-1" />
-                      Export
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <IconShare className="h-3 w-3 mr-1" />
-                      Share
-                    </Button>
-                  </div>
+
+                {/* Clip Info */}
+                <CardContent className="p-4 space-y-3">
+                  {/* Title */}
+                  <h4 className="font-semibold text-sm line-clamp-2 leading-tight">
+                    {clip.title}
+                  </h4>
+
+                  {/* Duration Display */}
+                  {clip.duration > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <IconClock className="h-3 w-3" />
+                      <span>{formatTime(clip.duration)} duration</span>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {clip.tags && clip.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {clip.tags.slice(0, 3).map((tag: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                      {clip.tags.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{clip.tags.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Virality Explanation (collapsed by default) */}
+                  {clip.viralityExplanation && (
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="cursor-pointer hover:text-foreground font-medium">
+                        Why this could go viral
+                      </summary>
+                      <p className="mt-2 leading-relaxed">{clip.viralityExplanation}</p>
+                    </details>
+                  )}
                 </CardContent>
               </Card>
             ))}
           </div>
+
+          {/* No clips message */}
+          {(!result.data.clips || result.data.clips.length === 0) && (
+            <div className="text-center py-12 text-muted-foreground">
+              <IconScissors className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No clips generated yet</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     )

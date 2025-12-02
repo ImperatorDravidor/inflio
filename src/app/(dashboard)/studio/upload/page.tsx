@@ -277,22 +277,12 @@ export default function UploadPage() {
         const remaining = usage.limit - usage.used;
         toast.warning(`You have ${remaining} video${remaining !== 1 ? 's' : ''} remaining this month.`);
       }
-      
-      // Step 3: Start the processing workflows (without awaiting)
-      const processingWorkflows = [];
-      if (workflowOptions.transcription) processingWorkflows.push('transcript');
-      if (workflowOptions.clips) processingWorkflows.push('clips');
-      
+
+      // Step 3: Redirect to processing page (processing will auto-start there)
       setSubmissionStatus("Redirecting to processing page...");
       toast.success("Project created! Starting processing...");
-      
-      // Start processing in background (don't await)
-      ProjectService.startProcessing(project.id).catch(error => {
-        console.error('Error starting processing:', error);
-        // User is already on processing page, they'll see the error there
-      });
-      
-      // Redirect immediately to processing page
+
+      // Redirect immediately - processing page will auto-start workflows
       router.push(`/studio/processing/${project.id}`);
 
     } catch (err) {

@@ -10,7 +10,11 @@
       "Bash(node scripts/setup-youtube-oauth.js:*)",
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.vizard.ai)",
+      "Bash(cat:*)",
+      "Bash(node -e:*)",
+      "Bash(node scripts/fix-clips-structure.js:*)"
     ],
     "deny": [],
     "ask": []

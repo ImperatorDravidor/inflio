@@ -174,8 +174,8 @@ export async function processTranscription(params: {
   })
 
   try {
-    // Update task status to processing right at the start
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing')
+    // Progress already set to 5% by process route - start at 15%
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 15, 'processing')
 
     // Get project from database
     const { data: project, error: projectError } = await supabaseAdmin
@@ -196,9 +196,9 @@ export async function processTranscription(params: {
     // Generate mock transcription
     const mockTranscription = generateMockTranscription(videoUrl, language)
 
-    // Update progress to 15% before starting transcription
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 15, 'processing')
-    console.log('[TranscriptionProcessor] Updated progress to 15%, starting AssemblyAI transcription...')
+    // Update progress to 20% before starting AssemblyAI
+    await ProjectService.updateTaskProgress(projectId, 'transcription', 20, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 20%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
       try {
@@ -261,8 +261,8 @@ export async function processTranscription(params: {
                 projectId,
                 nextRetryIn: Math.min(10000 * Math.pow(1.5, attempt - 1), 60000) / 1000 + ' seconds'
               })
-              // Update progress to show we're retrying
-              ProjectService.updateTaskProgress(projectId, 'transcription', 15 + (attempt * 5), 'processing').catch(console.error)
+              // Update progress to show we're retrying (20% base + 5% per retry)
+              ProjectService.updateTaskProgress(projectId, 'transcription', 20 + (attempt * 5), 'processing').catch(console.error)
             }
           }
         )

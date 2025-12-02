@@ -30,19 +30,22 @@ export async function POST(
 
     // Start both processes in parallel
     const promises = [];
-    
+
     // Process transcription if needed
     const hasTranscriptionTask = project.tasks.some(
       (task: any) => task.type === 'transcription' && (task.status === 'pending' || task.status === 'processing')
     );
-    
+
     if (hasTranscriptionTask) {
+      // Set initial progress immediately
+      await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing');
+      console.log('[Process Route] Transcription task set to 5% - starting processing...')
+
       promises.push(
         (async () => {
           try {
-            console.log('[Process Route] Starting transcription processing...')
             const { processTranscription } = await import('@/lib/transcription-processor');
-            
+
             // Process transcription
             const result = await processTranscription({
               projectId: project.id,
@@ -50,7 +53,7 @@ export async function POST(
               language: 'en',
               userId: userId!
             });
-            
+
             console.log('[Process Route] Transcription completed successfully')
             return { type: 'transcription', success: true, result };
           } catch (error) {
@@ -66,16 +69,18 @@ export async function POST(
     const hasClipsTask = project.tasks.some(
       (task: any) => task.type === 'clips' && (task.status === 'pending' || task.status === 'processing')
     );
-    
+
     if (hasClipsTask) {
+      // Set initial progress immediately
+      await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+      console.log('[Process Route] Clips task set to 5% - queueing Vizard job...')
+
       promises.push(
         (async () => {
           try {
-            console.log('[Process Route] Queueing Submagic job with Inngest...')
-            
-            // Send event to Inngest (using Submagic)
+            // Send event to Inngest (using Vizard)
             await inngest.send({
-              name: 'submagic/video.process',
+              name: 'vizard/video.process',
               data: {
                 projectId,
                 videoUrl: project.video_url,
@@ -83,14 +88,12 @@ export async function POST(
                 title: project.title || project.name || `Project ${projectId}`
               }
             });
-            
-            console.log('[Process Route] Submagic job queued successfully')
-            
-            // Update task progress to show it's queued
-            await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+
+            console.log('[Process Route] Vizard job queued successfully')
             return { type: 'clips', success: true };
           } catch (error) {
             console.error('[Process Route] Failed to queue clips processing:', error);
+            await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
             return { type: 'clips', success: false, error };
           }
         })()

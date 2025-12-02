@@ -11,7 +11,7 @@ interface UseProjectOptions {
 }
 
 export function useProject(projectId: string, options?: UseProjectOptions) {
-  const { pollingInterval = 10000, enablePolling = true } = options || {}
+  const { pollingInterval = 30000, enablePolling = true } = options || {} // 30s recommended by Vizard for clips processing
   
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,6 +88,12 @@ export function useProject(projectId: string, options?: UseProjectOptions) {
         try {
           const response = await fetch(`/api/process-klap?projectId=${projectId}`)
           if (response.ok) {
+            // Check if response is JSON before parsing
+            const contentType = response.headers.get('content-type')
+            if (!contentType || !contentType.includes('application/json')) {
+              console.warn('[Polling] Non-JSON response, skipping')
+              return
+            }
             const result = await response.json()
             
             // If status changed or clips are ready, reload the project
@@ -124,6 +130,17 @@ export function useProject(projectId: string, options?: UseProjectOptions) {
                 return { ...prev, tasks: updatedTasks }
               })
             }
+          } else if (response.status === 404) {
+            // Project not found - stop polling and show error
+            console.error('[Polling] Project not found - stopping polling')
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+            toast.error('Project not found. It may have been deleted. Redirecting to projects page...')
+            setTimeout(() => {
+              window.location.href = '/projects'
+            }, 2000)
           } else {
             console.error('[Polling] Failed to fetch status:', response.status)
           }
