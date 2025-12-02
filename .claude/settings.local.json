@@ -14,7 +14,10 @@
       "WebFetch(domain:docs.vizard.ai)",
       "Bash(cat:*)",
       "Bash(node -e:*)",
-      "Bash(node scripts/fix-clips-structure.js:*)"
+      "Bash(node scripts/fix-clips-structure.js:*)",
+      "Bash(tree:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
