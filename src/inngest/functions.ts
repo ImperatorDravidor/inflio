@@ -108,10 +108,12 @@ export const checkVizardStatus = inngest.createFunction(
 
     try {
       const status = await VizardAPIService.getProjectStatus(project.vizard_project_id)
+      // Vizard returns videos array, not a status field
+      const hasVideos = status.videos && status.videos.length > 0
       return {
-        status: status.status,
-        ready: status.status === 'completed',
-        clips: status.clips || [],
+        status: hasVideos ? 'completed' : 'processing',
+        ready: hasVideos,
+        clips: status.videos || [],
         projectId: status.projectId
       }
     } catch (error: any) {
