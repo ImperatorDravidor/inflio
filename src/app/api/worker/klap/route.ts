@@ -3,6 +3,7 @@ import { KlapJobQueue, type KlapJob } from '@/lib/redis'
 import { KlapAPIService } from '@/lib/klap-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { updateTaskProgressServer } from '@/lib/server-project-utils'
 
 // This can run for up to 5 minutes per job
 export const maxDuration = 300
@@ -335,7 +336,7 @@ async function processAndStoreClips(
   }
 
   // Mark as complete in project
-  await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
+  await updateTaskProgressServer(projectId, 'clips', 100, 'completed')
 
   return processedClips
 }

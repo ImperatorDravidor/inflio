@@ -5,6 +5,7 @@ import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { TranscriptionData } from '@/lib/project-types'
 import { withRetry } from '@/lib/retry-utils'
 import { v4 as uuidv4 } from 'uuid'
+import { updateTaskProgressServer } from '@/lib/server-project-utils'
 
 // Mock content analysis
 const mockContentAnalysis = {
@@ -175,7 +176,7 @@ export async function processTranscription(params: {
 
   try {
     // Progress already set to 5% by process route - start at 15%
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 15, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 15, 'processing')
 
     // Get project from database
     const { data: project, error: projectError } = await supabaseAdmin
@@ -185,7 +186,7 @@ export async function processTranscription(params: {
       .single()
 
     if (projectError || !project) {
-      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+      await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
       throw new Error('Project not found')
     }
 
@@ -197,7 +198,7 @@ export async function processTranscription(params: {
     const mockTranscription = generateMockTranscription(videoUrl, language)
 
     // Update progress to 20% before starting AssemblyAI
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 20, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 20, 'processing')
     console.log('[TranscriptionProcessor] Updated progress to 20%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
@@ -262,7 +263,7 @@ export async function processTranscription(params: {
                 nextRetryIn: Math.min(10000 * Math.pow(1.5, attempt - 1), 60000) / 1000 + ' seconds'
               })
               // Update progress to show we're retrying (20% base + 5% per retry)
-              ProjectService.updateTaskProgress(projectId, 'transcription', 20 + (attempt * 5), 'processing').catch(console.error)
+              updateTaskProgressServer(projectId, 'transcription', 20 + (attempt * 5), 'processing').catch(console.error)
             }
           }
         )
@@ -287,7 +288,7 @@ export async function processTranscription(params: {
         }
 
         // Update progress to 50% after successful transcription
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 50, 'processing')
+        await updateTaskProgressServer(projectId, 'transcription', 50, 'processing')
         console.log('[TranscriptionProcessor] Updated progress to 50%')
 
         // Convert AssemblyAI format to our internal format
@@ -316,7 +317,7 @@ export async function processTranscription(params: {
           isMock = true
         } else {
           // Update task status to failed
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+          await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
           // Throw the error to properly fail the task
           throw new Error(`Transcription failed: ${assemblyError instanceof Error ? assemblyError.message : 'Unknown error'}`)
         }
@@ -324,14 +325,14 @@ export async function processTranscription(params: {
     } else {
       console.error('[TranscriptionProcessor] AssemblyAI API key not configured')
       // Update task status to failed
-      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+      await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
       throw new Error('Transcription service not configured. Please add ASSEMBLYAI_API_KEY to environment variables.')
     }
 
     // --- Step 2: AI Content Analysis ---
     
     // Update progress to 70% before content analysis
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 70, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 70, 'processing')
     console.log('[TranscriptionProcessor] Updated progress to 70%, starting AI content analysis...')
     
     let contentAnalysis = mockContentAnalysis
@@ -376,7 +377,7 @@ export async function processTranscription(params: {
     // --- Step 3: Update Project ---
     
     // Update progress to 85% before final save
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 85, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 85, 'processing')
     console.log('[TranscriptionProcessor] Updated progress to 85%, saving to database...')
     
     try {
@@ -412,7 +413,7 @@ export async function processTranscription(params: {
     }
 
     console.log('[TranscriptionProcessor] Marking task as completed...')
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+    await updateTaskProgressServer(projectId, 'transcription', 100, 'completed')
     console.log('[TranscriptionProcessor] Task marked as completed')
 
     // --- Step 4: Auto-generate AI Posts if content analysis is available ---
@@ -544,7 +545,7 @@ export async function processTranscription(params: {
     }
   } catch (error) {
     console.error(`[TranscriptionProcessor] Critical error for project ${projectId}:`, error)
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+    await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
     throw error
   }
 } 

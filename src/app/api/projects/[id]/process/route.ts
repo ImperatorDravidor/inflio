@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { ProjectService } from "@/lib/services";
 import { validateProjectOwnership } from "@/lib/auth-utils";
 import { inngest } from "@/inngest/client";
+import { updateTaskProgressServer, updateProjectServer } from "@/lib/server-project-utils";
 
 // Extended timeout for transcription processing
 export const maxDuration = 300; // 5 minutes for transcription
@@ -26,7 +26,7 @@ export async function POST(
     }
 
     // Update project status
-    await ProjectService.updateProject(projectId, { status: 'processing' });
+    await updateProjectServer(projectId, { status: 'processing' });
 
     // Start both processes in parallel
     const promises = [];
@@ -38,7 +38,7 @@ export async function POST(
 
     if (hasTranscriptionTask) {
       // Set initial progress immediately
-      await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing');
+      await updateTaskProgressServer(projectId, 'transcription', 5, 'processing');
       console.log('[Process Route] Transcription task set to 5% - starting processing...')
 
       promises.push(
@@ -58,7 +58,7 @@ export async function POST(
             return { type: 'transcription', success: true, result };
           } catch (error) {
             console.error('[Process Route] Transcription failed:', error);
-            await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed');
+            await updateTaskProgressServer(projectId, 'transcription', 0, 'failed');
             return { type: 'transcription', success: false, error };
           }
         })()
@@ -72,7 +72,7 @@ export async function POST(
 
     if (hasClipsTask) {
       // Set initial progress immediately
-      await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
+      await updateTaskProgressServer(projectId, 'clips', 5, 'processing');
       console.log('[Process Route] Clips task set to 5% - queueing Vizard job...')
 
       promises.push(
@@ -93,7 +93,7 @@ export async function POST(
             return { type: 'clips', success: true };
           } catch (error) {
             console.error('[Process Route] Failed to queue clips processing:', error);
-            await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed');
+            await updateTaskProgressServer(projectId, 'clips', 0, 'failed');
             return { type: 'clips', success: false, error };
           }
         })()

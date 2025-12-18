@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 import { inngest } from '@/inngest/client'
 import type { ClipData, Project } from '@/lib/project-types'
+import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
 
 // Quick response - just queue the job
 export const maxDuration = 10
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     })
     
     // Update task progress to show it's queued
-    await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
+    await updateTaskProgressServer(projectId, 'clips', 5, 'processing')
     
     return NextResponse.json({ 
       success: true,
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
 
           // Store clips in database
           console.log('[Process Clips GET] Storing', transformedClips.length, 'clips in database')
-          await ProjectService.updateProject(projectId, {
+          await updateProjectServer(projectId, {
             folders: {
               ...project.folders,
               clips: transformedClips
@@ -185,7 +186,7 @@ export async function GET(request: NextRequest) {
           })
 
           // Mark task as completed
-          await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
+          await updateTaskProgressServer(projectId, 'clips', 100, 'completed')
 
           console.log('[Process Clips GET] Clips stored successfully!')
 

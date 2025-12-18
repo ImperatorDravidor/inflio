@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
 
 export const maxDuration = 60
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     if (status === 'failed') {
       // Mark clips task as failed
-      await ProjectService.updateTaskProgress(project.id, 'clips', 0, 'failed')
+      await updateTaskProgressServer(project.id, 'clips', 0, 'failed')
       
       return NextResponse.json({ 
         success: true,
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update project with clips
-      await ProjectService.updateProject(project.id, {
+      await updateProjectServer(project.id, {
         folders: {
           clips: processedClips,
           images: [],
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       })
       
       // Mark task as complete
-      await ProjectService.updateTaskProgress(project.id, 'clips', 100, 'completed')
+      await updateTaskProgressServer(project.id, 'clips', 100, 'completed')
       
       console.log(`[Submagic Webhook] Successfully processed ${processedClips.length} clips for project ${project.id}`)
       

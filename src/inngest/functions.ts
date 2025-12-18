@@ -2,6 +2,7 @@ import { inngest } from './client'
 import { VizardAPIService } from '@/lib/vizard-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
 
 /**
  * Process video clips with Vizard AI
@@ -37,7 +38,7 @@ export const processVizardVideo = inngest.createFunction(
     }
 
     // Progress already set to 5% by process route - update to 10% when starting
-    await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+    await updateTaskProgressServer(projectId, 'clips', 10, 'processing')
 
     // Create Vizard project with direct video URL
     const vizardProject = await step.run('create-vizard-project', async () => {
@@ -61,11 +62,11 @@ export const processVizardVideo = inngest.createFunction(
       })
 
       // Store Vizard project ID
-      await ProjectService.updateProject(projectId, {
+      await updateProjectServer(projectId, {
         vizard_project_id: project.projectId
       })
 
-      await ProjectService.updateTaskProgress(projectId, 'clips', 15, 'processing')
+      await updateTaskProgressServer(projectId, 'clips', 15, 'processing')
 
       console.log('[Inngest] Vizard project created:', project.projectId)
       console.log('[Inngest] Share link:', project.shareLink)
