@@ -40,9 +40,9 @@ const taskDetails = {
   clips: {
     icon: IconScissors,
     title: "Smart Clips",
-    description: "Identifying and extracting key moments",
+    description: "AI is generating viral-worthy clips with virality scoring",
     color: "from-pink-500 to-rose-500",
-    estimatedTime: { min: 10, max: 20 }
+    estimatedTime: { min: 15, max: 30 }
   }
 }
 
@@ -160,54 +160,46 @@ export default function ProcessingPage() {
       clearInterval(pollingIntervalRef.current)
       pollingIntervalRef.current = null
     }
-    
+
     const pollProject = async () => {
       try {
         const updatedProject = await ProjectService.getProject(projectId)
         if (!updatedProject) return
-        
+
         // Ensure progress never goes backwards
         const updatedTasks = updatedProject.tasks.map(task => {
-          const lastProgress = task.type === 'transcription' 
-            ? lastProgressRef.current.transcription 
-            : task.type === 'clips' 
-            ? lastProgressRef.current.clips 
+          const lastProgress = task.type === 'transcription'
+            ? lastProgressRef.current.transcription
+            : task.type === 'clips'
+            ? lastProgressRef.current.clips
             : 0
-          
+
           // Update last progress reference
           if (task.type === 'transcription') {
             lastProgressRef.current.transcription = Math.max(task.progress, lastProgress)
           } else if (task.type === 'clips') {
             lastProgressRef.current.clips = Math.max(task.progress, lastProgress)
           }
-          
+
           return {
             ...task,
             progress: Math.max(task.progress, lastProgress)
           }
         })
-        
+
         setProject({ ...updatedProject, tasks: updatedTasks })
-        
-        // Check if transcription is complete
-        const transcriptionTask = updatedTasks.find(t => t.type === 'transcription')
-        const isTranscriptionComplete = transcriptionTask?.status === 'completed'
-        
-        // Redirect when transcription is done
-        if (isTranscriptionComplete && !redirectingRef.current) {
+
+        // Check if ALL tasks are complete
+        const allTasksComplete = updatedTasks.every(t => t.status === 'completed')
+
+        // Redirect when ALL processing is done
+        if (allTasksComplete && !redirectingRef.current) {
           redirectingRef.current = true
           clearInterval(pollingIntervalRef.current!)
           pollingIntervalRef.current = null
-          
-          const clipsTask = updatedTasks.find(t => t.type === 'clips')
-          if (clipsTask?.status === 'processing') {
-            toast.success("AI analysis complete! Redirecting to your project. Clips are still generating in the background.", {
-              duration: 5000
-            })
-          } else {
-            toast.success("Processing complete! Loading AI posts...")
-          }
-          
+
+          toast.success("Processing complete! Loading your content...")
+
           setTimeout(() => {
             router.push(`/projects/${projectId}?tab=posts`)
           }, 1500)
@@ -216,10 +208,10 @@ export default function ProcessingPage() {
         console.error('Polling error:', error)
       }
     }
-    
-    // Poll immediately then every 5 seconds
+
+    // Poll immediately then every 3 seconds during active processing
     pollProject()
-    pollingIntervalRef.current = setInterval(pollProject, 5000)
+    pollingIntervalRef.current = setInterval(pollProject, 3000)
   }, [projectId, router])
 
   useEffect(() => {
@@ -301,7 +293,9 @@ export default function ProcessingPage() {
     return `${minutes}m ${seconds}s`
   }
 
-  const isProcessingComplete = project.status === 'draft' || project.status === 'ready' || overallProgress === 100
+  // Check if processing is actually complete by looking at task statuses
+  const allTasksComplete = project.tasks.every(t => t.status === 'completed')
+  const isProcessingComplete = allTasksComplete && overallProgress === 100
 
   return (
     <div className="relative">

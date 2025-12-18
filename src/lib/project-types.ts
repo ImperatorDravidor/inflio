@@ -220,7 +220,8 @@ export interface Project {
   user_id?: string
   klap_project_id?: string // Klap API project ID for tracking (deprecated)
   klap_folder_id?: string // Klap API folder ID for exports (deprecated)
-  submagic_project_id?: string // Submagic Magic Clips project ID for tracking
+  submagic_project_id?: string // Submagic Magic Clips project ID for tracking (deprecated)
+  vizard_project_id?: number // Vizard AI project ID for clip generation
   youtube_video_id?: string // YouTube video ID (for Magic Clips integration)
   youtube_video_url?: string // Full YouTube video URL
 }

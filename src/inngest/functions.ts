@@ -1,132 +1,121 @@
 import { inngest } from './client'
-import { SubmagicAPIService } from '@/lib/submagic-api'
-import { YouTubeUploadService } from '@/lib/youtube-upload-service'
+import { VizardAPIService } from '@/lib/vizard-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
 
 /**
- * Process video clips with Submagic Magic Clips (via YouTube)
- * Flow: Upload to YouTube → Generate Magic Clips → Webhook receives results
+ * Process video clips with Vizard AI
+ * Flow: Send video URL to Vizard → Generate clips → Poll for completion
  */
-export const processSubmagicVideo = inngest.createFunction(
+export const processVizardVideo = inngest.createFunction(
   {
-    id: 'process-submagic-video',
-    name: 'Process Submagic Video',
+    id: 'process-vizard-video',
+    name: 'Process Vizard Video',
     throttle: {
-      limit: 5,
+      limit: 3,  // Vizard rate limit: 3/min
       period: '1m',
       key: 'event.data.userId'
     }
   },
-  { event: 'submagic/video.process' },
+  { event: 'vizard/video.process' },
   async ({ event, step }) => {
     const { projectId, videoUrl, userId, title } = event.data
 
-    // Step 1: Upload video to YouTube
-    let youtubeUrl
-    try {
-      const uploadResult = await step.run('upload-to-youtube', async () => {
-        console.log('[Inngest] Uploading video to YouTube for:', projectId)
-        
-        await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing')
-        
-        const result = await YouTubeUploadService.uploadVideo({
-          videoUrl,
-          title: title || `Project ${projectId}`,
-          description: 'Uploaded for AI clip generation with Submagic',
-          privacy: 'unlisted'
-        })
-        
-        console.log('[Inngest] Video uploaded to YouTube:', result.videoUrl)
-        await ProjectService.updateTaskProgress(projectId, 'clips', 15, 'processing')
-        
-        return result
-      })
-      
-      youtubeUrl = uploadResult.videoUrl
-    } catch (error) {
-      // Mark task as failed so polling stops
-      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
-      console.error('[Inngest] Failed to upload to YouTube:', error)
-      throw error
+    console.log('[Inngest] Starting Vizard clip generation for:', projectId)
+
+    // Check if Vizard project already exists (idempotency)
+    const existingProject = await ProjectService.getProject(projectId)
+    if (existingProject?.vizard_project_id) {
+      console.log('[Inngest] Vizard project already exists:', existingProject.vizard_project_id)
+      console.log('[Inngest] Skipping duplicate creation')
+      return {
+        success: true,
+        message: 'Vizard project already exists',
+        vizardProjectId: existingProject.vizard_project_id,
+        duplicate: true
+      }
     }
 
-    // Step 2: Create Submagic Magic Clips project
-    try {
-      await step.run('create-magic-clips-project', async () => {
-        console.log('[Inngest] Creating Submagic Magic Clips project for:', projectId)
-        
-        const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/submagic`
-        
-        const magicClipsProject = await SubmagicAPIService.createMagicClips({
-          title: title || `Project ${projectId}`,
-          youtubeUrl,
-          language: 'en',
-          webhookUrl,
-          minClipLength: 15,  // 15 seconds minimum
-          maxClipLength: 60,  // 60 seconds maximum
-        })
-        
-        // Update project with Submagic project ID
-        await ProjectService.updateProject(projectId, {
-          submagic_project_id: magicClipsProject.id
-        })
-        
-        // Update task progress
-        await ProjectService.updateTaskProgress(projectId, 'clips', 25, 'processing')
-        
-        console.log('[Inngest] Magic Clips project created:', magicClipsProject.id)
-        console.log('[Inngest] Webhook will be called at:', webhookUrl)
-        console.log('[Inngest] Processing will continue in background. Clips will appear when ready.')
-        
-        return magicClipsProject
+    // Progress already set to 5% by process route - update to 10% when starting
+    await updateTaskProgressServer(projectId, 'clips', 10, 'processing')
+
+    // Create Vizard project with direct video URL
+    const vizardProject = await step.run('create-vizard-project', async () => {
+      console.log('[Inngest] Creating Vizard project for:', projectId)
+      console.log('[Inngest] Using direct video URL:', videoUrl)
+
+      const webhookUrl = process.env.VIZARD_WEBHOOK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/vizard`
+
+      const project = await VizardAPIService.createProject({
+        lang: 'auto',                          // Auto-detect language
+        preferLength: VizardAPIService.ClipLength.AUTO,  // AI decides clip length
+        videoUrl: videoUrl,                    // Direct Supabase URL
+        videoType: VizardAPIService.VideoType.REMOTE_FILE,
+        ext: 'mp4',                            // Required for videoType 1
+        ratioOfClip: VizardAPIService.AspectRatio.VERTICAL,  // 9:16 for TikTok/Reels
+        subtitleSwitch: 1,                     // Show subtitles
+        headlineSwitch: 1,                     // Show AI headline
+        maxClipNumber: 20,                     // Max 20 clips
+        projectName: title || `Project ${projectId}`,
+        webhookUrl,
       })
-    } catch (error) {
-      // Mark task as failed so polling stops
-      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
-      console.error('[Inngest] Failed to create Magic Clips project:', error)
-      throw error
-    }
+
+      // Store Vizard project ID
+      await updateProjectServer(projectId, {
+        vizard_project_id: project.projectId
+      })
+
+      await updateTaskProgressServer(projectId, 'clips', 15, 'processing')
+
+      console.log('[Inngest] Vizard project created:', project.projectId)
+      console.log('[Inngest] Share link:', project.shareLink)
+      console.log('[Inngest] Processing will continue in background.')
+
+      return project
+    })
 
     // Note: Clips processing happens in background
-    // Webhook will be called when complete at /api/webhooks/submagic
-    // The webhook handler will update the project with clips
-    
-    console.log('[Inngest] Magic Clips job submitted successfully')
-    console.log('[Inngest] Clips will be processed by Submagic and delivered via webhook')
-    
+    // Poll or use webhook to get clips when ready
+
+    console.log('[Inngest] Vizard job submitted successfully')
+    console.log('[Inngest] Project ID:', vizardProject.projectId)
+
     return {
       success: true,
-      message: 'Magic Clips processing started. Results will be delivered via webhook.',
-      youtubeUrl
+      message: 'Vizard clip generation started. Polling will retrieve clips when ready.',
+      vizardProjectId: vizardProject.projectId
     }
   }
 )
 
 
 /**
- * Check Submagic processing status (for manual polling)
+ * Check Vizard processing status (for manual polling)
  */
-export const checkSubmagicStatus = inngest.createFunction(
+export const checkVizardStatus = inngest.createFunction(
   {
-    id: 'check-submagic-status',
-    name: 'Check Submagic Status',
+    id: 'check-vizard-status',
+    name: 'Check Vizard Status',
   },
-  { event: 'submagic/status.check' },
+  { event: 'vizard/status.check' },
   async ({ event, step }) => {
     const { projectId } = event.data
-    
+
     const project = await ProjectService.getProject(projectId)
-    if (!project?.submagic_project_id) {
+    if (!project?.vizard_project_id) {
       return { status: 'not_started' }
     }
-    
+
     try {
-      const status = await SubmagicAPIService.getProjectStatus(project.submagic_project_id)
-      return { 
-        status: status.status,
-        ready: status.status === 'completed',
-        projectId: status.id 
+      const status = await VizardAPIService.getProjectStatus(project.vizard_project_id)
+      // Vizard returns videos array, not a status field
+      const hasVideos = status.videos && status.videos.length > 0
+      return {
+        status: hasVideos ? 'completed' : 'processing',
+        ready: hasVideos,
+        clips: status.videos || [],
+        projectId: status.projectId
       }
     } catch (error: any) {
       return { status: 'error', error: error?.message || 'Unknown error' }
@@ -134,7 +123,8 @@ export const checkSubmagicStatus = inngest.createFunction(
   }
 )
 
-// Deprecated: Old Klap functions - keeping for backward compatibility
-// These are no longer used but kept to prevent breaking changes
-export const processKlapVideo = processSubmagicVideo
-export const checkKlapStatus = checkSubmagicStatus 
+// Backward compatibility: Old function names point to Vizard
+export const processSubmagicVideo = processVizardVideo
+export const processKlapVideo = processVizardVideo
+export const checkSubmagicStatus = checkVizardStatus
+export const checkKlapStatus = checkVizardStatus 

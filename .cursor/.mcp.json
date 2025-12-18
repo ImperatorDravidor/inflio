@@ -1,0 +1,27 @@
+{
+    "mcpServers": {
+      "supabase": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@supabase/mcp-server-supabase@latest",
+          "--read-only",
+          "--project-ref=vxtjsfmqwdbrqrstxbks"
+        ],
+        "env": {
+          "SUPABASE_ACCESS_TOKEN": "sbp_86f8f6bc33c2c0679206df28a36e0e06c177f6b0"
+        }
+      },
+      "context7": {
+        "url": "https://mcp.context7.com/mcp"
+      },
+      "Figma": {
+        "url": "http://127.0.0.1:3845/mcp"
+      },
+      "linear": {
+        "command": "npx",
+        "args": ["-y", "mcp-remote", "https://mcp.linear.app/sse"]
+      
+      }
+    }
+  } 
