@@ -6,9 +6,11 @@ import { useEffect, useState } from "react"
 interface InflioLogoProps {
   className?: string
   size?: "sm" | "md" | "lg" | "xl"
+  /** Force a specific variant regardless of theme. Use "dark" for dark backgrounds, "light" for light backgrounds */
+  variant?: "auto" | "dark" | "light"
 }
 
-export function InflioLogo({ className, size = "md" }: InflioLogoProps) {
+export function InflioLogo({ className, size = "md", variant = "auto" }: InflioLogoProps) {
   const { theme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   
@@ -34,14 +36,22 @@ export function InflioLogo({ className, size = "md" }: InflioLogoProps) {
   }
   const logoWidth = Math.round(logoHeights[size] * aspectRatio)
 
-  // Determine which logo to use based on theme
-  const logoSrc = mounted && (theme === "dark" || resolvedTheme === "dark") 
-    ? "/infliologodark.svg" 
-    : "/infliologo.svg"
+  // Determine which logo to use
+  let useDarkLogo = false
+  if (variant === "dark") {
+    useDarkLogo = true
+  } else if (variant === "light") {
+    useDarkLogo = false
+  } else {
+    // Auto: use theme detection
+    useDarkLogo = mounted && (theme === "dark" || resolvedTheme === "dark")
+  }
+  
+  const logoSrc = useDarkLogo ? "/infliologodark.svg" : "/infliologo.svg"
 
   return (
     <div className={cn("flex items-center", className)}>
-      {mounted ? (
+      {mounted || variant !== "auto" ? (
         <Image
           src={logoSrc}
           alt="Inflio"

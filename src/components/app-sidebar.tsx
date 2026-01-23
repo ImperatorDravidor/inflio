@@ -12,6 +12,7 @@ import {
   IconTrendingUp,
   IconShare2,
   IconPalette,
+  IconSparkles,
 } from "@tabler/icons-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -148,6 +149,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "/profile",
       icon: IconUser,
       description: "Creator settings"
+    },
+    {
+      title: "AI Avatar",
+      url: "/personas",
+      icon: IconSparkles,
+      description: "Your AI personas"
     },
     {
       title: "Brand",

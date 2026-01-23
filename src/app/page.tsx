@@ -1,1314 +1,609 @@
 "use client"
 
-import Link from "next/link"
 import { useUser } from "@clerk/nextjs"
+import Link from "next/link"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
-import { useState, useRef, useEffect } from "react"
-import { AnalyticsService } from "@/lib/analytics-service"
-import InfiniteHero from "@/components/ui/infinite-hero"
-import { PricingSection } from "@/components/ui/pricing-section"
-// GSAP imports - wrapped in try-catch for production
-let gsap: any = null
-let SplitText: any = null
-let useGSAP: any = null
-
-// Try to import GSAP, but don't fail if it's not available
-if (typeof window !== 'undefined') {
-  try {
-    const gsapModule = require('gsap')
-    const gsapReact = require('@gsap/react')
-    gsap = gsapModule.gsap
-    useGSAP = gsapReact.useGSAP
-    // SplitText might not be available in production
-    try {
-      SplitText = require('gsap/SplitText').SplitText
-    } catch (e) {
-      console.log('SplitText not available - using fallback animations')
-    }
-  } catch (e) {
-    console.log('GSAP not available - using fallback animations')
-  }
-}
+import {
+  MegaMenu,
+  HeroSection,
+  FinalCTA,
+} from "@/components/landing"
 import { InflioLogo } from "@/components/inflio-logo"
-import { 
-  Video, 
-  FileText, 
-  Scissors, 
+import {
   Sparkles,
-  TrendingUp,
-  Play,
-  Upload,
-  ArrowRight,
-  Menu,
-  X,
-  Star,
-  CheckCircle,
   Zap,
-  Users,
-  Globe,
-  Clock,
-  Shield,
-  MousePointer2,
-  MessageSquare,
-  Calendar,
-  Wand2,
-  BadgeCheck,
-  Timer,
-  DollarSign,
-  BarChart3,
-  Layers,
   Crown,
-  Rocket,
-  Youtube,
-  Instagram,
-  Twitter,
-  ChevronRight,
-  ArrowUpRight,
-  Bot,
-  Mic,
-  Share2,
-  Download,
+  ArrowRight,
+  Check,
+  X,
+  Upload,
+  Wand2,
   Eye,
-  ThumbsUp,
+  Send,
+  Scissors,
+  Mic,
+  FileText,
+  MessageSquare,
+  Image,
+  Bot,
+  Globe,
+  ChevronDown,
+  Clock,
+  Video,
+  TrendingUp,
+  Calculator,
 } from "lucide-react"
-import Image from "next/image"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
-import { 
-  IconBrandTiktok,
+import {
   IconBrandYoutube,
   IconBrandInstagram,
+  IconBrandTiktok,
   IconBrandX,
   IconBrandLinkedin,
   IconBrandFacebook,
-  IconSparkles,
-  IconRocket,
-  IconVideo,
-  IconScissors,
-  IconMicrophone,
-  IconTemplate,
-  IconCalendar,
-  IconBrain,
-  IconWand,
-  IconClock,
-  IconFileText,
+  IconBrandMedium,
+  IconBrandTwitch,
 } from "@tabler/icons-react"
+import { useState, useRef, useEffect } from "react"
+import { useInView } from "framer-motion"
+import { Slider } from "@/components/ui/slider"
 
-// Register SplitText only if both GSAP and SplitText are available
-if (gsap && SplitText) {
-  try {
-    gsap.registerPlugin(SplitText)
-  } catch (e) {
-    console.log('Could not register SplitText plugin')
-  }
+// ============================================================================
+// LOGOS SECTION - Social Proof
+// ============================================================================
+function LogosSection() {
+  return (
+    <section className="py-16 border-b border-white/5">
+      <div className="mx-auto max-w-5xl px-6 lg:px-8">
+        <p className="text-center text-sm text-white/30 mb-8">
+          Trusted by creators and teams at
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6 text-white/20">
+          {["Spotify", "Notion", "Linear", "Vercel", "Stripe", "Figma"].map((name) => (
+            <span key={name} className="text-lg font-semibold tracking-tight">
+              {name}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
 }
 
-// Platform integrations
-const platforms = [
-  { name: "YouTube", icon: IconBrandYoutube },
-  { name: "Instagram", icon: IconBrandInstagram },
-  { name: "TikTok", icon: IconBrandTiktok },
-  { name: "Twitter/X", icon: IconBrandX },
-  { name: "LinkedIn", icon: IconBrandLinkedin },
-  { name: "Facebook", icon: IconBrandFacebook },
-]
+// ============================================================================
+// PROBLEM/SOLUTION SECTION - The Core Value Prop
+// ============================================================================
+function ProblemSolutionSection() {
+  const comparison = [
+    { task: "Find viral moments", manual: "2 hours", auto: "5 min" },
+    { task: "Edit clips", manual: "3 hours", auto: "Auto" },
+    { task: "Write blog post", manual: "2 hours", auto: "15 min" },
+    { task: "Create social posts", manual: "1 hour", auto: "Auto" },
+    { task: "Design thumbnails", manual: "45 min", auto: "3 min" },
+    { task: "Post everywhere", manual: "30 min", auto: "1 click" },
+  ]
 
-// Pricing tiers
-const pricingTiers = [
-  {
-    name: "Starter",
-    price: "$0",
-    description: "Perfect for getting started",
-    icon: <Sparkles className="h-6 w-6 text-primary" />,
-    features: [
-      { text: "25 videos per month", included: true },
-      { text: "Up to 30 min videos", included: true },
-      { text: "Basic AI transcription", included: true },
-      { text: "5 AI clips per video", included: true },
-      { text: "3 social platforms", included: true },
-      { text: "Email support", included: true },
-      { text: "Custom branding", included: false },
-      { text: "API access", included: false },
-    ],
-    cta: "Start Free",
-  },
-  {
-    name: "Creator",
-    price: "$29",
-    period: "month",
-    description: "For serious content creators",
-    icon: <Zap className="h-6 w-6 text-primary" />,
-    popular: true,
-    features: [
-      { text: "100 videos per month", included: true },
-      { text: "Up to 2 hour videos", included: true },
-      { text: "Advanced AI transcription", included: true },
-      { text: "15 AI clips per video", included: true },
-      { text: "All social platforms", included: true },
-      { text: "Priority support", included: true },
-      { text: "Custom branding", included: true },
-      { text: "Analytics dashboard", included: true },
-    ],
-    cta: "Start Free Trial",
-  },
-  {
-    name: "Studio",
-    price: "$99",
-    period: "month",
-    description: "For teams and agencies",
-    icon: <Crown className="h-6 w-6 text-primary" />,
-    features: [
-      { text: "Unlimited videos", included: true },
-      { text: "No duration limits", included: true },
-      { text: "Multi-speaker detection", included: true },
-      { text: "Unlimited AI clips", included: true },
-      { text: "All social platforms", included: true },
-      { text: "24/7 phone support", included: true },
-      { text: "White-label options", included: true },
-      { text: "API access", included: true },
-    ],
-    cta: "Contact Sales",
-  },
-]
-
-// Stats data
-const statsData = [
-  { value: "2.5M+", label: "Videos Processed", icon: <Video className="h-5 w-5" /> },
-  { value: "15K+", label: "Active Creators", icon: <Users className="h-5 w-5" /> },
-  { value: "10min", label: "Avg. Processing", icon: <Clock className="h-5 w-5" /> },
-  { value: "4.8/5", label: "Creator Rating", icon: <Star className="h-5 w-5 fill-current" /> },
-]
-
-// Custom Hero Component for Inflio
-function InflioHero() {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const logoRef = useRef<HTMLDivElement>(null)
-  const h1Ref = useRef<HTMLHeadingElement>(null)
-  const pRef = useRef<HTMLParagraphElement>(null)
-  const ctaRef = useRef<HTMLDivElement>(null)
-  const { isSignedIn } = useUser()
-  const [animationReady, setAnimationReady] = useState(false)
-
-  // Use GSAP if available, otherwise we'll use framer-motion as fallback
-  useEffect(() => {
-    if (useGSAP && gsap && SplitText) {
-      // GSAP is available, use it
-      try {
-        const ctas = ctaRef.current ? Array.from(ctaRef.current.children) : []
-
-        const h1Split = new SplitText(h1Ref.current, { type: "lines" })
-        const pSplit = new SplitText(pRef.current, { type: "lines" })
-
-        gsap.set(logoRef.current, { opacity: 0, y: -20, scale: 0.9 })
-        gsap.set(h1Split.lines, {
-          opacity: 0,
-          y: 24,
-          filter: "blur(8px)",
-        })
-        gsap.set(pSplit.lines, {
-          opacity: 0,
-          y: 16,
-          filter: "blur(6px)",
-        })
-        if (ctas.length) gsap.set(ctas, { opacity: 0, y: 16 })
-
-        const tl = gsap.timeline({ defaults: { ease: "power2.out" } })
-        tl.to(logoRef.current, { opacity: 1, y: 0, scale: 1, duration: 0.8 }, 0)
-          .to(
-            h1Split.lines,
-            {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              duration: 0.8,
-              stagger: 0.1,
-            },
-            0.3,
-          )
-          .to(
-            pSplit.lines,
-            {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              duration: 0.6,
-              stagger: 0.08,
-            },
-            "-=0.3",
-          )
-          .to(ctas, { opacity: 1, y: 0, duration: 0.6, stagger: 0.08 }, "-=0.2")
-
-        return () => {
-          h1Split.revert()
-          pSplit.revert()
-        }
-      } catch (error) {
-        console.log('GSAP animation failed, using fallback')
-        setAnimationReady(true)
-      }
-    } else {
-      // GSAP not available, trigger framer-motion fallback
-      setAnimationReady(true)
-    }
-  }, [])
-
-  // Framer Motion fallback animations when GSAP is not available
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.15,
-        delayChildren: 0.2,
-      }
-    }
-  }
-
-  const itemVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: 30
-    },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.8,
-        type: "spring" as const,
-        stiffness: 100
-      }
-    }
-  }
-
-  // If GSAP failed to load, use framer-motion instead
-  if (animationReady) {
-    return (
-      <motion.div 
-        ref={rootRef} 
-        className="relative z-10 flex h-svh w-full items-center justify-center px-6"
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-      >
-        <div className="text-center">
-          <motion.div className="mb-8 flex justify-center" variants={itemVariants}>
-            <InflioLogo size="xl" />
-          </motion.div>
-          <motion.h1
-            className="mx-auto max-w-2xl lg:max-w-4xl text-[clamp(2.5rem,7vw,5rem)] font-extralight leading-[0.95] tracking-tight text-white"
-            variants={itemVariants}
-          >
-            Turn One Video Into
-            <span className="block bg-gradient-to-r from-white via-blue-200 to-purple-200 bg-clip-text text-transparent">
-              50+ Pieces of Content
-            </span>
-          </motion.h1>
-          <motion.p
-            className="mx-auto mt-6 max-w-2xl md:text-balance text-base/7 md:text-lg/8 font-light tracking-tight text-white/80"
-            variants={itemVariants}
-          >
-            AI-powered content repurposing that extracts clips, creates transcripts, 
-            generates blog posts, and schedules to all platforms - in under 10 minutes.
-          </motion.p>
-
-          <motion.div
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-            variants={itemVariants}
-          >
-            <Link href={isSignedIn ? "/studio/upload" : "/sign-up"}>
-              <button
-                type="button"
-                className="group relative overflow-hidden border border-white/30 bg-gradient-to-r from-white/20 to-white/10 px-8 py-3 text-base rounded-xl font-medium tracking-wide text-white backdrop-blur-sm transition-all duration-500 hover:border-white/50 hover:bg-white/20 hover:shadow-lg hover:shadow-white/10 cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
-                  Start Creating Free
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </span>
-              </button>
-            </Link>
-
-            <Link href="#demo">
-              <button
-                type="button"
-                className="group relative px-8 py-3 text-base font-medium tracking-wide text-white/90 transition-all duration-500 hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)] hover:text-white cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <Play className="h-5 w-5" />
-                  Watch 2-min Demo
-                </span>
-              </button>
-            </Link>
-          </motion.div>
-        </div>
-      </motion.div>
-    )
-  }
-
-  // Default return with GSAP animations (when GSAP is available)
   return (
-    <div ref={rootRef} className="relative z-10 flex h-svh w-full items-center justify-center px-6">
-      <div className="text-center">
-        <div ref={logoRef} className="mb-8 flex justify-center">
-          <InflioLogo size="xl" />
-        </div>
-        <h1
-          ref={h1Ref}
-          className="mx-auto max-w-2xl lg:max-w-4xl text-[clamp(2.5rem,7vw,5rem)] font-extralight leading-[0.95] tracking-tight text-white"
+    <section className="py-24 lg:py-32">
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        {/* Section Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
         >
-          Turn One Video Into
-          <span className="block bg-gradient-to-r from-white via-blue-200 to-purple-200 bg-clip-text text-transparent">
-            50+ Pieces of Content
-          </span>
-        </h1>
-        <p
-          ref={pRef}
-          className="mx-auto mt-6 max-w-2xl md:text-balance text-base/7 md:text-lg/8 font-light tracking-tight text-white/80"
-        >
-          AI-powered content repurposing that extracts clips, creates transcripts, 
-          generates blog posts, and schedules to all platforms - in under 10 minutes.
-        </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
+            Content repurposing is{" "}
+            <span className="text-red-400">broken</span>
+          </h2>
+          <p className="text-lg text-white/50 max-w-2xl mx-auto">
+            You spend more time reformatting than creating. 
+            Inflio fixes that.
+          </p>
+        </motion.div>
 
-        <div
-          ref={ctaRef}
-          className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+        {/* Comparison Table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          viewport={{ once: true }}
+          className="max-w-3xl mx-auto"
         >
-          <Link href={isSignedIn ? "/studio/upload" : "/sign-up"}>
-            <button
-              type="button"
-              className="group relative overflow-hidden border border-white/30 bg-gradient-to-r from-white/20 to-white/10 px-8 py-3 text-base rounded-xl font-medium tracking-wide text-white backdrop-blur-sm transition-all duration-500 hover:border-white/50 hover:bg-white/20 hover:shadow-lg hover:shadow-white/10 cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                Start Creating Free
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </span>
-            </button>
-          </Link>
+          <div className="rounded-2xl border border-white/10 overflow-hidden">
+            {/* Header */}
+            <div className="grid grid-cols-3 gap-4 px-6 py-4 bg-white/5 border-b border-white/10">
+              <div className="text-sm font-medium text-white/50">Task</div>
+              <div className="text-sm font-medium text-center text-red-400/80">Manual</div>
+              <div className="text-sm font-medium text-center text-green-400">With Inflio</div>
+            </div>
 
-          <Link href="#demo">
-            <button
-              type="button"
-              className="group relative px-8 py-3 text-base font-medium tracking-wide text-white/90 transition-all duration-500 hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)] hover:text-white cursor-pointer"
+            {/* Rows */}
+            {comparison.map((row, i) => (
+              <div
+                key={row.task}
+                className="grid grid-cols-3 gap-4 px-6 py-4 border-b border-white/5 last:border-0"
+              >
+                <div className="text-sm text-white/70">{row.task}</div>
+                <div className="text-sm text-center text-red-400/60">{row.manual}</div>
+                <div className="text-sm text-center text-green-400 font-medium">{row.auto}</div>
+              </div>
+            ))}
+
+            {/* Total */}
+            <div className="grid grid-cols-3 gap-4 px-6 py-5 bg-white/[0.03]">
+              <div className="text-sm font-semibold text-white">Total per video</div>
+              <div className="text-center">
+                <span className="text-lg font-bold text-red-400">9+ hours</span>
+              </div>
+              <div className="text-center">
+                <span className="text-lg font-bold text-green-400">~30 min</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom stat */}
+          <p className="text-center text-white/40 text-sm mt-6">
+            That's <span className="text-primary font-semibold">98% less time</span> spent on repurposing.
+          </p>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// HOW IT WORKS SECTION
+// ============================================================================
+function HowItWorksSection() {
+  const steps = [
+    { icon: Upload, title: "Upload", desc: "Drop your video or paste a link" },
+    { icon: Wand2, title: "Process", desc: "AI generates all your content" },
+    { icon: Eye, title: "Review", desc: "Preview and edit if needed" },
+    { icon: Send, title: "Publish", desc: "Schedule or post everywhere" },
+  ]
+
+  return (
+    <section className="py-24 lg:py-32 bg-white/[0.02]">
+      <div className="mx-auto max-w-5xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
+            Four steps. Ten minutes.
+          </h2>
+          <p className="text-lg text-white/50">
+            From raw video to published content across every platform.
+          </p>
+        </motion.div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {steps.map((step, i) => (
+            <motion.div
+              key={step.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.1 }}
+              viewport={{ once: true }}
+              className="relative text-center p-6"
             >
-              <span className="flex items-center gap-2">
-                <Play className="h-5 w-5" />
-                Watch 2-min Demo
-              </span>
-            </button>
-          </Link>
+              {/* Connector */}
+              {i < steps.length - 1 && (
+                <div className="hidden lg:block absolute top-1/3 left-full w-full h-px bg-gradient-to-r from-white/10 to-transparent -translate-x-6" />
+              )}
+
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 border border-white/10 mx-auto mb-5">
+                <step.icon className="h-7 w-7 text-primary" />
+              </div>
+              <p className="text-xs text-primary font-medium mb-2">0{i + 1}</p>
+              <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
+              <p className="text-sm text-white/50">{step.desc}</p>
+            </motion.div>
+          ))}
         </div>
-        
-        <p className="mt-6 text-sm text-white/60">
-          ✓ No credit card required • ✓ 25 free videos/month • ✓ Cancel anytime
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// FEATURES SECTION
+// ============================================================================
+function FeaturesSection() {
+  const features = [
+    { icon: Scissors, title: "Clip Generation", desc: "AI finds viral moments and creates clips automatically" },
+    { icon: Mic, title: "Transcription", desc: "99% accurate, 50+ languages, speaker detection" },
+    { icon: FileText, title: "Blog Posts", desc: "SEO-optimized articles generated from your video" },
+    { icon: MessageSquare, title: "Social Posts", desc: "Platform-optimized captions with hashtags" },
+    { icon: Image, title: "Thumbnails", desc: "Eye-catching visuals that drive clicks" },
+    { icon: Bot, title: "AI Persona", desc: "Your face in every thumbnail, consistently" },
+  ]
+
+  return (
+    <section id="features" className="py-24 lg:py-32">
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
+            Everything you need
+          </h2>
+          <p className="text-lg text-white/50 max-w-2xl mx-auto">
+            One platform replaces your entire content repurposing workflow.
+          </p>
+        </motion.div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {features.map((feature, i) => (
+            <motion.div
+              key={feature.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.05 }}
+              viewport={{ once: true }}
+              className="group p-6 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10 transition-all"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:bg-primary/20 transition-colors">
+                <feature.icon className="h-5 w-5" />
+              </div>
+              <h3 className="font-semibold mb-2">{feature.title}</h3>
+              <p className="text-sm text-white/50">{feature.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// PLATFORMS SECTION
+// ============================================================================
+function PlatformsSection() {
+  const platforms = [
+    { name: "YouTube", icon: IconBrandYoutube, types: "Long-form, Shorts" },
+    { name: "TikTok", icon: IconBrandTiktok, types: "Videos" },
+    { name: "Instagram", icon: IconBrandInstagram, types: "Reels, Feed, Stories" },
+    { name: "LinkedIn", icon: IconBrandLinkedin, types: "Posts, Articles" },
+    { name: "X", icon: IconBrandX, types: "Posts, Threads" },
+    { name: "Facebook", icon: IconBrandFacebook, types: "Reels, Posts" },
+    { name: "Medium", icon: IconBrandMedium, types: "Articles" },
+    { name: "Twitch", icon: IconBrandTwitch, types: "Clips" },
+  ]
+
+  return (
+    <section id="social-ecosystem" className="py-24 lg:py-32 bg-white/[0.02]">
+      <div className="mx-auto max-w-5xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
+            One upload. 13 platforms.
+          </h2>
+          <p className="text-lg text-white/50 max-w-xl mx-auto">
+            Content optimized for each destination. The right format, length, and style — automatically.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {platforms.map((platform, i) => (
+            <motion.div
+              key={platform.name}
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3, delay: i * 0.03 }}
+              viewport={{ once: true }}
+              className="group p-5 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/10 transition-all text-center"
+            >
+              <platform.icon className="h-7 w-7 mx-auto mb-3 text-white/50 group-hover:text-white transition-colors" />
+              <p className="font-medium text-sm mb-1">{platform.name}</p>
+              <p className="text-xs text-white/40">{platform.types}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <p className="text-center text-sm text-white/30 mt-8">
+          + 5 more platforms including Vimeo, Twitch, Substack, WordPress, Pinterest
         </p>
       </div>
-    </div>
+    </section>
   )
 }
 
-export default function LandingPage() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [activeDemo, setActiveDemo] = useState('upload')
-  const { isSignedIn } = useUser()
-  const [stats, setStats] = useState(statsData)
-  
+// ============================================================================
+// PRICING SECTION
+// ============================================================================
+function PricingSection({ isSignedIn }: { isSignedIn?: boolean }) {
+  const tiers = [
+    {
+      name: "Starter",
+      price: "$19",
+      period: "/mo",
+      desc: "For individual creators",
+      features: ["25 videos/month", "30 min max", "5 clips/video", "3 platforms", "Email support"],
+      cta: "Get Started",
+      popular: false,
+    },
+    {
+      name: "Creator",
+      price: "$49",
+      period: "/mo",
+      desc: "For serious creators",
+      features: ["100 videos/month", "2 hour max", "15 clips/video", "All 13 platforms", "AI Persona", "Priority support"],
+      cta: "Get Started",
+      popular: true,
+    },
+    {
+      name: "Studio",
+      price: "$149",
+      period: "/mo",
+      desc: "For teams at scale",
+      features: ["Unlimited videos", "No limits", "Unlimited clips", "All platforms", "Multiple Personas", "API access", "24/7 support"],
+      cta: "Contact Sales",
+      popular: false,
+    },
+  ]
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 overflow-x-hidden">
-      {/* Enhanced Navigation */}
-      <nav className="fixed top-0 z-50 w-full bg-black/40 backdrop-blur-xl border-b border-white/10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center">
-              <Link href="/" className="flex items-center space-x-2 group">
-                <InflioLogo size="sm" className="brightness-200" />
-              </Link>
-            </div>
-            
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex md:items-center md:space-x-8">
-              <Link href="#showcase" className="text-sm font-medium text-white/70 hover:text-white transition-all hover:translate-y-[-1px]">
-                How It Works
-              </Link>
-              <Link href="#features" className="text-sm font-medium text-white/70 hover:text-white transition-all hover:translate-y-[-1px]">
-                Features
-              </Link>
-              <Link href="#pricing" className="text-sm font-medium text-white/70 hover:text-white transition-all hover:translate-y-[-1px]">
-                Pricing
-              </Link>
-              <Link href="#testimonials" className="text-sm font-medium text-white/70 hover:text-white transition-all hover:translate-y-[-1px]">
-                Success Stories
-              </Link>
-            </div>
-            
-            {/* Desktop Auth Buttons */}
-            <div className="hidden md:flex md:items-center md:space-x-4">
-              {isSignedIn ? (
-                <Link href="/dashboard">
-                  <Button className="group">
-                    Go to Dashboard
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </Button>
-                </Link>
-              ) : (
-                <>
-                  <Link href="/sign-in">
-                    <Button variant="ghost" className="text-white/90 hover:text-white hover:bg-white/10">Sign In</Button>
-                  </Link>
-                  <Link href="/sign-up">
-                    <Button className="bg-gradient-to-r from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/30 text-white shadow-lg">
-                      Start Free Trial
-                    </Button>
-                  </Link>
-                </>
+    <section id="pricing" className="py-24 lg:py-32">
+      <div className="mx-auto max-w-5xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
+            Simple pricing
+          </h2>
+          <p className="text-lg text-white/50">
+            Plans for every creator.
+          </p>
+        </motion.div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {tiers.map((tier, i) => (
+            <motion.div
+              key={tier.name}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.1 }}
+              viewport={{ once: true }}
+              className={`relative p-6 rounded-2xl border ${
+                tier.popular
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-white/10 bg-white/[0.02]"
+              }`}
+            >
+              {tier.popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-xs font-medium text-white">
+                  Most Popular
+                </div>
               )}
-            </div>
-            
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors text-white"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-        
-        {/* Mobile Menu with Animation */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="md:hidden border-t border-white/10"
-            >
-              <div className="bg-black/95 backdrop-blur-xl">
-                <div className="space-y-1 px-4 py-4">
-                  <Link href="#showcase" className="block px-3 py-2 rounded-lg text-base font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                    How It Works
-                  </Link>
-                  <Link href="#features" className="block px-3 py-2 rounded-lg text-base font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                    Features
-                  </Link>
-                  <Link href="#pricing" className="block px-3 py-2 rounded-lg text-base font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                    Pricing
-                  </Link>
-                  <Link href="#testimonials" className="block px-3 py-2 rounded-lg text-base font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                    Success Stories
-                  </Link>
-                  <div className="mt-4 space-y-2 px-3 pt-4 border-t">
-                    {isSignedIn ? (
-                      <Link href="/dashboard" className="block">
-                        <Button className="w-full">Go to Dashboard</Button>
-                      </Link>
-                    ) : (
-                      <>
-                        <Link href="/sign-in" className="block">
-                          <Button variant="outline" className="w-full">Sign In</Button>
-                        </Link>
-                        <Link href="/sign-up" className="block">
-                          <Button className="w-full bg-gradient-to-r from-primary to-primary/80">
-                            Start Free Trial
-                          </Button>
-                        </Link>
-                      </>
-                    )}
-                  </div>
+
+              <div className="mb-6">
+                <h3 className="font-semibold text-lg mb-1">{tier.name}</h3>
+                <p className="text-sm text-white/50 mb-4">{tier.desc}</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold">{tier.price}</span>
+                  <span className="text-white/50">{tier.period}</span>
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </nav>
 
-      {/* Hero Section with InfiniteHero */}
-      <section className="relative overflow-hidden">
-        <InfiniteHero />
-        <div className="absolute inset-0 pointer-events-none">
-          <InflioHero />
-              </div>
-              {/* Platform logos */}
-        <div className="absolute bottom-10 left-0 right-0 z-20 pointer-events-none">
-          <p className="text-sm text-white/60 mb-4 text-center">Publish to all major platforms</p>
-          <div className="flex items-center justify-center gap-6">
-                  {platforms.map((platform) => (
-                    <platform.icon
-                      key={platform.name}
-                className="h-6 w-6 text-white/50 hover:text-white transition-all"
-                    />
-                  ))}
-                </div>
-        </div>
-      </section>
+              <ul className="space-y-3 mb-6">
+                {tier.features.map((feature) => (
+                  <li key={feature} className="flex items-center gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-white/70">{feature}</span>
+                  </li>
+                ))}
+              </ul>
 
-      {/* Stats Section */}
-      <section className="border-y bg-gradient-to-b from-muted/30 to-muted/50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="py-12 sm:py-16">
-            <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
-              {stats.map((stat, index) => (
-            <motion.div
-                  key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-              viewport={{ once: true }}
-                  className="text-center group"
-                >
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary mb-3 group-hover:scale-110 transition-transform">
-                    {stat.icon}
-                  </div>
-                  <div className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent sm:text-4xl">
-                    {stat.value}
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">{stat.label}</div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Showcase Section */}
-      <section id="showcase" className="py-20 sm:py-24 lg:py-32">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center mb-16">
-            <Badge variant="outline" className="mb-4">
-              <MousePointer2 className="h-3 w-3 mr-1" />
-              See It In Action
-            </Badge>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl mb-4">
-              Watch Your Content Transform
-              </h2>
-            <p className="text-lg text-muted-foreground">
-              See how Inflio turns one video into a complete content strategy
-            </p>
-          </div>
-
-          {/* Interactive Demo */}
-          <div className="mx-auto max-w-5xl">
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
-              {/* Demo Steps */}
-              <div className="space-y-4">
-                <button
-                  onClick={() => setActiveDemo('upload')}
-                  className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all",
-                    activeDemo === 'upload' 
-                      ? "border-primary bg-primary/10" 
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Upload className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold mb-1">1. Upload Your Video</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Drag & drop or paste a YouTube link. We support all major formats.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setActiveDemo('process')}
-                  className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all",
-                    activeDemo === 'process' 
-                      ? "border-primary bg-primary/10" 
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold mb-1">2. AI Works Its Magic</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Our AI analyzes, transcribes, and identifies viral moments automatically.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setActiveDemo('customize')}
-                  className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all",
-                    activeDemo === 'customize' 
-                      ? "border-primary bg-primary/10" 
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Wand2 className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold mb-1">3. Customize & Polish</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Fine-tune clips, edit transcripts, and apply your brand style.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setActiveDemo('publish')}
-                  className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all",
-                    activeDemo === 'publish' 
-                      ? "border-primary bg-primary/10" 
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Share2 className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold mb-1">4. Publish Everywhere</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Schedule and post to all platforms with one click.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-
-              {/* Demo Visualization */}
-              <div className="relative">
-                <div className="aspect-video rounded-2xl bg-gradient-to-br from-primary/20 via-purple-600/20 to-pink-600/20 p-1">
-                  <div className="w-full h-full rounded-xl bg-background/95 backdrop-blur-sm flex items-center justify-center">
-                    <AnimatePresence mode="wait">
-                      {activeDemo === 'upload' && (
-              <motion.div
-                          key="upload"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="text-center p-8"
-                        >
-                          <Upload className="h-16 w-16 text-primary mx-auto mb-4" />
-                          <p className="text-lg font-semibold">Drop your video here</p>
-                          <p className="text-sm text-muted-foreground mt-2">
-                            MP4, MOV, AVI • Up to 2GB
-                          </p>
-              </motion.div>
-                      )}
-                      {activeDemo === 'process' && (
-              <motion.div
-                          key="process"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="p-8 w-full"
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                              <Mic className="h-5 w-5 text-primary" />
-                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                <motion.div
-                                  className="h-full bg-primary"
-                                  initial={{ width: 0 }}
-                                  animate={{ width: "100%" }}
-                                  transition={{ duration: 2, repeat: Infinity }}
-                                />
-                              </div>
-                              <span className="text-sm">Transcribing...</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <Scissors className="h-5 w-5 text-primary" />
-                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                <motion.div
-                                  className="h-full bg-primary"
-                                  initial={{ width: 0 }}
-                                  animate={{ width: "100%" }}
-                                  transition={{ duration: 2, delay: 0.5, repeat: Infinity }}
-                                />
-                              </div>
-                              <span className="text-sm">Finding clips...</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <FileText className="h-5 w-5 text-primary" />
-                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                <motion.div
-                                  className="h-full bg-primary"
-                                  initial={{ width: 0 }}
-                                  animate={{ width: "100%" }}
-                                  transition={{ duration: 2, delay: 1, repeat: Infinity }}
-                                />
-                              </div>
-                              <span className="text-sm">Generating blog...</span>
-                            </div>
-                          </div>
-              </motion.div>
-                      )}
-                      {activeDemo === 'customize' && (
-                        <motion.div
-                          key="customize"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="p-8 w-full"
-                        >
-                          <div className="grid grid-cols-3 gap-3">
-                            {[1, 2, 3, 4, 5, 6].map((i) => (
-                              <div key={i} className="aspect-square rounded-lg bg-muted/50 flex items-center justify-center">
-                                <Play className="h-6 w-6 text-muted-foreground" />
-            </div>
-                            ))}
-                          </div>
-                          <p className="text-center mt-4 text-sm text-muted-foreground">
-                            6 viral clips detected
-                          </p>
-                        </motion.div>
-                      )}
-                      {activeDemo === 'publish' && (
-            <motion.div
-                          key="publish"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="p-8"
-                        >
-                          <div className="grid grid-cols-3 gap-4">
-                            {platforms.slice(0, 6).map((platform, i) => (
-                              <motion.div
-                                key={platform.name}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.1 }}
-                                className="flex flex-col items-center gap-2"
-                              >
-                                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                                  <platform.icon className="h-6 w-6 text-primary" />
-                                </div>
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              </motion.div>
-                            ))}
-                          </div>
-                          <p className="text-center mt-4 text-sm text-muted-foreground">
-                            Published to all platforms
-                          </p>
-            </motion.div>
-                      )}
-                    </AnimatePresence>
-          </div>
-        </div>
-
-                {/* Time indicator */}
-                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2">
-                  <Badge variant="secondary" className="px-3 py-1">
-                    <Timer className="h-3 w-3 mr-1" />
-                    Total time: Under 10 minutes
-                  </Badge>
-                  </div>
-                  </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section id="features" className="py-20 sm:py-24 lg:py-32 bg-gradient-to-b from-muted/30 to-background">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center mb-16">
-            <Badge variant="outline" className="mb-4">
-              <Zap className="h-3 w-3 mr-1" />
-              Powerful Features
-            </Badge>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl mb-4">
-              Everything You Need to Create Viral Content
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Powered by cutting-edge AI from OpenAI, Google, and our proprietary models
-            </p>
-          </div>
-          
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {/* AI Smart Clips */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-                className="group"
+              <Link
+                href={tier.name === "Studio" ? "mailto:sales@inflio.com" : isSignedIn ? "/dashboard" : "/sign-up"}
               >
-                <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                  <CardHeader>
-                    <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <Scissors className="h-6 w-6" />
-                    </div>
-                  <CardTitle className="text-xl">AI Smart Clips</CardTitle>
-                  </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    Extract viral moments from long videos. Our AI identifies the best clips for maximum engagement.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Eye className="h-4 w-4 text-primary" />
-                      <span>95% accuracy in viral detection</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <ThumbsUp className="h-4 w-4 text-primary" />
-                      <span>10+ clips from 30min video</span>
-                    </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-            {/* Perfect Transcriptions */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <Mic className="h-6 w-6" />
-          </div>
-                  <CardTitle className="text-xl">Perfect Transcriptions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    Powered by OpenAI Whisper for 99% accurate, timestamped transcriptions with speaker detection.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Globe className="h-4 w-4 text-primary" />
-                      <span>50+ languages supported</span>
-        </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 text-primary" />
-                      <span>Multi-speaker detection</span>
-          </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          
-            {/* SEO Blog Posts */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-                  viewport={{ once: true }}
-              className="group"
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                  <CardTitle className="text-xl">SEO Blog Posts</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    Transform videos into comprehensive, SEO-optimized blog posts with one click.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                      <span>3x higher search rankings</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <FileText className="h-4 w-4 text-primary" />
-                      <span>2000+ words generated</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Social Scheduler */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <Calendar className="h-6 w-6" />
-                      </div>
-                  <CardTitle className="text-xl">Social Scheduler</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    Schedule posts across all platforms. Optimize timing for maximum reach and engagement.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Share2 className="h-4 w-4 text-primary" />
-                      <span>6+ platforms supported</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 text-primary" />
-                      <span>Auto-optimized timing</span>
-                  </div>
-                  </div>
-                </CardContent>
-              </Card>
-                </motion.div>
-
-            {/* Content Intelligence */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <BarChart3 className="h-6 w-6" />
-            </div>
-                  <CardTitle className="text-xl">Content Intelligence</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    AI analyzes your content performance and suggests improvements for better engagement.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                      <span>2.5x engagement boost</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Bot className="h-4 w-4 text-primary" />
-                      <span>Real-time insights</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Brand Templates */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1">
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 text-primary group-hover:scale-110 transition-transform">
-                    <Layers className="h-6 w-6" />
-              </div>
-                  <CardTitle className="text-xl">Brand Templates</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base mb-4">
-                    Maintain consistent branding across all content with customizable templates.
-                  </CardDescription>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Wand2 className="h-4 w-4 text-primary" />
-                      <span>One-click branding</span>
-            </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 text-primary" />
-                      <span>Save 4+ hours weekly</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing">
-        <PricingSection
-          tiers={pricingTiers}
-          title={
-            <span>
-              Simple, <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">transparent</span> pricing
-            </span>
-          }
-          subtitle="Start free, upgrade when you need more power"
-          onSelectPlan={(tier) => {
-            if (tier === "Studio") {
-              window.location.href = "mailto:support@inflio.com?subject=Studio Plan Inquiry"
-            } else {
-              window.location.href = isSignedIn ? "/settings#upgrade" : "/sign-up"
-            }
-          }}
-        />
-      </section>
-
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-20 sm:py-24 lg:py-32 bg-gradient-to-b from-muted/30 to-background">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center mb-16">
-            <Badge variant="outline" className="mb-4">
-              <Users className="h-3 w-3 mr-1" />
-              Success Stories
-            </Badge>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl mb-4">
-              Creators Love Inflio
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Join thousands of creators who've transformed their content workflow
-            </p>
-          </div>
-          
-          <div className="grid gap-8 md:grid-cols-3">
-            {/* Testimonial 1 */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-              >
-                <Card className="h-full border-primary/10 hover:border-primary/30 transition-all">
-                  <CardHeader>
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                      SC
-                      </div>
-                      <div>
-                      <h4 className="font-semibold">Sarah Chen</h4>
-                      <p className="text-sm text-muted-foreground">YouTube Creator • 2.3M subscribers</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 mb-2">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                      ))}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                  <p className="text-muted-foreground mb-4">
-                    "Inflio cut my editing time from 8 hours to 30 minutes. The AI clips are spot-on - they actually go viral!"
-                  </p>
-                      <Badge variant="secondary" className="text-xs">
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                    300% increase in shorts views
-                      </Badge>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-            {/* Testimonial 2 */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              viewport={{ once: true }}
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                      MJ
-          </div>
-                    <div>
-                      <h4 className="font-semibold">Dr. Marcus Johnson</h4>
-                      <p className="text-sm text-muted-foreground">EdTech Influencer • 500K followers</p>
-        </div>
-          </div>
-                  <div className="flex gap-1 mb-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                    ))}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground mb-4">
-                    "The transcription accuracy is incredible. It handles my technical content perfectly, even with jargon."
-                  </p>
-                  <Badge variant="secondary" className="text-xs">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    5x faster content production
-                  </Badge>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Testimonial 3 */}
-              <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-                viewport={{ once: true }}
-            >
-              <Card className="h-full border-primary/10 hover:border-primary/30 transition-all">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                      ER
-                  </div>
-                    <div>
-                      <h4 className="font-semibold">Emily Rodriguez</h4>
-                      <p className="text-sm text-muted-foreground">Digital Marketing Expert</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1 mb-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                    ))}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground mb-4">
-                    "One long video becomes 20+ pieces of content. My engagement tripled in the first month!"
-                  </p>
-                  <Badge variant="secondary" className="text-xs">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    3x engagement rate
-                  </Badge>
-                  </CardContent>
-                </Card>
-              </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Enhanced CTA Section */}
-      <section className="relative overflow-hidden bg-gradient-to-r from-primary via-purple-600 to-pink-600 py-20 sm:py-24">
-        <div className="absolute inset-0 bg-grid-white/10 [mask-image:radial-gradient(ellipse_at_center,white,transparent)]" />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative">
-          <div className="mx-auto max-w-2xl text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              whileInView={{ scale: 1 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true }}
-              className="mb-8"
-            >
-              <IconSparkles className="h-16 w-16 text-white/90 mx-auto" />
-            </motion.div>
-            <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Ready to 10x Your Content Output?
-            </h2>
-            <p className="mt-4 text-lg text-white/90">
-              Join 15,000+ creators who save 30+ hours per month with Inflio
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href={isSignedIn ? "/studio/upload" : "/sign-up"}>
-                <Button size="lg" variant="secondary" className="group shadow-xl">
-                  <IconRocket className="h-5 w-5 mr-2" />
-                  Start Creating Now
-                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <Button
+                  className={`w-full ${
+                    tier.popular
+                      ? "bg-white text-black hover:bg-white/90"
+                      : "bg-white/10 hover:bg-white/20"
+                  }`}
+                >
+                  {tier.cta}
                 </Button>
               </Link>
-              <Button size="lg" variant="ghost" className="text-white hover:bg-white/20">
-                <MessageSquare className="h-5 w-5 mr-2" />
-                Talk to Sales
-              </Button>
-            </div>
-            
-            {/* Trust indicators */}
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-white/80">
-              <div className="flex items-center gap-2">
-                <BadgeCheck className="h-5 w-5" />
-                <span className="text-sm">SOC 2 Type II</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                <span className="text-sm">GDPR Compliant</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                <span className="text-sm">99.9% Uptime</span>
-              </div>
-            </div>
-          </div>
+            </motion.div>
+          ))}
         </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      {/* Enhanced Footer */}
-      <footer className="border-t bg-muted/30">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-            {/* Company */}
-            <div>
-              <h3 className="font-semibold mb-4">Company</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/about" className="hover:text-foreground transition-colors">About</Link></li>
-                <li><Link href="/blog" className="hover:text-foreground transition-colors">Blog</Link></li>
-                <li><Link href="/careers" className="hover:text-foreground transition-colors">Careers</Link></li>
-                <li><Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-            
-            {/* Product */}
-            <div>
-              <h3 className="font-semibold mb-4">Product</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/features" className="hover:text-foreground transition-colors">Features</Link></li>
-                <li><Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link></li>
-                <li><Link href="/api" className="hover:text-foreground transition-colors">API</Link></li>
-                <li><Link href="/changelog" className="hover:text-foreground transition-colors">Changelog</Link></li>
-              </ul>
-            </div>
-            
-            {/* Resources */}
-            <div>
-              <h3 className="font-semibold mb-4">Resources</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/docs" className="hover:text-foreground transition-colors">Documentation</Link></li>
-                <li><Link href="/guides" className="hover:text-foreground transition-colors">Guides</Link></li>
-                <li><Link href="/templates" className="hover:text-foreground transition-colors">Templates</Link></li>
-                <li><Link href="/support" className="hover:text-foreground transition-colors">Support</Link></li>
-              </ul>
-            </div>
-            
-            {/* Legal */}
-            <div>
-              <h3 className="font-semibold mb-4">Legal</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link></li>
-                <li><Link href="/cookies" className="hover:text-foreground transition-colors">Cookie Policy</Link></li>
-                <li><Link href="/gdpr" className="hover:text-foreground transition-colors">GDPR</Link></li>
-              </ul>
-            </div>
+// ============================================================================
+// FAQ SECTION
+// ============================================================================
+function FAQSection() {
+  const [open, setOpen] = useState<number | null>(null)
+  const faqs = [
+    { q: "How long does processing take?", a: "Most videos are fully processed in 20-30 minutes, depending on length. You'll get transcription, clips, blog posts, social captions, and thumbnails all at once." },
+    { q: "What video formats work?", a: "We support MP4, MOV, AVI, MKV, and WebM up to 2GB. You can also paste a YouTube URL directly." },
+    { q: "How accurate is transcription?", a: "We use OpenAI's Whisper model — 99% accuracy in English, 50+ languages supported, with speaker detection." },
+    { q: "How does AI Persona work?", a: "Upload 5-10 photos of yourself and we train a model on your likeness. Then generate thumbnails featuring 'you' in any scenario." },
+    { q: "Can I try before committing?", a: "Yes. We offer a 14-day money-back guarantee on all plans. If it's not for you, just email us for a full refund." },
+    { q: "Can I cancel anytime?", a: "Yes, no contracts. Cancel from your dashboard anytime. We also offer a 30-day money-back guarantee." },
+  ]
+
+  return (
+    <section id="faq" className="py-24 lg:py-32 bg-white/[0.02]">
+      <div className="mx-auto max-w-2xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+            Questions
+          </h2>
+        </motion.div>
+
+        <div className="space-y-2">
+          {faqs.map((faq, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              viewport={{ once: true }}
+            >
+              <button
+                onClick={() => setOpen(open === i ? null : i)}
+                className="w-full text-left px-5 py-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+              >
+                <div className="flex justify-between items-center gap-4">
+                  <span className="font-medium">{faq.q}</span>
+                  <ChevronDown className={`h-4 w-4 text-white/40 shrink-0 transition-transform ${open === i ? "rotate-180" : ""}`} />
+                </div>
+                {open === i && (
+                  <p className="mt-3 text-sm text-white/50 pr-8">{faq.a}</p>
+                )}
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// FOOTER
+// ============================================================================
+function Footer() {
+  const links = {
+    product: [
+      { label: "Features", href: "/#features" },
+      { label: "Pricing", href: "/#pricing" },
+      { label: "Platforms", href: "/#social-ecosystem" },
+    ],
+    company: [
+      { label: "About", href: "/about" },
+      { label: "Blog", href: "/blog" },
+      { label: "Contact", href: "/contact" },
+    ],
+    legal: [
+      { label: "Terms", href: "/terms" },
+      { label: "Privacy", href: "/privacy" },
+    ],
+  }
+
+  return (
+    <footer className="border-t border-white/5 py-12">
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
+          {/* Brand */}
+          <div className="col-span-2">
+            <Link href="/" className="mb-4 inline-block">
+              <InflioLogo size="sm" variant="dark" />
+            </Link>
+            <p className="text-sm text-white/40 max-w-xs">
+              Transform video into multi-platform content with AI.
+            </p>
           </div>
-          
-          <div className="mt-8 border-t pt-8">
-            <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-              <div className="flex items-center space-x-2">
-                <Layers className="h-5 w-5 text-primary" />
-                <span className="font-semibold">Inflio</span>
-              </div>
-              <p className="text-center text-sm text-muted-foreground">
-                © {new Date().getFullYear()} Inflio. All rights reserved.
-              </p>
-              <div className="flex space-x-4">
-                {platforms.slice(0, 4).map((platform) => (
-                  <Link
-                    key={platform.name}
-                    href={`https://${platform.name.toLowerCase()}.com/inflio`}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <platform.icon className="h-5 w-5" />
+
+          <div>
+            <h4 className="font-medium text-sm mb-3">Product</h4>
+            <ul className="space-y-2">
+              {links.product.map((l) => (
+                <li key={l.href}>
+                  <Link href={l.href} className="text-sm text-white/40 hover:text-white/70 transition-colors">
+                    {l.label}
                   </Link>
-                ))}
-              </div>
-            </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-medium text-sm mb-3">Company</h4>
+            <ul className="space-y-2">
+              {links.company.map((l) => (
+                <li key={l.href}>
+                  <Link href={l.href} className="text-sm text-white/40 hover:text-white/70 transition-colors">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-medium text-sm mb-3">Legal</h4>
+            <ul className="space-y-2">
+              {links.legal.map((l) => (
+                <li key={l.href}>
+                  <Link href={l.href} className="text-sm text-white/40 hover:text-white/70 transition-colors">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
-      </footer>
+
+        <div className="mt-12 pt-8 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <p className="text-xs text-white/30">© {new Date().getFullYear()} Inflio, Inc.</p>
+          <div className="flex gap-4">
+            {[IconBrandX, IconBrandLinkedin, IconBrandYoutube].map((Icon, i) => (
+              <a key={i} href="#" className="text-white/30 hover:text-white/60 transition-colors">
+                <Icon className="h-4 w-4" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+// ============================================================================
+// MAIN PAGE
+// ============================================================================
+export default function LandingPage() {
+  const { isSignedIn } = useUser()
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white">
+      <MegaMenu isSignedIn={isSignedIn} />
+      <HeroSection isSignedIn={isSignedIn} />
+      <LogosSection />
+      <ProblemSolutionSection />
+      <section id="how-it-works">
+        <HowItWorksSection />
+      </section>
+      <FeaturesSection />
+      <PlatformsSection />
+      <PricingSection isSignedIn={isSignedIn} />
+      <FAQSection />
+      <FinalCTA isSignedIn={isSignedIn} />
+      <Footer />
     </div>
   )
-} 
+}

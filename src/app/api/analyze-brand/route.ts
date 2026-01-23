@@ -247,10 +247,13 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
     let message
     try {
       message = await (anthropic.beta.messages.create as any)({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8000,
       temperature: 0,
-      system: 'You are a brand expert extracting comprehensive brand identity data. Analyze thoroughly and extract ALL available information. Include colors with hex codes and names, exact font family names, detailed brand voice, visual guidelines, audience insights, and brand strategy. Respond with minified JSON only. No markdown, no backticks, no prose. Be extremely detailed and comprehensive.',
+      system: `Extract brand identity data as JSON. Output ONLY valid JSON, no markdown.
+
+Keep all string values under 150 characters. Use this structure:
+{"colors":{"primary":{"hex":["#HEX"],"name":["Name"],"usage":""},"secondary":{"hex":[],"name":[],"usage":""},"accent":{"hex":[],"name":[],"usage":""}},"typography":{"primary":{"family":"","weights":[],"usage":""},"secondary":{"family":"","weights":[],"usage":""}},"voice":{"tone":[],"personality":[],"phrases":[]},"visualStyle":{"principles":[],"imagery":[],"photography":{"style":[],"mood":[]}},"targetAudience":{"demographics":{"age":"","location":"","interests":[]},"psychographics":[],"painPoints":[]},"brandStrategy":{"mission":"","vision":"","values":[],"positioning":""},"competitors":{"direct":[],"positioning":"","differentiators":[]}}`,
       messages: [
         {
           role: 'user',
@@ -292,10 +295,13 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
 
         try {
           message = await (anthropic.beta.messages.create as any)({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1500,
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 8000,
             temperature: 0,
-            system: 'You extract brand identity data. Respond with minified JSON only. No markdown, no backticks, no prose. Omit unknown fields.',
+            system: `Extract brand identity data as JSON. Output ONLY valid JSON, no markdown.
+
+Keep all string values under 150 characters. Use this structure:
+{"colors":{"primary":{"hex":["#HEX"],"name":["Name"],"usage":""},"secondary":{"hex":[],"name":[],"usage":""},"accent":{"hex":[],"name":[],"usage":""}},"typography":{"primary":{"family":"","weights":[],"usage":""},"secondary":{"family":"","weights":[],"usage":""}},"voice":{"tone":[],"personality":[],"phrases":[]},"visualStyle":{"principles":[],"imagery":[],"photography":{"style":[],"mood":[]}},"targetAudience":{"demographics":{"age":"","location":"","interests":[]},"psychographics":[],"painPoints":[]},"brandStrategy":{"mission":"","vision":"","values":[],"positioning":""},"competitors":{"direct":[],"positioning":"","differentiators":[]}}`,
             messages: [
               {
                 role: 'user',
@@ -328,6 +334,9 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
     if (!rawText) {
       throw new Error('No analysis content returned from Claude')
     }
+    
+    // Log response length for debugging
+    console.log(`[Brand Analysis] Response length: ${rawText.length} chars`)
 
     // Robust JSON parsing: strip code fences and extract first valid JSON object
     function stripCodeFences(input: string): string {
@@ -371,12 +380,125 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
       if (extracted) jsonCandidate = extracted
     }
 
+    // Attempt to repair common JSON issues
+    function repairJson(input: string): string {
+      let result = input
+      
+      // Remove control characters except newlines and tabs
+      result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+      
+      // Fix unescaped newlines inside strings (common LLM issue)
+      // This is tricky - we need to be inside a string context
+      let inString = false
+      let escaped = false
+      let chars = result.split('')
+      
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i]
+        
+        if (inString) {
+          if (!escaped && ch === '"') {
+            inString = false
+          } else if (!escaped && (ch === '\n' || ch === '\r')) {
+            // Replace unescaped newline in string with escaped version
+            chars[i] = '\\n'
+          }
+          escaped = ch === '\\' ? !escaped : false
+        } else if (ch === '"') {
+          inString = true
+          escaped = false
+        }
+      }
+      result = chars.join('')
+      
+      // Fix trailing commas before } or ]
+      result = result.replace(/,(\s*[}\]])/g, '$1')
+      
+      // Fix missing commas between properties ("}"{" or "]["  patterns with optional whitespace)
+      result = result.replace(/}(\s*)"/g, '},$1"')
+      result = result.replace(/](\s*)"/g, '],$1"')
+      result = result.replace(/"(\s*)"/g, '",$1"') // This might be too aggressive, be careful
+      
+      // Actually, the above "," insertion can break things. Let's be more conservative.
+      // Reset and just do safe fixes
+      result = input
+      result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove control chars
+      result = result.replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+      
+      return result
+    }
+
     let analysis
     try {
       analysis = JSON.parse(jsonCandidate)
     } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError)
-      throw new Error('Invalid response format from AI')
+      console.log('[Brand Analysis] First parse failed, attempting repair...')
+      
+      // Try to repair and parse again
+      try {
+        const repaired = repairJson(jsonCandidate)
+        analysis = JSON.parse(repaired)
+        console.log('[Brand Analysis] Repair successful')
+      } catch (repairError) {
+        // Log the problematic JSON for debugging (first 500 chars)
+        console.error('[Brand Analysis] JSON repair failed. Raw response preview:', jsonCandidate.substring(0, 500))
+        console.error('[Brand Analysis] Parse error:', parseError)
+        
+        // Try one more thing: use a more lenient approach - extract key fields manually
+        try {
+          console.log('[Brand Analysis] Attempting manual field extraction...')
+          analysis = extractFieldsManually(jsonCandidate)
+          console.log('[Brand Analysis] Manual extraction successful')
+        } catch (manualError) {
+          console.error('[Brand Analysis] Manual extraction also failed:', manualError)
+          throw new Error('Invalid response format from AI. The document may be too complex - try uploading key pages as images instead.')
+        }
+      }
+    }
+    
+    // Manual field extraction as last resort
+    function extractFieldsManually(input: string): any {
+      const result: any = {
+        colors: { primary: { hex: [], name: [], usage: '' }, secondary: { hex: [], name: [], usage: '' }, accent: { hex: [], name: [], usage: '' }, neutral: { hex: [], name: [], usage: '' }, guidelines: [] },
+        typography: { primary: { family: '', weights: [], fallback: '', usage: '' }, secondary: { family: '', weights: [], fallback: '', usage: '' }, body: { family: '', size: '16px', lineHeight: '1.5' }, headings: { h1: { size: '', weight: '' }, h2: { size: '', weight: '' }, h3: { size: '', weight: '' } } },
+        voice: { tone: [], personality: [], attributes: [], phrases: [], dos: [], donts: [], guidelines: [] },
+        visualStyle: { principles: [], photography: { style: [], mood: [], composition: [] }, imagery: [], iconography: '', patterns: [] },
+        targetAudience: { demographics: { age: '', location: '', interests: [] }, psychographics: [], painPoints: [], needs: [], personas: [] },
+        brandStrategy: { mission: '', vision: '', values: [], positioning: '', pillars: [], story: '' },
+        competitors: { direct: [], indirect: [], positioning: '', differentiators: [] },
+        logoUsage: { guidelines: [], clearSpace: '', minimumSize: '', variations: [] }
+      }
+      
+      // Extract hex colors using regex
+      const hexColors = input.match(/#[0-9A-Fa-f]{6}/g) || []
+      if (hexColors.length > 0) {
+        result.colors.primary.hex = hexColors.slice(0, 3)
+        result.colors.secondary.hex = hexColors.slice(3, 6)
+        result.colors.accent.hex = hexColors.slice(6, 9)
+      }
+      
+      // Extract font families (common patterns)
+      const fontMatch = input.match(/"family"\s*:\s*"([^"]+)"/g)
+      if (fontMatch && fontMatch.length > 0) {
+        const fonts = fontMatch.map(m => m.match(/"([^"]+)"$/)?.[1]).filter(Boolean)
+        if (fonts[0]) result.typography.primary.family = fonts[0] as string
+        if (fonts[1]) result.typography.secondary.family = fonts[1] as string
+      }
+      
+      // Extract tone/personality words
+      const toneMatch = input.match(/"tone"\s*:\s*\[([^\]]+)\]/i)
+      if (toneMatch) {
+        const tones = toneMatch[1].match(/"([^"]+)"/g)?.map(t => t.replace(/"/g, '')) || []
+        result.voice.tone = tones
+      }
+      
+      // Extract mission statement
+      const missionMatch = input.match(/"mission"\s*:\s*"([^"]{10,500})"/i)
+      if (missionMatch) {
+        result.brandStrategy.mission = missionMatch[1]
+      }
+      
+      return result
     }
 
     // Clean up uploaded files after successful analysis

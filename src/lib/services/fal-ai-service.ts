@@ -86,10 +86,10 @@ export class FALService {
 
     try {
       // Map model name to FAL endpoint
-      const endpoint = model === 'flux-lora' ? 'fal-ai/flux-lora' : 
+      const endpoint = model === 'flux-lora' ? 'fal-ai/flux-lora' :
                        model === 'flux-dev' ? 'fal-ai/flux/dev' :
                        model === 'flux-schnell' ? 'fal-ai/flux/schnell' :
-                       'fal-ai/flux-pro-1.1'
+                       'fal-ai/flux-pro/v1.1'
 
       // Prepare LoRA weights if provided
       const loraWeights = loras.map(lora => ({
@@ -97,20 +97,30 @@ export class FALService {
         scale: lora.scale || 1.0
       }))
 
-      // Call FAL API
-      const result = await fal.subscribe(endpoint, {
-        input: {
-          prompt,
-          image_size: aspectRatio || imageSize,
+      // Flux Pro v1.1 has different parameters than other models
+      const isFluxProV1 = endpoint === 'fal-ai/flux-pro/v1.1'
+
+      // Build input based on model type
+      // Note: Flux Pro v1.1 does NOT support num_inference_steps or guidance_scale
+      const input: Record<string, any> = {
+        prompt,
+        image_size: aspectRatio || imageSize,
+        num_images: numImages,
+        output_format: outputFormat,
+        ...(seed && { seed }),
+        ...(loraWeights.length > 0 && !isFluxProV1 && { loras: loraWeights }),
+        ...(!isFluxProV1 && {
           num_inference_steps: numInferenceSteps,
           guidance_scale: guidanceScale,
-          seed,
-          loras: loraWeights,
-          num_images: numImages,
-          output_format: outputFormat,
           enable_safety_checker: enableSafetyChecker,
           sync_mode: false
-        },
+        }),
+        ...(isFluxProV1 && { safety_tolerance: '2' })
+      }
+
+      // Call FAL API
+      const result = await fal.subscribe(endpoint, {
+        input: input as any,
         logs: false,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {

@@ -16,7 +16,16 @@ const isPublicRoute = createRouteMatcher([
   '/api/inngest(.*)', // Allow Inngest endpoint
   '/api/dev-bypass-onboarding', // Allow dev bypass
   '/settings/skip-onboarding', // Allow skip page
-  '/examples/transcription-demo'
+  '/examples/transcription-demo',
+  // Marketing pages - publicly accessible
+  '/features(.*)',
+  '/about',
+  '/blog',
+  '/careers',
+  '/contact',
+  '/support',
+  '/terms',
+  '/privacy',
 ])
 
 // Define protected routes that require authentication

@@ -64,13 +64,22 @@ export async function POST(request: Request) {
       consentRepurpose,
       mediaRelease,
       privacyAccepted,
-      
+
       // Photo upload info
       photoCount,
-      
+
       // Completion
       completedAt,
-      onboarding_completed
+      onboarding_completed,
+
+      // Brand Analysis (AI-generated)
+      brandAnalysis,
+      brandIdentity,
+
+      // Progress save fields
+      step,
+      stepId,
+      onboarding_progress
     } = body
 
     // Prepare platform handles for storage
@@ -147,20 +156,55 @@ export async function POST(request: Request) {
         consented_at: completedAt || new Date().toISOString()
       },
       
+      // Brand Analysis (AI-generated from brand materials)
+      ...(brandAnalysis && { brand_analysis: brandAnalysis }),
+      ...(brandIdentity && { brand_identity: brandIdentity }),
+
+      // Progress tracking
+      ...(step !== undefined && { onboarding_step: step }),
+      ...(stepId && { onboarding_step_id: stepId }),
+      ...(onboarding_progress && { onboarding_progress }),
+
       // Meta
-      onboarding_completed: true, // Always set to true when this endpoint is called
-      onboarding_step: 8, // All steps completed
-      onboarding_completed_at: new Date().toISOString(),
+      onboarding_completed: onboarding_completed !== undefined ? onboarding_completed : true,
+      ...(onboarding_completed && { onboarding_completed_at: new Date().toISOString() }),
       persona_photo_count: photoCount || 0,
       updated_at: new Date().toISOString()
     }
 
-    // Upsert user profile
-    const { data: profile, error: profileError } = await supabase
+    // Check if profile exists first
+    const { data: existingProfile } = await supabase
       .from("user_profiles")
-      .upsert(profileData)
-      .select()
-      .single()
+      .select("clerk_user_id")
+      .eq("clerk_user_id", profileData.clerk_user_id)
+      .maybeSingle()
+
+    let profile
+    let profileError
+
+    if (existingProfile) {
+      // Update existing profile
+      const result = await supabase
+        .from("user_profiles")
+        .update(profileData)
+        .eq("clerk_user_id", profileData.clerk_user_id)
+        .select()
+        .single()
+      profile = result.data
+      profileError = result.error
+    } else {
+      // Insert new profile
+      const result = await supabase
+        .from("user_profiles")
+        .insert({
+          ...profileData,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+      profile = result.data
+      profileError = result.error
+    }
 
     if (profileError) {
       console.error("Profile error:", profileError)

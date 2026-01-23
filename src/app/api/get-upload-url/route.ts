@@ -27,11 +27,13 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Failed to create signed URL:', error);
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Failed to create upload URL',
-        details: error.message 
+        details: error.message
       }, { status: 500 });
     }
+
+    console.log('[Upload URL] Created signed URL for:', fileName);
 
     // Return the signed URL and path
     return NextResponse.json({

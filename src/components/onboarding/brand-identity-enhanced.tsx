@@ -6,7 +6,8 @@ import {
   Upload, Palette, FileText, Image, FileType, X, Loader2, 
   CheckCircle, Sparkles, ChevronRight, Edit3, Save, Eye,
   Type, Volume2, Target, Users, Trophy, Lightbulb, AlertCircle,
-  FileImage, FileVideo, FilePlus, Wand2, Book, ArrowRight
+  FileImage, FileVideo, FilePlus, Wand2, Book, ArrowRight,
+  FileWarning, SkipForward, RefreshCw
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -24,10 +25,39 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+// Supported file formats
+const SUPPORTED_FORMATS = {
+  documents: ['.pdf', '.doc', '.docx', '.txt', '.md'],
+  images: ['.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif'],
+  presentations: ['.ppt', '.pptx']
+}
+
+const SUPPORTED_MIME_TYPES = [
+  'application/pdf',
+  'image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp', 'image/gif',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'text/plain', 'text/markdown'
+]
+
+// Analysis tips shown during loading
+const ANALYSIS_TIPS = [
+  { title: 'Extracting Colors', description: 'AI is identifying your brand color palette with hex codes and usage guidelines' },
+  { title: 'Analyzing Typography', description: 'Detecting font families, weights, and typographic hierarchy' },
+  { title: 'Understanding Voice', description: 'Learning your brand tone, personality, and communication style' },
+  { title: 'Mapping Audience', description: 'Identifying target demographics and psychographics' },
+  { title: 'Building Strategy', description: 'Extracting mission, vision, and brand positioning' },
+]
+
 interface BrandIdentityEnhancedProps {
   formData: any
   updateFormData: (key: string, value: any) => void
   onComplete?: () => void
+  onSkip?: () => void
+  onSwitchToManual?: () => void
+  onSaveProgress?: (data: Record<string, any>) => Promise<void>
 }
 
 interface UploadedFile {
@@ -139,12 +169,17 @@ interface BrandAnalysis {
   }
 }
 
-export function BrandIdentityEnhanced({ 
-  formData, 
+export function BrandIdentityEnhanced({
+  formData,
   updateFormData,
-  onComplete 
+  onComplete,
+  onSkip,
+  onSwitchToManual,
+  onSaveProgress
 }: BrandIdentityEnhancedProps) {
-  const [mode, setMode] = useState<'upload' | 'manual' | null>(null)
+  // Auto-set mode to 'upload' if brand analysis already exists (for restoration)
+  const initialMode = formData.brandAnalysis ? 'upload' : null
+  const [mode, setMode] = useState<'upload' | 'manual' | null>(initialMode)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState(0)
@@ -152,10 +187,16 @@ export function BrandIdentityEnhanced({
   const [brandAnalysis, setBrandAnalysis] = useState<BrandAnalysis | null>(formData.brandAnalysis || null)
   const [editMode, setEditMode] = useState<string | null>(null)
   const [manualStep, setManualStep] = useState(0)
+  const [currentTipIndex, setCurrentTipIndex] = useState(0)
+  const [rejectedFiles, setRejectedFiles] = useState<{ name: string; reason: string }[]>([])
+  const [showRejectedAlert, setShowRejectedAlert] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [isRestored, setIsRestored] = useState(!!formData.brandAnalysis)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-
   // Normalize AI analysis payload to ensure all fields exist and are arrays/strings as expected
+  // Defined before the useEffect that depends on it
   const normalizeAnalysis = useCallback((raw: any): BrandAnalysis => {
     const toArray = (v: any) => Array.isArray(v) ? v : (v ? [v] : [])
     const ensure = (v: any, fallback: any) => (v === undefined || v === null ? fallback : v)
@@ -355,9 +396,68 @@ export function BrandIdentityEnhanced({
     }
   }, [])
 
-  // File upload handler
+  // Effect to handle formData updates (for when progress is restored)
+  useEffect(() => {
+    if (formData.brandAnalysis && !brandAnalysis) {
+      const normalized = normalizeAnalysis(formData.brandAnalysis)
+      setBrandAnalysis(normalized)
+      setMode('upload')
+      setIsRestored(true)
+    }
+  }, [formData.brandAnalysis, brandAnalysis, normalizeAnalysis])
+  
+  // Rotate tips during analysis
+  useEffect(() => {
+    if (isAnalyzing) {
+      const interval = setInterval(() => {
+        setCurrentTipIndex(prev => (prev + 1) % ANALYSIS_TIPS.length)
+      }, 4000)
+      return () => clearInterval(interval)
+    }
+  }, [isAnalyzing])
+
+  // Validate file format
+  const validateFile = useCallback((file: File): { valid: boolean; reason?: string } => {
+    // Check file extension
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    const allExtensions = [
+      ...SUPPORTED_FORMATS.documents,
+      ...SUPPORTED_FORMATS.images,
+      ...SUPPORTED_FORMATS.presentations
+    ]
+    
+    if (!allExtensions.includes(ext)) {
+      return { 
+        valid: false, 
+        reason: `Unsupported format (${ext}). Please use PDF, images (PNG, JPG, SVG), or documents (Word, PowerPoint).` 
+      }
+    }
+    
+    // Check MIME type (with fallback for unknown types)
+    if (file.type && !SUPPORTED_MIME_TYPES.includes(file.type) && file.type !== 'application/octet-stream') {
+      // Allow if extension is valid even if MIME type doesn't match
+      console.log(`File ${file.name} has unusual MIME type ${file.type}, but extension is valid`)
+    }
+    
+    // Check file size (25MB limit)
+    const maxSizeMB = 25
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      return { 
+        valid: false, 
+        reason: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is ${maxSizeMB}MB.` 
+      }
+    }
+    
+    return { valid: true }
+  }, [])
+
+  // File upload handler with comprehensive validation
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
+    
+    // Reset rejected files alert
+    setRejectedFiles([])
+    setShowRejectedAlert(false)
     
     // Validate file count
     if (uploadedFiles.length + files.length > 10) {
@@ -365,15 +465,32 @@ export function BrandIdentityEnhanced({
       return
     }
     
-    const validFiles = files.filter(file => {
-      // Validate file size - 25MB per file, up to 10 files
-      const maxSizeMB = 25
-      if (file.size > maxSizeMB * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max ${maxSizeMB}MB per file)`)
-        return false
+    const validFiles: File[] = []
+    const rejected: { name: string; reason: string }[] = []
+    
+    for (const file of files) {
+      const validation = validateFile(file)
+      if (validation.valid) {
+        validFiles.push(file)
+      } else {
+        rejected.push({ name: file.name, reason: validation.reason || 'Unknown error' })
       }
-      return true
-    })
+    }
+    
+    // Show rejected files alert if any
+    if (rejected.length > 0) {
+      setRejectedFiles(rejected)
+      setShowRejectedAlert(true)
+      
+      // Also show toast for immediate feedback
+      if (rejected.length === 1) {
+        toast.error(rejected[0].reason, { description: rejected[0].name })
+      } else {
+        toast.error(`${rejected.length} files couldn't be added`, { 
+          description: 'Check the alert below for details' 
+        })
+      }
+    }
     
     const newFiles: UploadedFile[] = validFiles.map(file => {
       const type = file.type.includes('pdf') ? 'pdf' :
@@ -398,8 +515,18 @@ export function BrandIdentityEnhanced({
       }
     })
     
-    setUploadedFiles(prev => [...prev, ...newFiles])
-  }, [uploadedFiles.length])
+    if (newFiles.length > 0) {
+      setUploadedFiles(prev => [...prev, ...newFiles])
+      if (rejected.length === 0) {
+        toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} added`)
+      }
+    }
+    
+    // Reset input
+    if (e.target) {
+      e.target.value = ''
+    }
+  }, [uploadedFiles.length, validateFile])
 
   // Remove file handler
   const removeFile = useCallback((id: string) => {
@@ -412,6 +539,15 @@ export function BrandIdentityEnhanced({
     })
   }, [])
 
+  // Reset analysis state (for retry)
+  const resetAnalysis = useCallback(() => {
+    setIsAnalyzing(false)
+    setAnalysisProgress(0)
+    setAnalysisStep('')
+    setAnalysisError(null)
+    setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'pending' as const })))
+  }, [])
+
   // Analyze brand materials with AI
   const analyzeBrandMaterials = async () => {
     if (uploadedFiles.length === 0) {
@@ -421,6 +557,11 @@ export function BrandIdentityEnhanced({
 
     setIsAnalyzing(true)
     setAnalysisProgress(0)
+    setAnalysisError(null)
+    setCurrentTipIndex(0)
+    
+    // Create abort controller for cancellation
+    abortControllerRef.current = new AbortController()
     
     try {
       // Update file statuses
@@ -470,8 +611,11 @@ export function BrandIdentityEnhanced({
 
       // Start the API call with timeout
       console.log('Starting API call with', appendedCount, 'files')
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180000) // 180s timeout for large PDFs
+      const timeoutId = setTimeout(() => {
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort()
+        }
+      }, 180000) // 180s timeout for large PDFs
       
       // Mark that API call has started
       apiCallStarted = true
@@ -484,7 +628,7 @@ export function BrandIdentityEnhanced({
         response = await fetch('/api/analyze-brand', {
           method: 'POST',
           body: formDataToSend,
-          signal: controller.signal
+          signal: abortControllerRef.current.signal
         })
         console.log('API response received:', response.status)
       } catch (fetchError: any) {
@@ -492,6 +636,10 @@ export function BrandIdentityEnhanced({
         clearTimeout(timeoutId)
         console.error('API call failed:', fetchError)
         if (fetchError.name === 'AbortError') {
+          // Check if it was a user cancellation vs timeout
+          if (!isAnalyzing) {
+            return // User cancelled, don't show error
+          }
           throw new Error('Analysis timed out. Please try again with smaller files.')
         }
         throw fetchError
@@ -523,7 +671,20 @@ export function BrandIdentityEnhanced({
       
       // Set the analysis - this will automatically transition to the brand sheet view
       setBrandAnalysis(analysis)
+      setIsRestored(true) // Show completion indicator
       updateFormData('brandAnalysis', analysis)
+      // Also set brandIdentity so brand page can show it immediately
+      updateFormData('brandIdentity', {
+        colors: analysis.colors,
+        typography: analysis.typography,
+        voice: analysis.voice,
+        visualStyle: analysis.visualStyle,
+        targetAudience: analysis.targetAudience,
+        brandStrategy: analysis.brandStrategy,
+        competitors: analysis.competitors,
+        logoUsage: analysis.logoUsage
+      })
+      updateFormData('brandAnalysisCompleted', true) // Mark step as complete
       // Push key fields to profile formData immediately
       updateFormData('primaryColor', analysis.colors.primary?.hex?.[0] || '')
       updateFormData('brandColors', analysis.colors.primary?.hex || [])
@@ -536,21 +697,30 @@ export function BrandIdentityEnhanced({
       ].filter(Boolean).join(', ')
       updateFormData('targetAudience', audienceCombined)
       updateFormData('audience', audienceCombined)
+      
+      toast.success('Brand analysis complete!')
     } catch (error: any) {
       console.error('Brand analysis error:', error)
+      
+      // Don't show error if user cancelled
+      if (error.name === 'AbortError') {
+        return
+      }
       
       // Show specific error message
       let errorMessage = error.message || 'Failed to analyze brand materials'
       if (errorMessage === 'ANALYSIS_TIMEOUT') {
         errorMessage = 'Analysis timed out. Please try fewer pages or images.'
       }
-      toast.error(errorMessage)
       
+      // Set error state to show recovery options
+      setAnalysisError(errorMessage)
       setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'error' as const })))
     } finally {
       setIsAnalyzing(false)
       setAnalysisProgress(0)
       setAnalysisStep('')
+      abortControllerRef.current = null
     }
   }
 
@@ -558,6 +728,17 @@ export function BrandIdentityEnhanced({
   const saveSection = (section: string) => {
     setEditMode(null)
     updateFormData('brandAnalysis', brandAnalysis)
+    // Keep brandIdentity in sync
+    updateFormData('brandIdentity', {
+      colors: brandAnalysis?.colors,
+      typography: brandAnalysis?.typography,
+      voice: brandAnalysis?.voice,
+      visualStyle: brandAnalysis?.visualStyle,
+      targetAudience: brandAnalysis?.targetAudience,
+      brandStrategy: brandAnalysis?.brandStrategy,
+      competitors: brandAnalysis?.competitors,
+      logoUsage: brandAnalysis?.logoUsage
+    })
     toast.success(`${section} saved successfully`)
   }
 
@@ -678,9 +859,21 @@ export function BrandIdentityEnhanced({
             </div>
             <h2 className="text-3xl font-bold">Your Brand Profile</h2>
             <p className="text-muted-foreground">
-              Review and edit your AI-generated brand identity
+              {isRestored 
+                ? 'Your brand profile has been saved. Review or continue to the next step.' 
+                : 'Review and edit your AI-generated brand identity'}
             </p>
           </div>
+          
+          {/* Restored indicator */}
+          {isRestored && (
+            <Alert className="border-green-500/20 bg-green-500/5">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <AlertDescription>
+                <strong>Step Complete</strong> — Your brand profile has been saved. You can continue to the next step or make edits here.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <ScrollArea className="h-[600px] pr-4">
             <div className="space-y-6">
@@ -1321,27 +1514,52 @@ export function BrandIdentityEnhanced({
             </div>
           </ScrollArea>
 
-          <div className="flex justify-between">
-            <Button variant="outline" onClick={() => setMode(null)}>
-              Start Over
-            </Button>
-            <Button onClick={() => {
-              // Save the brand analysis to form data
-              updateFormData('brandAnalysis', brandAnalysis)
-              updateFormData('brandIdentity', {
-                colors: brandAnalysis.colors,
-                typography: brandAnalysis.typography,
-                voice: brandAnalysis.voice,
-                visualStyle: brandAnalysis.visualStyle,
-                targetAudience: brandAnalysis.targetAudience,
-                brandStrategy: brandAnalysis.brandStrategy,
-                competitors: brandAnalysis.competitors,
-                logoUsage: brandAnalysis.logoUsage
-              })
-              // Trigger completion callback
-              if (onComplete) onComplete()
-            }}>
-              Save Brand Profile
+          {/* Single action button - Continue saves and advances */}
+          <div className="flex justify-end">
+            <Button
+              size="lg"
+              onClick={async () => {
+                // Save the brand analysis to form data
+                updateFormData('brandAnalysis', brandAnalysis)
+                updateFormData('brandIdentity', {
+                  colors: brandAnalysis.colors,
+                  typography: brandAnalysis.typography,
+                  voice: brandAnalysis.voice,
+                  visualStyle: brandAnalysis.visualStyle,
+                  targetAudience: brandAnalysis.targetAudience,
+                  brandStrategy: brandAnalysis.brandStrategy,
+                  competitors: brandAnalysis.competitors,
+                  logoUsage: brandAnalysis.logoUsage
+                })
+                updateFormData('brandAnalysisCompleted', true)
+
+                // Immediately save progress with actual data to prevent loss on refresh
+                if (onSaveProgress) {
+                  try {
+                    await onSaveProgress({
+                      brandAnalysis,
+                      brandIdentity: {
+                        colors: brandAnalysis.colors,
+                        typography: brandAnalysis.typography,
+                        voice: brandAnalysis.voice,
+                        visualStyle: brandAnalysis.visualStyle,
+                        targetAudience: brandAnalysis.targetAudience,
+                        brandStrategy: brandAnalysis.brandStrategy,
+                        competitors: brandAnalysis.competitors,
+                        logoUsage: brandAnalysis.logoUsage
+                      },
+                      brandAnalysisCompleted: true
+                    })
+                  } catch (error) {
+                    console.error('Error saving brand analysis progress:', error)
+                  }
+                }
+
+                // Trigger completion callback to advance
+                if (onComplete) onComplete()
+              }}
+            >
+              Continue to AI Avatar
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>
@@ -1436,58 +1654,206 @@ export function BrandIdentityEnhanced({
           )}
         </div>
 
-        {/* Analysis progress */}
+        {/* Rejected files alert */}
+        <AnimatePresence>
+          {showRejectedAlert && rejectedFiles.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+                <FileWarning className="h-4 w-4" />
+                <AlertTitle className="flex items-center justify-between">
+                  <span>{rejectedFiles.length} file{rejectedFiles.length > 1 ? 's' : ''} couldn't be added</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowRejectedAlert(false)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </AlertTitle>
+                <AlertDescription>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {rejectedFiles.map((file, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="font-medium truncate max-w-[200px]">{file.name}</span>
+                        <span className="text-destructive/80">— {file.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Supported formats: PDF, PNG, JPG, SVG, WebP, GIF, Word (.doc, .docx), PowerPoint (.ppt, .pptx), Text files (.txt, .md)
+                  </p>
+                </AlertDescription>
+              </Alert>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Analysis progress - Enhanced UI */}
         {isAnalyzing && (
-          <Card className="p-6 border-2">
-            <div className="space-y-4">
+          <Card className="p-6 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+            <div className="space-y-6">
+              {/* Header with spinner */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    </div>
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-2 border-primary/30"
+                      animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  </div>
                   <div>
-                    <p className="font-medium">Analyzing Your Brand Materials</p>
-                    <p className="text-sm text-muted-foreground mt-1">{analysisStep}</p>
+                    <p className="font-semibold">Analyzing Your Brand Materials</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{analysisStep}</p>
                   </div>
                 </div>
-                <span className="text-sm font-medium">{analysisProgress}%</span>
+                <Badge variant="outline" className="text-sm">
+                  {analysisProgress}%
+                </Badge>
               </div>
               
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-500 ease-out"
-                  style={{ width: `${analysisProgress}%` }}
-                />
+              {/* Progress bar */}
+              <div className="space-y-2">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-primary to-primary/80"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${analysisProgress}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                </div>
               </div>
               
-              {analysisProgress === 100 && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Finalizing your brand profile...
-                </p>
-              )}
+              {/* Rotating tips */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentTipIndex}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                  className="p-4 rounded-lg bg-card border border-border"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{ANALYSIS_TIPS[currentTipIndex].title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {ANALYSIS_TIPS[currentTipIndex].description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+              
+              {/* Tip indicators */}
+              <div className="flex justify-center gap-1.5">
+                {ANALYSIS_TIPS.map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full transition-all",
+                      i === currentTipIndex ? "bg-primary w-4" : "bg-muted-foreground/30"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
+        
+        {/* Error state with recovery options */}
+        {analysisError && !isAnalyzing && (
+          <Card className="p-6 border-2 border-destructive/30 bg-destructive/5">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-destructive">Analysis Failed</p>
+                  <p className="text-sm text-muted-foreground mt-1">{analysisError}</p>
+                </div>
+              </div>
+              
+              <Separator />
+              
+              <div className="space-y-3">
+                <p className="text-sm font-medium">What would you like to do?</p>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      resetAnalysis()
+                      analyzeBrandMaterials()
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Try Again
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      resetAnalysis()
+                      setMode('manual')
+                    }}
+                  >
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    Manual Setup Instead
+                  </Button>
+                  {onSkip && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        resetAnalysis()
+                        onSkip()
+                      }}
+                    >
+                      <SkipForward className="h-4 w-4 mr-2" />
+                      Skip This Step
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </Card>
         )}
 
-        <div className="flex justify-between">
-          <Button variant="outline" onClick={() => setMode(null)}>
-            Back
-          </Button>
-          <Button 
-            onClick={analyzeBrandMaterials}
-            disabled={uploadedFiles.length === 0 || isAnalyzing}
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Wand2 className="h-4 w-4 mr-2" />
-                Analyze Brand Materials
-              </>
-            )}
-          </Button>
-        </div>
+        {/* Bottom buttons - only show when not in error state (error has its own buttons) */}
+        {!analysisError && (
+          <div className="flex justify-between items-center">
+            <Button variant="outline" onClick={() => setMode(null)} disabled={isAnalyzing}>
+              Back
+            </Button>
+            
+            <Button 
+              onClick={analyzeBrandMaterials}
+              disabled={uploadedFiles.length === 0 || isAnalyzing}
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Analyze Brand Materials
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
     )
   }
@@ -1594,11 +1960,24 @@ export function BrandIdentityEnhanced({
             Back
           </Button>
           <Button
-            onClick={() => {
+            onClick={async () => {
               if (manualStep < manualSteps.length - 1) {
                 setManualStep(manualStep + 1)
               } else {
-                // Complete manual setup
+                // Complete manual setup - save immediately before advancing
+                updateFormData('brandAnalysisCompleted', true)
+
+                if (onSaveProgress) {
+                  try {
+                    await onSaveProgress({
+                      ...formData,
+                      brandAnalysisCompleted: true
+                    })
+                  } catch (error) {
+                    console.error('Error saving manual brand setup:', error)
+                  }
+                }
+
                 toast.success('Brand profile created!')
                 onComplete?.()
               }
