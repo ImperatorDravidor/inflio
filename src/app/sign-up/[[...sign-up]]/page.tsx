@@ -122,16 +122,16 @@ export default function SignUpPage() {
                 </div>
               </div>
 
-              {/* Special offer */}
+              {/* Guarantee */}
               <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-2xl p-6 border border-primary/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Gift className="h-5 w-5 text-primary" />
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    Start Free Today
+                    14-Day Money-Back Guarantee
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Get 25 videos/month free forever. No credit card required.
+                  Try Inflio risk-free. Not for you? Get a full refund.
                 </p>
               </div>
             </div>
@@ -191,10 +191,10 @@ export default function SignUpPage() {
                 <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
                   <div className="grid grid-cols-2 gap-3 mb-6">
                     {[
-                      "25 free videos/month",
-                      "No credit card",
                       "All AI features",
+                      "14-day guarantee",
                       "Cancel anytime",
+                      "Priority support",
                     ].map((benefit) => (
                       <div key={benefit} className="flex items-center gap-2 text-sm">
                         <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />

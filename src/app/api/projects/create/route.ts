@@ -4,6 +4,18 @@ import { ServerUsageService } from '@/lib/server-usage-service'
 import { requireAuth } from '@/lib/auth-utils'
 import { VideoMetadata } from '@/lib/project-types'
 
+// Brand settings type for enhanced content generation
+interface BrandSettings {
+  name?: string
+  voice?: string
+  colors?: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+  targetAudience?: string
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Validate authentication
@@ -13,13 +25,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { 
-      title, 
-      videoUrl, 
-      thumbnailUrl, 
+    const {
+      title,
+      videoUrl,
+      thumbnailUrl,
       metadata,
       workflowOptions,
-      description 
+      description,
+      // Enhanced content generation settings
+      personaId,
+      brandSettings
     }: {
       title: string
       videoUrl: string
@@ -27,6 +42,8 @@ export async function POST(request: NextRequest) {
       metadata: VideoMetadata
       workflowOptions?: any
       description?: string
+      personaId?: string | null
+      brandSettings?: BrandSettings | null
     } = body
 
     // Validate required fields
@@ -65,9 +82,27 @@ export async function POST(request: NextRequest) {
       userId
     )
 
-    // Update description if provided
+    // Update with additional fields: description, personaId, brandSettings
+    const additionalUpdates: Record<string, any> = {}
+
     if (description) {
-      await ProjectService.updateProject(project.id, { description })
+      additionalUpdates.description = description
+    }
+
+    // Store persona and brand settings for enhanced content generation
+    if (personaId || brandSettings) {
+      additionalUpdates.metadata = {
+        ...project.metadata,
+        enhancedGeneration: {
+          personaId: personaId || null,
+          brandSettings: brandSettings || null,
+          enabledAt: new Date().toISOString()
+        }
+      }
+    }
+
+    if (Object.keys(additionalUpdates).length > 0) {
+      await ProjectService.updateProject(project.id, additionalUpdates)
     }
 
     // Increment usage after successful project creation

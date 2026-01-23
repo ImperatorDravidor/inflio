@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { 
   Palette, Type, Volume2, Image, Users, Trophy, 
   Lightbulb, Download, Upload, Edit, Save, X,
   CheckCircle, Loader2, FileText, Eye, Copy,
-  Share2, Settings, Sparkles, RefreshCw
+  Share2, Settings, Sparkles, RefreshCw, ArrowLeft
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,35 +20,79 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export default function BrandProfilePage() {
   const { userId, isLoaded } = useAuth()
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [brandData, setBrandData] = useState<any>(null)
   const [editMode, setEditMode] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isReviewed, setIsReviewed] = useState(false)
 
   useEffect(() => {
     if (isLoaded && userId) {
       loadBrandProfile()
+      checkReviewStatus()
     }
   }, [isLoaded, userId])
 
+  const checkReviewStatus = async () => {
+    try {
+      const response = await fetch('/api/user/profile')
+      if (response.ok) {
+        const data = await response.json()
+        setIsReviewed(data.profile?.brand_reviewed || false)
+      }
+    } catch (error) {
+      console.error('Error checking review status:', error)
+    }
+  }
+
+  const markAsReviewed = async () => {
+    try {
+      const response = await fetch('/api/onboarding/mark-reviewed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'brand_reviewed' })
+      })
+
+      if (!response.ok) throw new Error('Failed to mark as reviewed')
+
+      setIsReviewed(true)
+      toast.success('Brand review complete! Continuing setup...')
+      // Force full reload to refresh 5-step setup progress
+      window.location.href = '/dashboard'
+    } catch (error) {
+      console.error('Error marking as reviewed:', error)
+      toast.error('Failed to mark as reviewed')
+    }
+  }
+
   const loadBrandProfile = async () => {
     try {
-      const supabase = createSupabaseBrowserClient()
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('brand_identity, brand_analysis, full_name, company_name')
-        .eq('clerk_user_id', userId)
-        .single()
+      // Use API to load brand data (uses service role key, bypasses RLS)
+      const response = await fetch('/api/brand')
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error('Failed to load brand profile')
+      }
 
-      setBrandData(data)
+      const data = await response.json()
+
+      // Debug logging
+      console.log('[Brand Page] Data from API:', {
+        hasBrandIdentity: !!data.brand_identity,
+        brandIdentityKeys: data.brand_identity ? Object.keys(data.brand_identity) : []
+      })
+
+      setBrandData({
+        brand_identity: data.brand_identity,
+        full_name: data.full_name,
+        company_name: data.company_name
+      })
     } catch (error) {
       console.error('Error loading brand profile:', error)
       toast.error('Failed to load brand profile')
@@ -59,28 +104,25 @@ export default function BrandProfilePage() {
   const saveBrandUpdate = async (section: string, updates: any) => {
     setIsSaving(true)
     try {
-      const supabase = createSupabaseBrowserClient()
-      
-      const updatedBrandIdentity = {
-        ...brandData.brand_identity,
-        [section]: updates
+      // Use API to save brand data (uses service role key, bypasses RLS)
+      const response = await fetch('/api/brand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section, updates })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.details || 'Failed to save')
       }
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ 
-          brand_identity: updatedBrandIdentity,
-          updated_at: new Date().toISOString()
-        })
-        .eq('clerk_user_id', userId)
-
-      if (error) throw error
+      const result = await response.json()
 
       setBrandData({
         ...brandData,
-        brand_identity: updatedBrandIdentity
+        brand_identity: result.brand_identity
       })
-      
+
       setEditMode(null)
       toast.success('Brand profile updated successfully')
     } catch (error) {
@@ -116,17 +158,30 @@ export default function BrandProfilePage() {
   if (!brandData?.brand_identity) {
     return (
       <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <Button variant="ghost" onClick={() => router.push('/dashboard')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Setup
+          </Button>
+        </div>
         <Card className="max-w-2xl mx-auto">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-              <h2 className="text-2xl font-bold">No Brand Profile Found</h2>
-              <p className="text-muted-foreground">
-                Complete your onboarding to create your brand profile
-              </p>
-              <Button onClick={() => window.location.href = '/onboarding'}>
-                Start Onboarding
-              </Button>
+          <CardContent className="pt-8 pb-8">
+            <div className="text-center space-y-6">
+              <div className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                <Palette className="h-10 w-10 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold">No Brand Profile Yet</h2>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  Create your brand identity to ensure all your content matches your unique style, colors, and voice.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={() => router.push('/onboarding?step=2')} size="lg">
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Create Brand Identity
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -140,21 +195,33 @@ export default function BrandProfilePage() {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Brand Profile</h1>
-          <p className="text-muted-foreground">
-            Your comprehensive brand identity and guidelines
-          </p>
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Brand Profile</h1>
+            <p className="text-muted-foreground">
+              Your comprehensive brand identity and guidelines
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportBrandBook}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline">
-            <Share2 className="h-4 w-4 mr-2" />
-            Share
-          </Button>
+          {!isReviewed ? (
+            <Button onClick={markAsReviewed}>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Complete Review & Continue
+            </Button>
+          ) : (
+            <Badge variant="secondary" className="h-9 px-4 flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Reviewed
+            </Badge>
+          )}
         </div>
       </div>
 

@@ -65,6 +65,7 @@ import {
   IconHash,
   IconUsers,
   IconDotsVertical,
+  IconPalette,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -229,6 +230,13 @@ function ProjectDetailPageContent() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
   const [loadingPersona, setLoadingPersona] = useState(false)
 
+  // Brand settings from project
+  const [projectBrandSettings, setProjectBrandSettings] = useState<{
+    name?: string
+    voice?: string
+    primaryColor?: string
+  } | null>(null)
+
   // Project loading is handled by useProject hook
   
   // Generate default thumbnail from video if no thumbnail exists
@@ -268,30 +276,58 @@ function ProjectDetailPageContent() {
     }
   }, [project])
   
-  // Load persona from project or local storage
+  // Load persona and brand settings from project
   useEffect(() => {
-    async function loadPersona() {
+    async function loadPersonaAndBrand() {
       if (project && !selectedPersona) {
         setLoadingPersona(true)
         try {
-          // First check project metadata
-          const selectedId = (project as any).selected_persona_id || (project.metadata as any)?.currentPersona?.id
+          // Check multiple locations for persona ID (legacy and new)
+          const metadata = project.metadata as any
+          const selectedId = (project as any).selected_persona_id ||
+            metadata?.currentPersona?.id ||
+            metadata?.enhancedGeneration?.personaId
+
           if (selectedId) {
-            const personas = JSON.parse(localStorage.getItem('personas') || '[]')
-            const persona = personas.find((p: any) => p.id === selectedId)
-            if (persona) {
-              setSelectedPersona(persona)
-              setSelectedPersonaId(persona.id)
+            // Try to fetch persona from API first
+            try {
+              const response = await fetch('/api/personas')
+              if (response.ok) {
+                const data = await response.json()
+                const persona = data.personas?.find((p: any) => p.id === selectedId)
+                if (persona) {
+                  setSelectedPersona(persona)
+                  setSelectedPersonaId(persona.id)
+                }
+              }
+            } catch {
+              // Fall back to localStorage
+              const personas = JSON.parse(localStorage.getItem('personas') || '[]')
+              const persona = personas.find((p: any) => p.id === selectedId)
+              if (persona) {
+                setSelectedPersona(persona)
+                setSelectedPersonaId(persona.id)
+              }
             }
           }
+
+          // Load brand settings from project metadata
+          const brandSettings = metadata?.enhancedGeneration?.brandSettings
+          if (brandSettings) {
+            setProjectBrandSettings({
+              name: brandSettings.name,
+              voice: brandSettings.voice,
+              primaryColor: brandSettings.colors?.primary
+            })
+          }
         } catch (error) {
-          console.error('Failed to load persona:', error)
+          console.error('Failed to load persona/brand:', error)
         } finally {
           setLoadingPersona(false)
         }
       }
     }
-    loadPersona()
+    loadPersonaAndBrand()
   }, [project])
   
 
@@ -1135,8 +1171,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 </div>
                   </div>
                   
-                  {/* Persona Selector */}
-                  <div className="flex items-center gap-3">
+                  {/* Persona & Brand Settings */}
+                  <div className="flex items-center gap-3 flex-wrap">
                     <PersonaSelector
                       userId={user?.id || ''}
                       projectId={projectId}
@@ -1152,6 +1188,18 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       <Badge variant="secondary" className="gap-1">
                         <IconUser className="h-3 w-3" />
                         AI will use {selectedPersona.name}'s photos
+                      </Badge>
+                    )}
+                    {projectBrandSettings?.name && (
+                      <Badge variant="outline" className="gap-1">
+                        <IconPalette className="h-3 w-3" />
+                        Brand: {projectBrandSettings.name}
+                        {projectBrandSettings.primaryColor && (
+                          <span
+                            className="w-3 h-3 rounded-full ml-1"
+                            style={{ backgroundColor: projectBrandSettings.primaryColor }}
+                          />
+                        )}
                       </Badge>
                     )}
                   </div>

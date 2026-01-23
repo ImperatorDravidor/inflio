@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useUser } from '@clerk/nextjs'
 import {
   Camera, Upload, X, Check, AlertCircle, Loader2,
   RotateCcw, Download, Trash2, Image as ImageIcon,
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 interface AvatarPhoto {
   id: string
@@ -53,57 +55,41 @@ interface AIAvatarTrainingProps {
   hideNavigation?: boolean
   formData?: any
   updateFormData?: (key: string, value: any) => void
+  onSaveProgress?: (data: Record<string, any>) => Promise<void>
 }
 
-const PHOTO_TIPS = [
-  { 
-    icon: Sun, 
-    title: "Good Lighting", 
-    description: "Face a window or use soft, even lighting. Avoid backlighting or harsh shadows.",
-    examples: ["Natural daylight", "Ring light", "Soft lamp"]
-  },
-  { 
-    icon: User, 
-    title: "Clear Face", 
-    description: "Keep your face clearly visible. You can wear glasses if you normally do.",
-    examples: ["No obstructions", "Centered in frame", "Sharp focus"]
-  },
-  { 
-    icon: RotateCcw, 
-    title: "Various Angles", 
-    description: "Include front-facing, left profile (3/4), right profile (3/4), and slight tilts.",
-    examples: ["Straight ahead", "45° left/right", "Slight up/down"]
-  },
-  { 
-    icon: Contrast, 
-    title: "Consistent Background", 
-    description: "Use a simple background. Can be your normal workspace or plain wall.",
-    examples: ["Plain wall", "Office setting", "Neutral colors"]
-  },
+// Pose guidance for each photo
+const POSE_GUIDANCE = [
+  { instruction: "Look straight at the camera", icon: "👤", tip: "Face forward, neutral expression" },
+  { instruction: "Slight smile, facing forward", icon: "😊", tip: "Natural, friendly smile" },
+  { instruction: "Turn head slightly left", icon: "👈", tip: "About 30° to your left" },
+  { instruction: "Turn head slightly right", icon: "👉", tip: "About 30° to your right" },
+  { instruction: "Tilt chin up slightly", icon: "⬆️", tip: "Look slightly above camera" },
+  { instruction: "Tilt chin down slightly", icon: "⬇️", tip: "Look slightly below camera" },
+  { instruction: "Turn more to your left (3/4 view)", icon: "↩️", tip: "About 45° to your left" },
+  { instruction: "Turn more to your right (3/4 view)", icon: "↪️", tip: "About 45° to your right" },
+  { instruction: "Professional expression", icon: "💼", tip: "Confident, approachable look" },
+  { instruction: "Relaxed, natural expression", icon: "😌", tip: "As if chatting with a friend" },
 ]
 
-const QUALITY_THRESHOLDS = {
-  lighting: 0.7,
-  clarity: 0.8,
-  angle: 0.75,
-  overall: 0.75
-}
-
-export function AIAvatarTraining({ 
-  onComplete, 
-  onBack, 
+export function AIAvatarTraining({
+  onComplete,
+  onBack,
   onSkip,
   minPhotos = 5,
   recommendedPhotos = 10,
-  maxPhotos = 20,
+  maxPhotos = 10,
   hideNavigation = false,
   formData,
-  updateFormData
+  updateFormData,
+  onSaveProgress
 }: AIAvatarTrainingProps) {
+  const { user } = useUser()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+  const captureInProgressRef = useRef(false) // Ref to prevent double captures
+
   const [photos, setPhotos] = useState<AvatarPhoto[]>([])
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
@@ -111,15 +97,10 @@ export function AIAvatarTraining({
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'capture' | 'upload'>('capture')
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
-  const [showGrid, setShowGrid] = useState(true)
-  const [flash, setFlash] = useState(false)
-  const [countdown, setCountdown] = useState<number | null>(null)
-  const [captureMode, setCaptureMode] = useState<'instant' | 'timer'>('instant')
-  const [timerDuration, setTimerDuration] = useState(3) // 3 second default
-  
+  const [showFlash, setShowFlash] = useState(false)
+  const [showCameraModal, setShowCameraModal] = useState(false)
+
   // Training state
   const [isTraining, setIsTraining] = useState(false)
   const [trainingProgress, setTrainingProgress] = useState(0)
@@ -133,72 +114,49 @@ export function AIAvatarTraining({
   const isOptimal = photos.length >= recommendedPhotos
   const isFull = photos.length >= maxPhotos
 
-  // Start camera with enhanced error handling and browser compatibility
+  // Get current pose guidance
+  const getCurrentPoseGuidance = () => {
+    const index = Math.min(photos.length, POSE_GUIDANCE.length - 1)
+    return POSE_GUIDANCE[index]
+  }
+  const currentPose = getCurrentPoseGuidance()
+
+  // Start camera
   const startCamera = async () => {
     try {
       setCameraError(null)
-      setIsCapturing(true) // Show loading state
-      
-      // Step 1: Check browser compatibility
+      setIsCapturing(true)
+
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('BROWSER_NOT_SUPPORTED')
       }
-      
-      // Step 2: Check if we're on HTTPS (required for camera access)
-      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        throw new Error('HTTPS_REQUIRED')
-      }
-      
-      // Step 3: Check permissions if available
-      if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const permission = await navigator.permissions.query({ name: 'camera' as PermissionName })
-          if (permission.state === 'denied') {
-            throw new Error('PERMISSION_DENIED')
-          }
-        } catch (permError) {
-          // Some browsers don't support permission query, continue anyway
-          console.log('Permission query not supported, continuing...')
-        }
-      }
-      
-      // Step 4: Configure constraints with fallbacks
+
       const constraints = {
         video: {
           width: { ideal: 1920, min: 640 },
           height: { ideal: 1080, min: 480 },
           facingMode: facingMode,
-          aspectRatio: { ideal: 16/9 }
         },
         audio: false
       }
-      
-      // Step 5: Request camera access with timeout
-      const streamPromise = navigator.mediaDevices.getUserMedia(constraints)
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT')), 10000)
-      )
-      
-      const stream = await Promise.race([streamPromise, timeoutPromise]) as MediaStream
-      
-      // Step 6: Attach stream to video element
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
       if (!videoRef.current) {
         throw new Error('VIDEO_ELEMENT_NOT_FOUND')
       }
-      
+
       videoRef.current.srcObject = stream
       setCameraStream(stream)
-      
-      // Step 7: Wait for video to be ready and play
+
       await new Promise<void>((resolve, reject) => {
         if (!videoRef.current) {
           reject(new Error('VIDEO_ELEMENT_LOST'))
           return
         }
-        
+
         const video = videoRef.current
-        
-        // Set up event handlers
+
         const handleLoadedMetadata = async () => {
           try {
             await video.play()
@@ -208,308 +166,152 @@ export function AIAvatarTraining({
             reject(playError)
           }
         }
-        
-        const handleError = () => {
-          reject(new Error('VIDEO_LOAD_ERROR'))
-        }
-        
-        // Add event listeners
+
         video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
-        video.addEventListener('error', handleError, { once: true })
-        
-        // Timeout for video ready
-        setTimeout(() => {
-          reject(new Error('VIDEO_READY_TIMEOUT'))
-        }, 5000)
+        setTimeout(() => reject(new Error('VIDEO_READY_TIMEOUT')), 5000)
       })
-      
-      // Success - camera is running
+
       setCameraError(null)
-      toast.success('Camera ready! Position your face in the guide.')
-      
+
     } catch (error: any) {
       console.error('Camera initialization failed:', error)
-      
-      // Enhanced error handling with specific messages
+
       let errorMessage = 'Unable to access camera. Please try again.'
-      
+
       if (error.message === 'BROWSER_NOT_SUPPORTED') {
-        errorMessage = 'Your browser doesn\'t support camera access. Please use Chrome, Firefox, or Safari.'
-      } else if (error.message === 'HTTPS_REQUIRED') {
-        errorMessage = 'Camera access requires a secure connection (HTTPS).'
-      } else if (error.message === 'PERMISSION_DENIED' || error.name === 'NotAllowedError') {
-        errorMessage = 'Camera permission denied. Please allow camera access in your browser settings and refresh the page.'
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        errorMessage = 'No camera found. Please connect a camera and try again.'
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        errorMessage = 'Camera is in use by another application. Please close other apps using the camera.'
-      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
-        errorMessage = 'Camera doesn\'t support the requested quality. Trying with lower quality...'
-        // Try again with lower constraints
-        setTimeout(() => startCameraWithFallback(), 100)
-      } else if (error.message === 'TIMEOUT') {
-        errorMessage = 'Camera initialization timed out. Please check your camera and try again.'
-      } else if (error.message === 'VIDEO_READY_TIMEOUT') {
-        errorMessage = 'Camera stream couldn\'t start. Please refresh and try again.'
+        errorMessage = 'Your browser doesn\'t support camera access.'
+      } else if (error.name === 'NotAllowedError') {
+        errorMessage = 'Camera permission denied. Please allow camera access.'
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No camera found. Please connect a camera.'
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'Camera is in use by another app.'
       }
-      
+
       setCameraError(errorMessage)
       setCameraActive(false)
-      
-      // Stop any partial stream
+
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop())
         setCameraStream(null)
       }
     } finally {
-      setIsCapturing(false) // Hide loading state
-    }
-  }
-  
-  // Fallback camera start with lower quality
-  const startCameraWithFallback = async () => {
-    try {
-      setCameraError(null)
-      setIsCapturing(true)
-      
-      // Use minimal constraints
-      const constraints = {
-        video: {
-          facingMode: facingMode
-        },
-        audio: false
-      }
-      
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraStream(stream)
-        
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = async () => {
-              try {
-                await videoRef.current?.play()
-                setCameraActive(true)
-                resolve()
-              } catch (err) {
-                console.error('Fallback play failed:', err)
-                resolve()
-              }
-            }
-          }
-        })
-        
-        toast.info('Camera started with default quality.')
-      }
-    } catch (error) {
-      console.error('Fallback camera failed:', error)
-      setCameraError('Unable to start camera even with minimal settings. Please check your device.')
-    } finally {
       setIsCapturing(false)
     }
   }
-  
+
   // Stop camera
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop())
       setCameraStream(null)
     }
     setCameraActive(false)
-  }
-  
-  // Toggle camera
-  const toggleCamera = () => {
-    if (cameraActive) {
-      stopCamera()
-    } else {
-      startCamera()
-    }
-  }
-  
-  // Switch camera (mobile) with better handling
+  }, [cameraStream])
+
+  // Switch camera
   const switchCamera = async () => {
-    if (isCapturing) return // Prevent switching while capturing
-    
+    if (isCapturing) return
     stopCamera()
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user')
-    // Give the camera time to release before restarting
     await new Promise(resolve => setTimeout(resolve, 300))
     await startCamera()
   }
-  
-  // Analyze photo quality using real image analysis
+
+  // Open camera modal
+  const openCameraModal = async () => {
+    setShowCameraModal(true)
+    // Start camera after modal opens
+    setTimeout(() => startCamera(), 100)
+  }
+
+  // Close camera modal
+  const closeCameraModal = () => {
+    stopCamera()
+    setShowCameraModal(false)
+  }
+
+  // Analyze photo quality
   const analyzePhotoQuality = async (imageUrl: string): Promise<AvatarPhoto['quality']> => {
     try {
-      // Create a temporary image element to analyze
       const img = new Image()
       img.src = imageUrl
-      
+
       await new Promise((resolve, reject) => {
         img.onload = resolve
         img.onerror = reject
       })
-      
-      // Create canvas for pixel analysis
+
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Cannot get canvas context')
-      
+
       canvas.width = img.width
       canvas.height = img.height
       ctx.drawImage(img, 0, 0)
-      
-      // Get image data for analysis
+
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const pixels = imageData.data
-      
-      // Analyze lighting (brightness distribution)
+
       let totalBrightness = 0
       let brightnessVariance = 0
       const pixelCount = pixels.length / 4
-      
+
       for (let i = 0; i < pixels.length; i += 4) {
-        const r = pixels[i]
-        const g = pixels[i + 1]
-        const b = pixels[i + 2]
-        const brightness = (r + g + b) / 3
+        const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3
         totalBrightness += brightness
       }
-      
+
       const avgBrightness = totalBrightness / pixelCount
-      
-      // Calculate brightness variance for contrast
+
       for (let i = 0; i < pixels.length; i += 4) {
-        const r = pixels[i]
-        const g = pixels[i + 1]
-        const b = pixels[i + 2]
-        const brightness = (r + g + b) / 3
+        const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3
         brightnessVariance += Math.pow(brightness - avgBrightness, 2)
       }
-      
+
       brightnessVariance = Math.sqrt(brightnessVariance / pixelCount)
-      
-      // Calculate quality scores
-      // Lighting: Good if average brightness is between 80-200 (not too dark or bright)
-      const lightingScore = Math.min(1, Math.max(0, 
-        1 - Math.abs(avgBrightness - 140) / 140
-      ))
-      
-      // Clarity: Based on edge detection (simplified - checks local variance)
+
+      const lightingScore = Math.min(1, Math.max(0, 1 - Math.abs(avgBrightness - 140) / 140))
       const clarityScore = Math.min(1, brightnessVariance / 50)
-      
-      // Face detection check (simplified - checks for face-like color distribution)
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
-      const sampleRadius = Math.min(canvas.width, canvas.height) / 4
-      
-      let skinTonePixels = 0
-      let totalSamplePixels = 0
-      
-      // Sample center area for skin tones
-      for (let x = centerX - sampleRadius; x < centerX + sampleRadius; x += 5) {
-        for (let y = centerY - sampleRadius; y < centerY + sampleRadius; y += 5) {
-          if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
-            const idx = (y * canvas.width + x) * 4
-            const r = pixels[idx]
-            const g = pixels[idx + 1]
-            const b = pixels[idx + 2]
-            
-            // Check if pixel is in skin tone range
-            if (r > 95 && g > 40 && b > 20 &&
-                r > g && r > b &&
-                Math.abs(r - g) > 15 &&
-                r - g < 100) {
-              skinTonePixels++
-            }
-            totalSamplePixels++
-          }
-        }
-      }
-      
-      const faceScore = totalSamplePixels > 0 ? skinTonePixels / totalSamplePixels : 0
-      
-      // Angle score (based on face position in frame)
-      const angleScore = faceScore > 0.1 ? 0.8 + Math.random() * 0.2 : 0.5
-      
-      // Overall score
-      const overallScore = (lightingScore * 0.3 + clarityScore * 0.3 + faceScore * 0.2 + angleScore * 0.2)
-      
-      return {
-        lighting: lightingScore,
-        clarity: clarityScore,
-        angle: angleScore,
-        overall: overallScore
-      }
-    } catch (error) {
-      console.error('Photo analysis failed:', error)
-      // Return default scores if analysis fails
-      return {
-        lighting: 0.7,
-        clarity: 0.7,
-        angle: 0.7,
-        overall: 0.7
-      }
+      const angleScore = 0.8 + Math.random() * 0.2
+      const overallScore = (lightingScore * 0.3 + clarityScore * 0.3 + angleScore * 0.4)
+
+      return { lighting: lightingScore, clarity: clarityScore, angle: angleScore, overall: overallScore }
+    } catch {
+      return { lighting: 0.7, clarity: 0.7, angle: 0.7, overall: 0.7 }
     }
   }
-  
-  // Capture photo with countdown support
+
+  // Capture photo - with guard against double captures
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current || isFull) return
-    
-    // Handle countdown timer if enabled
-    if (captureMode === 'timer' && countdown === null) {
-      setCountdown(timerDuration)
-      
-      const countdownInterval = setInterval(() => {
-        setCountdown(prev => {
-          if (prev === null || prev <= 1) {
-            clearInterval(countdownInterval)
-            performCapture()
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-      
+    // Guard against double captures
+    if (captureInProgressRef.current || !videoRef.current || !canvasRef.current || isFull) {
       return
     }
-    
-    // Instant capture
-    if (captureMode === 'instant') {
-      await performCapture()
-    }
-  }
-  
-  // Perform the actual photo capture
-  const performCapture = async () => {
-    if (!videoRef.current || !canvasRef.current) return
-    
+
+    captureInProgressRef.current = true
     setIsCapturing(true)
-    setCountdown(null)
-    
+
     // Flash effect
-    if (flash) {
-      setFlash(true)
-      setTimeout(() => setFlash(false), 150)
-    }
-    
+    setShowFlash(true)
+    setTimeout(() => setShowFlash(false), 150)
+
     try {
       const video = videoRef.current
       const canvas = canvasRef.current
-      const context = canvas.getContext('2d')
-      
-      if (!context) {
-        throw new Error('Cannot get canvas context')
+
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        toast.error('Camera stream not ready. Please wait.')
+        return
       }
-      
-      // Set canvas size to video dimensions
+
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Cannot get canvas context')
+
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
-      
-      // Draw video frame to canvas with mirroring for front camera
+
+      // Draw with mirroring for front camera
       if (facingMode === 'user') {
         context.save()
         context.scale(-1, 1)
@@ -518,8 +320,7 @@ export function AIAvatarTraining({
       } else {
         context.drawImage(video, 0, 0, canvas.width, canvas.height)
       }
-      
-      // Convert to blob for better quality and smaller size
+
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')),
@@ -527,994 +328,816 @@ export function AIAvatarTraining({
           0.92
         )
       })
-      
-      // Convert blob to data URL
+
       const imageUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onloadend = () => resolve(reader.result as string)
         reader.onerror = reject
         reader.readAsDataURL(blob)
       })
-      
-      // Analyze quality
+
       const quality = await analyzePhotoQuality(imageUrl)
-      
-      // Create photo object
+
       const newPhoto: AvatarPhoto = {
-        id: `photo-${Date.now()}`,
+        id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         url: imageUrl,
         type: 'captured',
         quality,
-        metadata: {
-          timestamp: new Date(),
-          fileSize: blob.size
-        }
+        metadata: { timestamp: new Date(), fileSize: blob.size }
       }
-      
-      // Check quality and provide feedback
-      if (quality.overall < 0.5) {
-        toast.warning('Photo quality is low. Try adjusting your lighting or position.')
-      } else if (quality.overall < 0.7) {
-        toast.info('Photo captured. Better lighting would improve quality.')
-      } else {
-        // Show success feedback based on count
-        const photoCount = photos.length + 1
-        if (photoCount < minPhotos) {
-          toast.success(`Great photo! ${photoCount}/${minPhotos} minimum`, {
-            description: quality.overall > 0.85 ? 'Excellent quality!' : 'Good quality'
-          })
-        } else if (photoCount < recommendedPhotos) {
-          toast.success(`Nice shot! ${photoCount}/${recommendedPhotos} recommended`, {
-            description: 'Keep going for best results'
-          })
-        } else {
-          toast.success(`Perfect! You have ${photoCount} photos`, {
-            description: 'You can continue or proceed to next step'
-          })
-        }
-      }
-      
-      // Add to photos
+
       setPhotos(prev => [...prev, newPhoto])
-      
-      // Haptic feedback on mobile
-      if (navigator.vibrate) {
-        navigator.vibrate(50)
+
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(50)
+
+      // Success feedback
+      const photoCount = photos.length + 1
+      if (photoCount >= recommendedPhotos) {
+        toast.success(`${photoCount} photos captured!`, { description: 'You can continue or add more' })
+      } else if (photoCount >= minPhotos) {
+        toast.success(`${photoCount}/${recommendedPhotos} - Looking good!`)
       }
-      
-      // Play capture sound if available
-      const audio = new Audio('/sounds/camera-shutter.mp3')
-      audio.play().catch(() => {}) // Ignore audio errors
-      
+
     } catch (error) {
       console.error('Capture failed:', error)
-      toast.error('Failed to capture photo. Please try again.')
+      toast.error('Failed to capture photo')
     } finally {
       setIsCapturing(false)
+      // Reset the capture guard after a short delay
+      setTimeout(() => {
+        captureInProgressRef.current = false
+      }, 300)
     }
   }
-  
+
   // Handle file upload
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (!files || isFull) return
-    
+    if (!files || files.length === 0 || isFull) return
+
     setIsProcessing(true)
-    
-    for (let i = 0; i < files.length && photos.length + i < maxPhotos; i++) {
+    const validFiles: File[] = []
+
+    for (let i = 0; i < files.length && photos.length + validFiles.length < maxPhotos; i++) {
       const file = files[i]
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast.error(`${file.name} is not an image`)
-        continue
-      }
-      
-      // Validate file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error(`${file.name} is larger than 10MB`)
-        continue
-      }
-      
-      // Read file
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const imageUrl = e.target?.result as string
-        
-        // Analyze quality
-        const quality = await analyzePhotoQuality(imageUrl)
-        
-        // Create photo object
-        const newPhoto: AvatarPhoto = {
-          id: `photo-${Date.now()}-${i}`,
-          url: imageUrl,
-          type: 'uploaded',
-          quality,
-          metadata: {
-            fileName: file.name,
-            fileSize: file.size,
-            timestamp: new Date()
+      if (!file.type.startsWith('image/')) continue
+      if (file.size > 10 * 1024 * 1024) continue
+      validFiles.push(file)
+    }
+
+    try {
+      const newPhotos = await Promise.all(
+        validFiles.map(async (file, index) => {
+          const imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => resolve(e.target?.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(file)
+          })
+
+          const quality = await analyzePhotoQuality(imageUrl)
+
+          return {
+            id: `photo-${Date.now()}-${index}`,
+            url: imageUrl,
+            type: 'uploaded' as const,
+            quality,
+            metadata: { fileName: file.name, fileSize: file.size, timestamp: new Date() }
           }
-        }
-        
-        // Add to photos
-        setPhotos(prev => [...prev, newPhoto])
-      }
-      reader.readAsDataURL(file)
+        })
+      )
+
+      setPhotos(prev => [...prev, ...newPhotos])
+      toast.success(`${newPhotos.length} photo${newPhotos.length !== 1 ? 's' : ''} uploaded!`)
+    } catch (error) {
+      toast.error('Some photos failed to upload')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      setIsProcessing(false)
     }
-    
-    // Clear input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-    
-    setIsProcessing(false)
-    
-    toast.success(`${files.length} photos uploaded successfully!`)
   }
-  
+
+  // Handle drag and drop
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0 || isFull) return
+
+    const dataTransfer = new DataTransfer()
+    Array.from(files).forEach(file => dataTransfer.items.add(file))
+
+    const syntheticEvent = {
+      target: { files: dataTransfer.files }
+    } as React.ChangeEvent<HTMLInputElement>
+
+    await handleFileUpload(syntheticEvent)
+  }
+
   // Delete photo
   const deletePhoto = (photoId: string) => {
     setPhotos(prev => prev.filter(p => p.id !== photoId))
-    if (selectedPhoto === photoId) {
-      setSelectedPhoto(null)
-    }
-    const remaining = photos.length - 1
-    if (remaining < minPhotos) {
-      toast.warning(`Photo removed. ${remaining}/${minPhotos} minimum photos`)
-    } else if (remaining < recommendedPhotos) {
-      toast.info(`Photo removed. ${remaining}/${recommendedPhotos} recommended`)
-    } else {
-      toast.info(`Photo removed. ${remaining} photos remaining`)
-    }
+    if (selectedPhoto === photoId) setSelectedPhoto(null)
   }
-  
+
   // Delete all photos
   const deleteAllPhotos = () => {
     setPhotos([])
     setSelectedPhoto(null)
-    toast.info("All photos removed. Start fresh with new photos")
+    toast.info("All photos removed")
   }
-  
-  // Download all photos (for backup)
-  const downloadAllPhotos = () => {
-    photos.forEach((photo, index) => {
-      const link = document.createElement('a')
-      link.href = photo.url
-      link.download = `avatar-photo-${index + 1}.jpg`
-      link.click()
-    })
-    toast.success(`${photos.length} photos downloaded to your device`)
-  }
-  
-  // Handle completion - simple and direct
+
+  // Handle completion
   const handleComplete = () => {
     if (!isReady) return
-    
-    // Just start training immediately - no approval needed
     startPersonaTraining()
+  }
+
+  // Start persona creation (now with background processing)
+  const startPersonaTraining = async () => {
+    if (!isReady || isTraining) return
+
+    setIsTraining(true)
+    setTrainingProgress(0)
+    setTrainingStatus('Preparing your photos...')
+
+    try {
+      // Get Clerk user ID
+      if (!user?.id) {
+        throw new Error('Please sign in to create a persona')
+      }
+      const userId = user.id
+
+      const supabase = createSupabaseBrowserClient()
+
+      // Step 1: Upload photos directly to Supabase Storage
+      setTrainingProgress(10)
+      setTrainingStatus('Uploading photos to storage...')
+
+      const photoUrls: string[] = []
+      const totalPhotos = photos.length
+
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i]
+        setTrainingStatus(`Uploading photo ${i + 1} of ${totalPhotos}...`)
+        setTrainingProgress(10 + Math.floor((i / totalPhotos) * 40))
+
+        // Convert data URL to blob
+        const response = await fetch(photo.url)
+        const blob = await response.blob()
+
+        // Generate unique filename
+        const ext = 'jpg'
+        const fileName = `${userId}/persona_${Date.now()}_${i}.${ext}`
+
+        // Check file size (50MB limit)
+        const MAX_SIZE = 50 * 1024 * 1024 // 50MB
+        if (blob.size > MAX_SIZE) {
+          console.warn(`Photo ${i + 1} is ${(blob.size / 1024 / 1024).toFixed(1)}MB - consider using smaller images`)
+          toast.warning(`Photo ${i + 1} is large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Consider using smaller images for faster uploads.`)
+        }
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from('persona-photos')
+          .upload(fileName, blob, {
+            contentType: 'image/jpeg',
+            upsert: true
+          })
+
+        if (uploadError) {
+          console.error(`Failed to upload photo ${i + 1}:`, {
+            message: uploadError.message,
+            name: uploadError.name,
+            details: JSON.stringify(uploadError)
+          })
+          toast.error(`Failed to upload photo ${i + 1}: ${uploadError.message || 'Unknown error'}`)
+          continue
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('persona-photos')
+          .getPublicUrl(fileName)
+
+        photoUrls.push(publicUrl)
+      }
+
+      if (photoUrls.length < 5) {
+        throw new Error(`Only ${photoUrls.length} photos uploaded successfully. Minimum 5 required.`)
+      }
+
+      // Step 2: Call API with just URLs (small payload)
+      setTrainingProgress(60)
+      setTrainingStatus('Creating your AI Avatar...')
+
+      const response = await fetch('/api/personas/create-from-urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: personaName || formData?.fullName || 'Creator',
+          description: 'AI Avatar for content creation',
+          photoUrls
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || error.details || 'Failed to create persona')
+      }
+
+      const result = await response.json()
+
+      // Step 3: Save persona ID (portraits generating in background)
+      setTrainingProgress(80)
+      setTrainingStatus('Starting AI portrait generation...')
+
+      setPersonaId(result.persona.id)
+
+      if (updateFormData) {
+        updateFormData('personaId', result.persona.id)
+        updateFormData('personaName', personaName)
+        updateFormData('personaStatus', 'analyzing') // Processing in background
+        updateFormData('personaTrained', true)
+      }
+
+      // Immediately save progress to prevent loss on refresh
+      if (onSaveProgress) {
+        try {
+          await onSaveProgress({
+            personaId: result.persona.id,
+            personaName,
+            personaStatus: 'analyzing',
+            personaTrained: true
+          })
+          console.log('Persona progress saved immediately')
+        } catch (error) {
+          console.error('Error saving persona progress:', error)
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      setTrainingProgress(100)
+      setTrainingStatus('Photos uploaded successfully!')
+
+      // Show success toast
+      toast.success('AI Avatar creation started!', {
+        description: 'Your 10 portraits are being generated in the background. This takes 3-5 minutes.'
+      })
+
+      // Continue to next step
+      setTimeout(() => onComplete(photos, result.persona.id), 1000)
+
+    } catch (error) {
+      console.error('Persona creation error:', error)
+      setTrainingStatus('Upload failed')
+      setTrainingProgress(0)
+
+      toast.error(error instanceof Error ? error.message : 'Failed to create persona')
+
+      setTimeout(() => {
+        setIsTraining(false)
+      }, 1500)
+    }
   }
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopCamera()
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop())
+      }
     }
-  }, [])
-
-  // Start persona training with FAL AI
-  const startPersonaTraining = async () => {
-    if (!isReady || isTraining) return
-    
-    setIsTraining(true)
-    setTrainingProgress(0)
-    setTrainingStatus('Preparing your photos...')
-    
-    try {
-      // Convert photos to Files
-      const photoFiles = await Promise.all(
-        photos.map(async (photo, index) => {
-          const response = await fetch(photo.url)
-          const blob = await response.blob()
-          return new File([blob], `photo_${index + 1}.jpg`, { type: 'image/jpeg' })
-        })
-      )
-      
-      // Create FormData
-      const uploadData = new FormData()
-      uploadData.append('name', personaName || formData?.fullName || 'Creator')
-      uploadData.append('description', 'AI Avatar for content creation')
-      uploadData.append('triggerPhrase', (personaName || 'creator').toLowerCase().replace(/\s+/g, '_'))
-      uploadData.append('autoTrain', 'true')
-      
-      photoFiles.forEach((file) => {
-        uploadData.append('photos', file)
-      })
-      
-      setTrainingProgress(20)
-      setTrainingStatus('Creating your AI avatar...')
-      
-      // Call persona creation API
-      const response = await fetch('/api/personas/create', {
-        method: 'POST',
-        body: uploadData
-      })
-      
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create persona')
-      }
-      
-      const result = await response.json()
-      setPersonaId(result.persona.id)
-      
-      // Update form data if available
-      if (updateFormData) {
-        updateFormData('personaId', result.persona.id)
-        updateFormData('personaName', personaName)
-        updateFormData('personaStatus', result.persona.status)
-      }
-      
-      setTrainingProgress(40)
-      setTrainingStatus('AI training started (10-30 minutes)...')
-      
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setTrainingProgress(prev => {
-          if (prev >= 95) {
-            clearInterval(progressInterval)
-            return 95
-          }
-          return prev + 5
-        })
-      }, 3000)
-      
-      // Poll for training status
-      const checkStatus = async () => {
-        try {
-          const statusResponse = await fetch(`/api/personas/train-lora?personaId=${result.persona.id}`)
-          const statusData = await statusResponse.json()
-          
-          if (statusData.latestJob) {
-            const job = statusData.latestJob
-            
-            if (job.status === 'completed') {
-              clearInterval(progressInterval)
-              setTrainingProgress(100)
-              setTrainingStatus('Training complete!')
-              toast.success('Your AI avatar is ready!')
-              
-              setTimeout(() => {
-                onComplete(photos, result.persona.id)
-              }, 1500)
-              return true
-            } else if (job.status === 'failed') {
-              clearInterval(progressInterval)
-              setIsTraining(false)
-              toast.error('Training failed. Please try again.')
-              return true
-            }
-          }
-          
-          return false
-        } catch (error) {
-          console.error('Status check error:', error)
-          return false
-        }
-      }
-      
-      // Check status every 10 seconds
-      const statusInterval = setInterval(async () => {
-        const isDone = await checkStatus()
-        if (isDone) {
-          clearInterval(statusInterval)
-        }
-      }, 10000)
-      
-      // Initial status check after 5 seconds
-      setTimeout(() => checkStatus(), 5000)
-      
-    } catch (error) {
-      console.error('Training error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to start training')
-      setIsTraining(false)
-    }
-  }
-
+  }, [cameraStream])
 
   return (
     <TooltipProvider>
-      <div className="space-y-8 pb-24 max-w-4xl mx-auto">
+      <div className="space-y-6 pb-24 max-w-4xl mx-auto">
         {/* Header */}
-        <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold">Train Your AI Avatar</h2>
-          <p className="text-muted-foreground">
-            Upload or capture photos to create your personalized AI model
+        <div className="text-center space-y-3">
+          <h2 className="text-2xl font-bold">Create Your AI Avatar</h2>
+          <p className="text-muted-foreground text-sm max-w-lg mx-auto">
+            Upload {minPhotos}-{recommendedPhotos} high-quality photos to create hyperrealistic AI portraits.
+            <span className="block mt-1 text-primary font-medium">
+              Pro tip: Professional headshots or studio photos give the best results!
+            </span>
           </p>
-          <div className="flex items-center justify-center gap-2 text-sm">
-            <Badge variant="outline" className="bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              Minimum: {minPhotos} photos
-            </Badge>
-            <Badge variant="outline" className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
-              <Check className="h-3 w-3 mr-1" />
-              Recommended: {recommendedPhotos} photos
-            </Badge>
-          </div>
         </div>
-        
+
         {/* Progress */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">
-              {photos.length} photos
+              {photos.length} of {recommendedPhotos} photos
               {photos.length < minPhotos && ` (${minPhotos - photos.length} more needed)`}
-              {photos.length >= minPhotos && photos.length < recommendedPhotos && ` (${recommendedPhotos - photos.length} more recommended)`}
             </span>
-            {isOptimal ? (
-              <Badge className="bg-green-500 text-white border-green-600">
+            {isOptimal && (
+              <Badge className="bg-green-500">
                 <Check className="h-3 w-3 mr-1" />
-                Optimal amount
+                Ready
               </Badge>
-            ) : isReady ? (
-              <Badge className="bg-yellow-500 text-white border-yellow-600">
-                <Check className="h-3 w-3 mr-1" />
-                Ready to train
-              </Badge>
-            ) : null}
+            )}
           </div>
-          <Progress 
-            value={progress} 
-            className="h-2"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Minimum ({minPhotos})</span>
-            <span>Recommended ({recommendedPhotos})</span>
-            <span>Maximum ({maxPhotos})</span>
-          </div>
+          <Progress value={progress} className="h-2" />
         </div>
-        
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left: Capture/Upload */}
-          <div className="space-y-4">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="capture">
-                  <Camera className="h-4 w-4 mr-2" />
-                  Capture
-                </TabsTrigger>
-                <TabsTrigger value="upload">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="capture" className="space-y-4">
-                {/* Camera explanation before starting */}
-                {!cameraActive && !cameraError && (
-                  <Card className="p-6 bg-primary/5 dark:bg-primary/10 border-primary/20 dark:border-primary/30">
-                    <h4 className="font-semibold mb-3 flex items-center gap-2">
-                      <Camera className="h-5 w-5 text-primary" />
-                      How to Take Great Avatar Photos
-                    </h4>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <p>Your AI avatar will be used to generate professional thumbnails and graphics that look like you.</p>
-                      <div className="grid grid-cols-2 gap-4 mt-4">
-                        <div className="flex items-start gap-2">
-                          <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Position yourself in good lighting</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Use a plain background</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Include different angles</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Keep a natural expression</span>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
+
+        {/* Main Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Take Photos Card */}
+          <Card
+            className="p-6 cursor-pointer hover:border-primary transition-colors group"
+            onClick={openCameraModal}
+          >
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <Camera className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Take Photos</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Use your camera to capture photos with guided poses
+                </p>
+              </div>
+              <Button className="w-full">
+                <Camera className="h-4 w-4 mr-2" />
+                Open Camera
+              </Button>
+            </div>
+          </Card>
+
+          {/* Upload Photos Card */}
+          <Card
+            className={cn(
+              "p-6 cursor-pointer transition-colors",
+              isDragging ? "border-primary bg-primary/5" : "hover:border-primary"
+            )}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                <Upload className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Upload Photos</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Upload existing photos from your device
+                </p>
+              </div>
+              <Button variant="outline" className="w-full" disabled={isProcessing}>
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Browse Files
+                  </>
                 )}
-                
-                <Card className="overflow-hidden">
-                  <div className="aspect-[4/3] bg-black relative">
-                    {cameraActive ? (
-                      <>
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="w-full h-full object-cover"
-                        />
-                        <canvas ref={canvasRef} className="hidden" />
-                        
-                        {/* Enhanced grid overlay with face guide */}
-                        {showGrid && (
-                          <div className="absolute inset-0 pointer-events-none">
-                            {/* Grid lines */}
-                            <svg className="w-full h-full">
-                              <line x1="33%" y1="0" x2="33%" y2="100%" stroke="white" strokeOpacity="0.3" />
-                              <line x1="66%" y1="0" x2="66%" y2="100%" stroke="white" strokeOpacity="0.3" />
-                              <line x1="0" y1="33%" x2="100%" y2="33%" stroke="white" strokeOpacity="0.3" />
-                              <line x1="0" y1="66%" x2="100%" y2="66%" stroke="white" strokeOpacity="0.3" />
-                            </svg>
-                            
-                            {/* Face position guide */}
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="w-48 h-64 border-2 border-white/30 rounded-full" />
-                            </div>
-                            
-                            {/* Enhanced instruction overlay with progress */}
-                            <div className="absolute top-4 left-0 right-0 text-center">
-                              <div className="inline-flex flex-col items-center gap-2">
-                                <div className="inline-flex items-center gap-2 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full border border-white/20">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                  <span className="text-white text-sm font-medium">
-                                    {photos.length === 0 && "Position your face in the oval guide"}
-                                    {photos.length === 1 && "Great! Now turn slightly to your left"}
-                                    {photos.length === 2 && "Perfect! Turn slightly to your right"}
-                                    {photos.length === 3 && "Nice! Look up slightly"}
-                                    {photos.length === 4 && "Good! Look down slightly"}
-                                    {photos.length === 5 && "Excellent! Try a slight smile"}
-                                    {photos.length === 6 && "Amazing! Now a neutral expression"}
-                                    {photos.length === 7 && "Great variety! Add a professional look"}
-                                    {photos.length === 8 && "Perfect! Try a friendly expression"}
-                                    {photos.length === 9 && "One more for optimal results!"}
-                                    {photos.length >= 10 && photos.length < 15 && "Optimal amount! Add more if you'd like"}
-                                    {photos.length >= 15 && "Excellent collection! You're all set"}
-                                  </span>
-                                </div>
-                                
-                                {/* Photo counter badge */}
-                                <div className="inline-flex items-center gap-2 px-3 py-1 bg-background/90 backdrop-blur-sm border rounded-full text-xs font-medium">
-                                  <Camera className="h-3 w-3" />
-                                  {photos.length} / {recommendedPhotos} photos
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Flash effect */}
-                        {flash && (
-                          <motion.div
-                            initial={{ opacity: 1 }}
-                            animate={{ opacity: 0 }}
-                            transition={{ duration: 0.1 }}
-                            className="absolute inset-0 bg-white dark:bg-gray-200 pointer-events-none"
-                          />
-                        )}
-                        
-                        {/* Enhanced camera controls */}
-                        <div className="absolute bottom-4 left-0 right-0">
-                          {/* Timer mode selector */}
-                          <div className="flex justify-center gap-2 mb-3">
-                            <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-black/60 backdrop-blur rounded-full">
-                              <Button
-                                size="sm"
-                                variant={captureMode === 'instant' ? 'default' : 'ghost'}
-                                onClick={() => setCaptureMode('instant')}
-                                className="h-7 px-3 text-xs"
-                              >
-                                Instant
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={captureMode === 'timer' ? 'default' : 'ghost'}
-                                onClick={() => setCaptureMode('timer')}
-                                className="h-7 px-3 text-xs"
-                              >
-                                <Clock className="h-3 w-3 mr-1" />
-                                {timerDuration}s
-                              </Button>
-                            </div>
-                          </div>
-                          
-                          {/* Main controls */}
-                          <div className="flex justify-center items-center gap-3">
-                            {/* Grid toggle */}
-                            <Button
-                              size="icon"
-                              variant="secondary"
-                              onClick={() => setShowGrid(!showGrid)}
-                              className="bg-black/60 hover:bg-black/80 backdrop-blur"
-                            >
-                              <Maximize2 className={cn("h-4 w-4", showGrid && "text-yellow-400")} />
-                            </Button>
-                            
-                            {/* Capture button with countdown */}
-                            <div className="relative">
-                              {countdown !== null && (
-                                <motion.div
-                                  initial={{ scale: 0.5, opacity: 0 }}
-                                  animate={{ scale: 1, opacity: 1 }}
-                                  exit={{ scale: 1.5, opacity: 0 }}
-                                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                                >
-                                  <span className="text-6xl font-bold text-white drop-shadow-lg">
-                                    {countdown}
-                                  </span>
-                                </motion.div>
-                              )}
-                              
-                              <Button
-                                size="lg"
-                                onClick={capturePhoto}
-                                disabled={isCapturing || isFull || countdown !== null}
-                                className={cn(
-                                  "h-16 w-16 rounded-full p-0 transition-all",
-                                  countdown !== null
-                                    ? "bg-red-500 animate-pulse"
-                                    : "bg-background hover:bg-accent hover:scale-110 border"
-                                )}
-                              >
-                                {isCapturing ? (
-                                  <Loader2 className="h-8 w-8 animate-spin text-black" />
-                                ) : (
-                                  <div className={cn(
-                                    "w-14 h-14 rounded-full border-4",
-                                    countdown !== null ? "border-white" : "border-black"
-                                  )} />
-                                )}
-                              </Button>
-                            </div>
-                            
-                            {/* Camera switch */}
-                            <Button
-                              size="icon"
-                              variant="secondary"
-                              onClick={switchCamera}
-                              disabled={isCapturing || countdown !== null}
-                              className="bg-black/60 hover:bg-black/80 backdrop-blur"
-                            >
-                              <FlipHorizontal className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        {/* Top controls */}
-                        <div className="absolute top-4 right-4">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={stopCamera}
-                            className="bg-black/50 hover:bg-black/70 text-white"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </>
-                      ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
-                        {cameraError ? (
-                          <div className="space-y-4 max-w-md">
-                            <Alert variant="destructive">
-                              <AlertCircle className="h-4 w-4" />
-                              <AlertTitle>Camera Issue</AlertTitle>
-                              <AlertDescription>{cameraError}</AlertDescription>
-                            </Alert>
-                            
-                            {/* Troubleshooting tips */}
-                            {cameraError.includes('permission') && (
-                              <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
-                                <h5 className="font-medium text-sm mb-2">How to fix:</h5>
-                                <ol className="text-xs space-y-1 text-muted-foreground">
-                                  <li>1. Click the camera icon in your browser's address bar</li>
-                                  <li>2. Select "Allow" for camera access</li>
-                                  <li>3. Refresh this page and try again</li>
-                                </ol>
-                              </Card>
-                            )}
-                            
-                            <div className="flex gap-3">
-                              <Button onClick={startCamera} size="lg" className="flex-1">
-                                <RefreshCw className="h-5 w-5 mr-2" />
-                                Try Again
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                onClick={() => setActiveTab('upload')}
-                                size="lg"
-                                className="flex-1"
-                              >
-                                <Upload className="h-5 w-5 mr-2" />
-                                Upload Instead
-                              </Button>
-                            </div>
-                          </div>
-                        ) : isCapturing ? (
-                          <div className="text-center space-y-4">
-                            <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto" />
-                            <div>
-                              <p className="text-lg font-medium">Initializing Camera...</p>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Please allow camera access when prompted
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center space-y-6">
-                            <Camera className="h-20 w-20 text-muted-foreground/50 mx-auto" />
-                            <div>
-                              <h3 className="text-lg font-semibold mb-2">Ready to Create Your AI Avatar?</h3>
-                              <p className="text-sm text-muted-foreground max-w-sm">
-                                We'll guide you through taking {minPhotos}-{recommendedPhotos} photos 
-                                to train your personalized AI model.
-                              </p>
-                            </div>
-                            <div className="flex gap-3 justify-center">
-                              <Button onClick={startCamera} size="lg" className="min-w-[160px]">
-                                <Camera className="h-5 w-5 mr-2" />
-                                Start Camera
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                onClick={() => setActiveTab('upload')}
-                                size="lg"
-                              >
-                                <Upload className="h-5 w-5 mr-2" />
-                                Upload Photos
-                              </Button>
-                            </div>
-                            
-                            {/* Privacy notice */}
-                            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                              <Shield className="h-3 w-3" />
-                              Your photos are encrypted and used only for AI training
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="upload" className="space-y-4">
-                <Card className="p-8">
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              </Button>
+            </div>
+          </Card>
+        </div>
+
+        {/* Photo Gallery */}
+        {photos.length > 0 && (
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Your Photos ({photos.length}/{maxPhotos})</h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={deleteAllPhotos}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Clear All
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
+              {photos.map((photo) => (
+                <motion.div
+                  key={photo.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="relative group aspect-square"
+                >
+                  <img
+                    src={photo.url}
+                    alt=""
+                    className="w-full h-full object-cover rounded-lg"
+                    onClick={() => setSelectedPhoto(photo.id)}
+                  />
+                  <Button
+                    size="icon"
+                    variant="destructive"
+                    onClick={() => deletePhoto(photo.id)}
+                    className="absolute top-1 right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    
-                    <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="font-semibold mb-2">Upload Photos</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Click to browse or drag and drop
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      JPG, PNG up to 10MB each
-                    </p>
-                  </div>
-                </Card>
-                
-                {isProcessing && (
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      <span>Processing uploaded photos...</span>
-                    </div>
-                  </Card>
-                )}
-              </TabsContent>
-            </Tabs>
-            
-            {/* Enhanced Tips with Examples */}
-            <Card className="p-6 bg-gradient-to-br from-primary/5 to-transparent">
-              <h4 className="font-semibold mb-4 flex items-center gap-2">
-                <Info className="h-5 w-5 text-primary" />
-                Photo Guidelines for Best AI Training Results
-              </h4>
-              <div className="space-y-4">
-                {PHOTO_TIPS.map((tip, index) => {
-                  const Icon = tip.icon
-                  return (
-                    <motion.div 
-                      key={index} 
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="group"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
-                          <Icon className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{tip.title}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {tip.description}
-                          </p>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {tip.examples.map((example, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {example}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )
-                })}
-                
-                <Separator className="my-3" />
-                
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-green-600">✅ Good Photos Include:</p>
-                  <ul className="text-xs text-muted-foreground space-y-1 ml-4">
-                    <li>• Different facial expressions (smile, neutral, serious)</li>
-                    <li>• Various distances (close-up, medium, full face)</li>
-                    <li>• Different times of day for natural lighting variety</li>
-                    <li>• Your typical appearance (glasses if you wear them)</li>
-                  </ul>
-                </div>
-                
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-red-600">❌ Avoid:</p>
-                  <ul className="text-xs text-muted-foreground space-y-1 ml-4">
-                    <li>• Blurry or low-quality images</li>
-                    <li>• Photos with other people in them</li>
-                    <li>• Heavy filters or editing</li>
-                    <li>• Extreme angles or artistic shots</li>
-                  </ul>
-                </div>
-              </div>
-            </Card>
-          </div>
-          
-          {/* Right: Photo Gallery */}
-          <div className="space-y-4">
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">
-                  Your Photos ({photos.length}/{maxPhotos})
-                </h3>
-                {photos.length > 0 && (
-                  <div className="flex gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={downloadAllPhotos}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Download all photos</TooltipContent>
-                    </Tooltip>
-                    
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={deleteAllPhotos}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Delete all photos</TooltipContent>
-                    </Tooltip>
-                  </div>
-                )}
-              </div>
-              
-              {photos.length === 0 ? (
+                    <X className="h-3 w-3" />
+                  </Button>
+                </motion.div>
+              ))}
+
+              {/* Empty slots indicator */}
+              {photos.length < minPhotos && (
                 <div className="aspect-square border-2 border-dashed border-muted-foreground/25 rounded-lg flex items-center justify-center">
-                  <div className="text-center">
-                    <ImageIcon className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      No photos yet
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Capture or upload photos to get started
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-4 gap-2">
-                  {photos.map((photo) => (
-                    <motion.div
-                      key={photo.id}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="relative group aspect-square"
-                    >
-                      <img
-                        src={photo.url}
-                        alt=""
-                        className="w-full h-full object-cover rounded-lg cursor-pointer"
-                        onClick={() => setSelectedPhoto(photo.id)}
-                      />
-                      
-                      {/* Enhanced quality indicator */}
-                      <div className="absolute top-1 right-1">
-                        <div className={cn(
-                          "px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1",
-                          photo.quality.overall >= 0.85
-                            ? "bg-green-500/90 text-white"
-                            : photo.quality.overall >= 0.7
-                            ? "bg-yellow-500/90 text-white"
-                            : "bg-red-500/90 text-white"
-                        )}>
-                          <Sparkles className="h-3 w-3" />
-                          {Math.round(photo.quality.overall * 100)}%
-                        </div>
-                      </div>
-                      
-                      {/* Delete button */}
-                      <Button
-                        size="icon"
-                        variant="destructive"
-                        onClick={() => deletePhoto(photo.id)}
-                        className="absolute top-1 left-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                      
-                      {/* Type badge */}
-                      <Badge
-                        variant={photo.type === 'captured' ? 'default' : 'secondary'}
-                        className="absolute bottom-1 left-1 text-xs px-1 py-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        {photo.type}
-                      </Badge>
-                    </motion.div>
-                  ))}
-                  
-                  {/* Empty slots */}
-                  {photos.length < recommendedPhotos && (
-                    <>
-                      {[...Array(Math.min(recommendedPhotos - photos.length, 12 - photos.length))].map((_, i) => (
-                        <div
-                          key={`empty-${i}`}
-                          className="aspect-square border-2 border-dashed border-muted-foreground/25 rounded-lg flex items-center justify-center"
-                        >
-                          <span className="text-xs text-muted-foreground">
-                            {photos.length + i + 1 <= minPhotos ? "Required" : "Optional"}
-                          </span>
-                        </div>
-                      ))}
-                    </>
-                  )}
+                  <span className="text-xs text-muted-foreground text-center px-1">
+                    +{minPhotos - photos.length} needed
+                  </span>
                 </div>
               )}
-              
-              {/* Simple, clear status */}
-              {photos.length > 0 && (
-                <div className="mt-4 text-center p-3 rounded-lg bg-muted/50">
-                  <p className="text-sm font-medium">
-                    {photos.length < minPhotos ? (
-                      <span className="text-muted-foreground">
-                        Add {minPhotos - photos.length} more photo{minPhotos - photos.length !== 1 ? 's' : ''} to start
-                      </span>
-                    ) : (
-                      <span className="text-green-600 dark:text-green-400">
-                        ✓ Ready to train - Click "Start Training" below
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
-            </Card>
+            </div>
+          </Card>
+        )}
+
+        {/* Tips - Enhanced guidance for better results */}
+        <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+          <div className="flex items-start gap-3">
+            <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+            <div className="text-sm space-y-3">
+              <div>
+                <p className="font-semibold text-primary mb-1">📸 For BEST results, use professional photos:</p>
+                <ul className="text-muted-foreground space-y-1">
+                  <li>• <span className="text-foreground font-medium">Studio headshots</span> or professional photography work best</li>
+                  <li>• <span className="text-foreground font-medium">High resolution</span> photos with your face clearly visible</li>
+                  <li>• <span className="text-foreground font-medium">Good lighting</span> - face a window, use ring light, or studio lighting</li>
+                </ul>
+              </div>
+
+              <Separator />
+
+              <div>
+                <p className="font-medium mb-1">📐 Variety of angles needed:</p>
+                <ul className="text-muted-foreground space-y-1">
+                  <li>• Front facing (looking at camera)</li>
+                  <li>• 3/4 angle left & right</li>
+                  <li>• Slight up/down angles</li>
+                </ul>
+              </div>
+
+              <Separator />
+
+              <div>
+                <p className="font-medium mb-1">😊 Mix of expressions:</p>
+                <ul className="text-muted-foreground space-y-1">
+                  <li>• Neutral/calm expression</li>
+                  <li>• Natural smile</li>
+                  <li>• Professional/confident look</li>
+                </ul>
+              </div>
+
+              <Alert className="bg-amber-500/10 border-amber-500/30 mt-2">
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
+                  <strong>Note:</strong> The AI will generate hyperrealistic portraits based on your photos.
+                  Better quality reference photos = more realistic AI portraits that look exactly like you.
+                </AlertDescription>
+              </Alert>
+            </div>
           </div>
-        </div>
-        
+        </Card>
+
         {/* Actions - Fixed at bottom */}
         <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 z-40">
           <div className="max-w-4xl mx-auto">
             {!hideNavigation ? (
               <div className="flex items-center justify-between">
-                <Button
-                  variant="ghost"
-                  onClick={onBack}
-                  disabled={isProcessing}
-                >
+                <Button variant="ghost" onClick={onBack}>
                   <ChevronLeft className="h-4 w-4 mr-2" />
                   Back
                 </Button>
-                
+
                 <div className="flex gap-3">
                   {onSkip && (
-                    <Button
-                      variant="outline"
-                      onClick={onSkip}
-                      disabled={isProcessing}
-                    >
+                    <Button variant="outline" onClick={onSkip}>
                       Skip for now
                     </Button>
                   )}
-                  
-                  <Button
-                    onClick={handleComplete}
-                    disabled={!isReady || isProcessing}
-                  >
+
+                  <Button onClick={handleComplete} disabled={!isReady || isProcessing}>
                     <Wand2 className="h-4 w-4 mr-2" />
-                    Start Training
+                    {isReady ? 'Create AI Avatar' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="flex justify-center">
-                <Button
-                  onClick={handleComplete}
-                  disabled={!isReady || isProcessing}
-                  size="lg"
-                >
+                <Button onClick={handleComplete} disabled={!isReady || isProcessing} size="lg">
                   <Wand2 className="h-4 w-4 mr-2" />
-                  {isReady ? 'Start Training' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
+                  {isReady ? 'Create AI Avatar' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>
             )}
           </div>
         </div>
-        
-        {/* Training Progress Overlay */}
+
+        {/* ==================== FULLSCREEN CAMERA MODAL ==================== */}
+        <AnimatePresence>
+          {showCameraModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black"
+            >
+              {/* Hidden video/canvas elements */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={cn(
+                  "absolute inset-0 w-full h-full object-cover",
+                  !cameraActive && "hidden"
+                )}
+                style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+              />
+              <canvas ref={canvasRef} className="hidden" />
+
+              {/* Flash effect */}
+              <AnimatePresence>
+                {showFlash && (
+                  <motion.div
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute inset-0 bg-white z-50"
+                  />
+                )}
+              </AnimatePresence>
+
+              {cameraActive ? (
+                <>
+                  {/* Face guide oval */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-64 h-80 border-2 border-white/30 rounded-full" />
+                  </div>
+
+                  {/* Top bar - pose guidance */}
+                  <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent">
+                    <div className="max-w-lg mx-auto">
+                      <motion.div
+                        key={photos.length}
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-black/50 backdrop-blur-md rounded-2xl p-4"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="text-4xl">{currentPose.icon}</div>
+                          <div className="flex-1">
+                            <p className="text-white font-semibold text-lg">
+                              Photo {photos.length + 1}: {currentPose.instruction}
+                            </p>
+                            <p className="text-white/70 text-sm">{currentPose.tip}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-bold text-2xl">{photos.length}/{recommendedPhotos}</div>
+                          </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="mt-3 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-green-500"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min((photos.length / recommendedPhotos) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </motion.div>
+                    </div>
+                  </div>
+
+                  {/* Close button */}
+                  <button
+                    onClick={closeCameraModal}
+                    className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white hover:bg-black/70 transition-colors z-10"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+
+                  {/* Bottom controls */}
+                  <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
+                    <div className="flex items-center justify-center gap-6">
+                      {/* Switch camera */}
+                      <button
+                        onClick={switchCamera}
+                        disabled={isCapturing}
+                        className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                      >
+                        <FlipHorizontal className="h-5 w-5" />
+                      </button>
+
+                      {/* Capture button */}
+                      <button
+                        onClick={capturePhoto}
+                        disabled={isCapturing || isFull}
+                        className="w-20 h-20 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform disabled:opacity-50"
+                      >
+                        <div className="w-16 h-16 rounded-full border-4 border-black" />
+                      </button>
+
+                      {/* Done button */}
+                      <button
+                        onClick={closeCameraModal}
+                        disabled={photos.length === 0}
+                        className={cn(
+                          "w-12 h-12 rounded-full backdrop-blur flex items-center justify-center transition-colors",
+                          photos.length >= minPhotos
+                            ? "bg-green-500 text-white hover:bg-green-600"
+                            : "bg-white/20 text-white hover:bg-white/30"
+                        )}
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    {/* Photo count indicator */}
+                    {photos.length > 0 && (
+                      <p className="text-center text-white/70 text-sm mt-3">
+                        {photos.length < minPhotos
+                          ? `${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''} needed`
+                          : photos.length < recommendedPhotos
+                            ? `${recommendedPhotos - photos.length} more for optimal results`
+                            : 'Great! You have enough photos'}
+                      </p>
+                    )}
+
+                    {/* Recent photos preview */}
+                    {photos.length > 0 && (
+                      <div className="flex justify-center gap-2 mt-4">
+                        {photos.slice(-5).map((photo) => (
+                          <motion.div
+                            key={photo.id}
+                            initial={{ opacity: 0, scale: 0.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="w-12 h-12 rounded-lg overflow-hidden border-2 border-white/30"
+                          >
+                            <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* Camera loading/error state */
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {cameraError ? (
+                    <div className="max-w-sm text-center p-6">
+                      <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+                      <h3 className="text-white text-lg font-semibold mb-2">Camera Error</h3>
+                      <p className="text-white/70 text-sm mb-6">{cameraError}</p>
+                      <div className="flex gap-3 justify-center">
+                        <Button onClick={startCamera} variant="default">
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Try Again
+                        </Button>
+                        <Button onClick={closeCameraModal} variant="outline">
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Loader2 className="h-16 w-16 animate-spin text-white mx-auto mb-4" />
+                      <p className="text-white text-lg">Starting camera...</p>
+                      <p className="text-white/60 text-sm mt-2">Please allow camera access</p>
+                    </div>
+                  )}
+
+                  {/* Close button for loading/error state */}
+                  <button
+                    onClick={closeCameraModal}
+                    className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Upload Progress Overlay */}
         <AnimatePresence>
           {isTraining && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
             >
-              <Card className="max-w-md w-full p-8">
-                <div className="space-y-6">
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Loader2 className="h-12 w-12 text-primary animate-spin" />
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="max-w-sm w-full"
+              >
+                <Card className="p-8 bg-card/95 backdrop-blur border-border/50">
+                  <div className="space-y-6">
+                    {/* Animated icon */}
+                    <div className="flex justify-center">
+                      <div className="relative">
+                        <div className="h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                          {trainingProgress < 100 ? (
+                            <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                          ) : (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring", stiffness: 200 }}
+                            >
+                              <Check className="h-10 w-10 text-green-500" />
+                            </motion.div>
+                          )}
+                        </div>
+                        {/* Progress ring */}
+                        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            className="text-muted/20"
+                          />
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            strokeDasharray={`${trainingProgress * 2.26} 226`}
+                            className="text-primary transition-all duration-300"
+                          />
+                        </svg>
                       </div>
                     </div>
+
+                    {/* Status text */}
+                    <div className="text-center space-y-2">
+                      <h3 className="text-lg font-semibold">
+                        {trainingProgress < 100 ? 'Uploading Photos' : 'Upload Complete!'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">{trainingStatus}</p>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="space-y-2">
+                      <Progress value={trainingProgress} className="h-1.5" />
+                      <p className="text-xs text-center text-muted-foreground">
+                        {trainingProgress}%
+                      </p>
+                    </div>
+
+                    {/* Info message */}
+                    {trainingProgress >= 80 && trainingProgress < 100 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-primary/5 rounded-lg p-3 text-center"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          <Sparkles className="inline h-3 w-3 mr-1 text-primary" />
+                          10 AI portraits will be generated in the background
+                        </p>
+                      </motion.div>
+                    )}
                   </div>
-
-                  <div className="space-y-3 text-center">
-                    <h3 className="text-xl font-semibold">Training Your AI Avatar</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {trainingStatus}
-                    </p>
-                  </div>
-
-                  <Progress value={trainingProgress} className="h-2" />
-
-                  <Alert>
-                    <Sparkles className="h-4 w-4" />
-                    <AlertDescription>
-                      Your AI avatar is being trained with advanced machine learning.
-                      This process typically takes 10-30 minutes. You can continue with
-                      the onboarding or come back later.
-                    </AlertDescription>
-                  </Alert>
-
-                  {onSkip && (
-                    <Button
-                      variant="outline"
-                      onClick={onSkip}
-                      className="w-full"
-                    >
-                      Continue Setup (Training in Background)
-                    </Button>
-                  )}
-                </div>
-              </Card>
+                </Card>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1533,7 +1156,7 @@ export function AIAvatarTraining({
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0.9 }}
-                className="max-w-4xl max-h-[90vh] relative"
+                className="max-w-2xl max-h-[80vh] relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <img
@@ -1545,40 +1168,10 @@ export function AIAvatarTraining({
                   size="icon"
                   variant="ghost"
                   onClick={() => setSelectedPhoto(null)}
-                  className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white"
+                  className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white"
                 >
                   <X className="h-4 w-4" />
                 </Button>
-                
-                {/* Quality scores */}
-                {(() => {
-                  const photo = photos.find(p => p.id === selectedPhoto)
-                  if (!photo) return null
-                  
-                  return (
-                    <Card className="absolute bottom-4 left-4 right-4 p-4 bg-background/95">
-                      <h4 className="font-semibold mb-2">Photo Quality</h4>
-                      <div className="grid grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Lighting</p>
-                          <Progress value={photo.quality.lighting * 100} className="h-1 mt-1" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Clarity</p>
-                          <Progress value={photo.quality.clarity * 100} className="h-1 mt-1" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Angle</p>
-                          <Progress value={photo.quality.angle * 100} className="h-1 mt-1" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Overall</p>
-                          <Progress value={photo.quality.overall * 100} className="h-1 mt-1" />
-                        </div>
-                      </div>
-                    </Card>
-                  )
-                })()}
               </motion.div>
             </motion.div>
           )}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { PostsService } from '@/lib/services/posts-service'
+import { ImprovedPostsService } from '@/lib/services/posts-service-improved'
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +38,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await PostsService.generatePostSuggestions({
+    if (!transcript) {
+      return NextResponse.json(
+        { error: 'Transcript is required for content-aware post generation' },
+        { status: 400 }
+      )
+    }
+
+    const result = await ImprovedPostsService.generatePostSuggestions({
       projectId,
       contentAnalysis,
       transcript,

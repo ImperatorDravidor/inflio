@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
+import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight, IconUser, IconPalette, IconChevronDown } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
 import { extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils-simple"
 import { generateVideoThumbnail } from "@/lib/video-thumbnail-fix"
@@ -20,6 +20,26 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+
+// Types for persona and brand selection
+interface PersonaOption {
+  id: string
+  name: string
+  avatar_url?: string
+  description?: string
+}
+
+interface BrandSettings {
+  name?: string
+  voice?: string
+  colors?: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+  targetAudience?: string
+}
 
 export default function UploadPage() {
   const router = useRouter()
@@ -47,6 +67,87 @@ export default function UploadPage() {
   })
   const [submittingWorkflow, setSubmittingWorkflow] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState("")
+
+  // Persona and brand selection state
+  const [personas, setPersonas] = useState<PersonaOption[]>([])
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
+  const [brandSettings, setBrandSettings] = useState<BrandSettings | null>(null)
+  const [loadingPersonas, setLoadingPersonas] = useState(true)
+  const [showPersonaDropdown, setShowPersonaDropdown] = useState(false)
+
+  // Fetch personas and brand settings on mount
+  useEffect(() => {
+    const fetchPersonasAndBrand = async () => {
+      setLoadingPersonas(true)
+      try {
+        // Fetch personas
+        const personasRes = await fetch('/api/personas')
+        if (personasRes.ok) {
+          const data = await personasRes.json()
+          setPersonas(data.personas || [])
+          // Auto-select first ready persona if available
+          const readyPersonas = (data.personas || []).filter((p: PersonaOption & { status?: string }) => p.status === 'ready')
+          if (readyPersonas.length > 0) {
+            setSelectedPersonaId(readyPersonas[0].id)
+          }
+        }
+
+        // Fetch user profile for brand settings
+        const profileRes = await fetch('/api/user/profile')
+        if (profileRes.ok) {
+          const { profile } = await profileRes.json()
+          if (profile) {
+            // Extract brand from brand_identity or brand_analysis
+            const brand = profile.brand_identity || profile.brand_analysis
+
+            // Build brand settings from the correct structure
+            const extractedBrand: BrandSettings = {
+              name: profile.company_name,
+            }
+
+            if (brand) {
+              // Extract voice from brand.voice.tone array
+              if (brand.voice?.tone && Array.isArray(brand.voice.tone)) {
+                extractedBrand.voice = brand.voice.tone.join(', ')
+              }
+
+              // Extract colors from brand.colors structure
+              if (brand.colors) {
+                extractedBrand.colors = {
+                  primary: brand.colors.primary?.hex?.[0] || '',
+                  secondary: brand.colors.secondary?.hex?.[0] || '',
+                  accent: brand.colors.accent?.hex?.[0] || ''
+                }
+              }
+
+              // Extract target audience from brand.targetAudience
+              if (brand.targetAudience) {
+                const audienceParts: string[] = []
+                if (brand.targetAudience.demographics?.age) {
+                  audienceParts.push(`Age: ${brand.targetAudience.demographics.age}`)
+                }
+                if (brand.targetAudience.psychographics?.length > 0) {
+                  audienceParts.push(brand.targetAudience.psychographics.slice(0, 3).join(', '))
+                }
+                if (brand.targetAudience.needs?.length > 0) {
+                  audienceParts.push(brand.targetAudience.needs.slice(0, 2).join(', '))
+                }
+                extractedBrand.targetAudience = audienceParts.join(' | ')
+              }
+            }
+
+            setBrandSettings(extractedBrand)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch personas/brand:', error)
+      } finally {
+        setLoadingPersonas(false)
+      }
+    }
+
+    fetchPersonasAndBrand()
+  }, [])
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -155,6 +256,13 @@ export default function UploadPage() {
       blog: false,
       social: false
     })
+    // Reset persona selection to first ready persona
+    const readyPersonas = personas.filter((p: PersonaOption & { status?: string }) => (p as PersonaOption & { status?: string }).status === 'ready')
+    if (readyPersonas.length > 0) {
+      setSelectedPersonaId(readyPersonas[0].id)
+    } else {
+      setSelectedPersonaId(null)
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -163,6 +271,8 @@ export default function UploadPage() {
       URL.revokeObjectURL(videoPreview)
     }
   }
+
+  const selectedPersona = personas.find(p => p.id === selectedPersonaId)
 
   const handleContinueToWorkflows = () => {
     if (!projectTitle.trim()) {
@@ -208,36 +318,31 @@ export default function UploadPage() {
       // Create a more conservative file name for production
       const fileName = `${timestamp}-${finalName}${extension.toLowerCase()}`;
       
-      // First, get a signed upload URL from our API
-      const urlResponse = await fetch('/api/get-upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName })
-      });
+      // Upload directly using Supabase client (handles CORS properly)
+      const supabase = createSupabaseBrowserClient();
 
-      if (!urlResponse.ok) {
-        const error = await urlResponse.json();
-        throw new Error(error.error || 'Failed to get upload URL');
+      console.log('[Upload] Starting Supabase upload:', { fileName, fileSize: file.size });
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(fileName, file, {
+          contentType: file.type || 'video/mp4',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error('Supabase upload failed:', uploadError);
+        throw new Error(uploadError.message || 'Failed to upload video to storage');
       }
 
-      const { uploadUrl, path } = await urlResponse.json();
+      console.log('[Upload] Supabase upload success:', uploadData.path);
 
-      // Upload directly to Supabase using the signed URL
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type || 'video/mp4',
-        },
-      });
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('videos')
+        .getPublicUrl(uploadData.path);
 
-      if (!uploadResponse.ok) {
-        console.error('Direct upload failed:', uploadResponse.status, uploadResponse.statusText);
-        throw new Error('Failed to upload video to storage');
-      }
-
-      // Construct the public URL
-      const supabaseVideoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${path}`;
+      const supabaseVideoUrl = urlData.publicUrl;
       
       if (!supabaseVideoUrl) {
         throw new Error("Failed to get video URL from storage.");
@@ -260,7 +365,10 @@ export default function UploadPage() {
           videoUrl: supabaseVideoUrl,
           thumbnailUrl: thumbnail,
           metadata: videoMetadata,
-          workflowOptions
+          workflowOptions,
+          // Enhanced content generation settings
+          personaId: selectedPersonaId,
+          brandSettings: brandSettings
         })
       });
 
@@ -411,7 +519,170 @@ export default function UploadPage() {
                                   className="text-base"
                                 />
                               </div>
-                              <Button 
+
+                              {/* Persona Selection */}
+                              <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                  <IconUser className="h-4 w-4" />
+                                  AI Persona (for thumbnails & content)
+                                </Label>
+                                {loadingPersonas ? (
+                                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                                    <LoadingSpinner size="sm" />
+                                    <span className="text-sm text-muted-foreground">Loading personas...</span>
+                                  </div>
+                                ) : personas.length === 0 ? (
+                                  <div className="p-3 border rounded-lg bg-muted/50">
+                                    <p className="text-sm text-muted-foreground">
+                                      No personas created yet.{' '}
+                                      <a href="/personas" className="text-primary hover:underline">
+                                        Create one
+                                      </a>{' '}
+                                      for personalized AI-generated thumbnails.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowPersonaDropdown(!showPersonaDropdown)}
+                                      className="w-full flex items-center justify-between p-3 border rounded-lg bg-background hover:bg-muted/50 transition-colors"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        {selectedPersona ? (
+                                          <>
+                                            {selectedPersona.avatar_url ? (
+                                              <Image
+                                                src={selectedPersona.avatar_url}
+                                                alt={selectedPersona.name}
+                                                width={32}
+                                                height={32}
+                                                className="rounded-full object-cover"
+                                              />
+                                            ) : (
+                                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                <IconUser className="h-4 w-4 text-primary" />
+                                              </div>
+                                            )}
+                                            <span className="font-medium">{selectedPersona.name}</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                              <IconUser className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <span className="text-muted-foreground">Select a persona</span>
+                                          </>
+                                        )}
+                                      </div>
+                                      <IconChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showPersonaDropdown ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {showPersonaDropdown && (
+                                      <div className="absolute z-10 w-full mt-1 border rounded-lg bg-background shadow-lg max-h-60 overflow-auto">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedPersonaId(null)
+                                            setShowPersonaDropdown(false)
+                                          }}
+                                          className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+                                        >
+                                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                            <IconUser className="h-4 w-4 text-muted-foreground" />
+                                          </div>
+                                          <span className="text-muted-foreground">No persona (generic content)</span>
+                                        </button>
+                                        {personas.map((persona) => (
+                                          <button
+                                            key={persona.id}
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedPersonaId(persona.id)
+                                              setShowPersonaDropdown(false)
+                                            }}
+                                            className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${selectedPersonaId === persona.id ? 'bg-primary/5' : ''}`}
+                                          >
+                                            {persona.avatar_url ? (
+                                              <Image
+                                                src={persona.avatar_url}
+                                                alt={persona.name}
+                                                width={32}
+                                                height={32}
+                                                className="rounded-full object-cover"
+                                              />
+                                            ) : (
+                                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                <IconUser className="h-4 w-4 text-primary" />
+                                              </div>
+                                            )}
+                                            <div>
+                                              <p className="font-medium">{persona.name}</p>
+                                              {persona.description && (
+                                                <p className="text-xs text-muted-foreground truncate max-w-[250px]">{persona.description}</p>
+                                              )}
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Brand Settings Display */}
+                              {brandSettings && (brandSettings.voice || brandSettings.colors) && (
+                                <div className="space-y-2">
+                                  <Label className="flex items-center gap-2">
+                                    <IconPalette className="h-4 w-4" />
+                                    Brand Settings
+                                  </Label>
+                                  <div className="p-3 border rounded-lg bg-muted/30 space-y-2">
+                                    {brandSettings.name && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Brand:</span>
+                                        <span className="font-medium">{brandSettings.name}</span>
+                                      </div>
+                                    )}
+                                    {brandSettings.voice && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Voice:</span>
+                                        <span className="font-medium">{brandSettings.voice}</span>
+                                      </div>
+                                    )}
+                                    {brandSettings.colors && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Colors:</span>
+                                        <div className="flex gap-1">
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.primary }}
+                                            title="Primary"
+                                          />
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.secondary }}
+                                            title="Secondary"
+                                          />
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.accent }}
+                                            title="Accent"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      These settings will guide AI-generated content.{' '}
+                                      <a href="/settings/brand" className="text-primary hover:underline">
+                                        Edit in settings
+                                      </a>
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              <Button
                                 onClick={handleContinueToWorkflows}
                                 className="w-full"
                                 disabled={!projectTitle.trim()}
@@ -589,7 +860,7 @@ export default function UploadPage() {
             <IconClock className="h-5 w-5 text-primary" />
             <div>
               <p className="font-medium text-sm">Processing Time</p>
-              <p className="text-xs text-muted-foreground">Usually 2-5 minutes per video</p>
+              <p className="text-xs text-muted-foreground">Usually 15-30 minutes per video</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
