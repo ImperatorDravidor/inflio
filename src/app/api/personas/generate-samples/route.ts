@@ -65,30 +65,32 @@ export async function POST(request: NextRequest) {
 
     // Generate 5 different style samples using base FLUX (without LoRA training)
     const samples: SampleResult[] = []
+    // IMPORTANT: All prompts MUST include clothing requirements to prevent inappropriate images
+    const clothingRequirement = 'wearing appropriate clothing, fully clothed'
     const styleConfigs = [
-      { 
+      {
         style: 'professional',
-        prompt: prompts[0] || `professional headshot of ${personaName}, business attire, clean background, studio lighting`,
+        prompt: prompts[0] || `professional headshot of ${personaName}, ${clothingRequirement}, business attire, suit or dress shirt, clean background, studio lighting`,
         settings: { guidance_scale: 7.5, style_strength: 0.8 }
       },
-      { 
+      {
         style: 'casual',
-        prompt: prompts[1] || `casual portrait of ${personaName}, relaxed pose, natural environment, soft lighting`,
+        prompt: prompts[1] || `casual portrait of ${personaName}, ${clothingRequirement}, wearing casual shirt or sweater, relaxed pose, natural environment, soft lighting`,
         settings: { guidance_scale: 7.0, style_strength: 0.7 }
       },
-      { 
+      {
         style: 'youtube',
-        prompt: prompts[2] || `YouTube thumbnail style portrait of ${personaName}, vibrant colors, engaging expression, dynamic composition`,
+        prompt: prompts[2] || `YouTube thumbnail style portrait of ${personaName}, ${clothingRequirement}, wearing t-shirt or hoodie, vibrant colors, engaging expression, dynamic composition`,
         settings: { guidance_scale: 8.0, style_strength: 0.9 }
       },
-      { 
+      {
         style: 'social',
-        prompt: prompts[3] || `social media profile photo of ${personaName}, modern style, approachable expression, contemporary aesthetic`,
+        prompt: prompts[3] || `social media profile photo of ${personaName}, ${clothingRequirement}, wearing modern casual attire, modern style, approachable expression, contemporary aesthetic`,
         settings: { guidance_scale: 7.5, style_strength: 0.75 }
       },
-      { 
+      {
         style: 'artistic',
-        prompt: prompts[4] || `creative artistic portrait of ${personaName}, unique composition, artistic lighting, creative mood`,
+        prompt: prompts[4] || `creative artistic portrait of ${personaName}, ${clothingRequirement}, wearing stylish outfit, unique composition, artistic lighting, creative mood`,
         settings: { guidance_scale: 8.5, style_strength: 0.85 }
       }
     ]

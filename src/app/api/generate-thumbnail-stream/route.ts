@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
           })}\n\n`))
           
           const { error: uploadError } = await supabaseAdmin.storage
-            .from('images')
+            .from('ai-generated-images')
             .upload(filePath, imageBlob!, {
               contentType: 'image/png',
               upsert: false
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
           }
 
           const { data: { publicUrl } } = supabaseAdmin.storage
-            .from('images')
+            .from('ai-generated-images')
             .getPublicUrl(filePath)
           
           // Update project

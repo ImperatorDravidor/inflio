@@ -283,6 +283,7 @@ Return JSON:
 
   /**
    * Generate sample validation prompts for preview images
+   * IMPORTANT: All prompts MUST require appropriate clothing
    */
   static async generateSamplePrompts(
     personaName: string,
@@ -290,27 +291,30 @@ Return JSON:
   ): Promise<string[]> {
     try {
       const openai = getOpenAI()
-      
+
       const completion = await openai.chat.completions.create({
         model: 'gpt-5',
         messages: [
           {
             role: 'system',
-            content: 'Generate diverse preview prompts for persona samples.'
+            content: `Generate diverse preview prompts for persona samples.
+CRITICAL REQUIREMENT: Every prompt MUST explicitly include that the person is wearing appropriate clothing (shirt, business attire, casual wear, etc.).
+Never generate prompts that could result in inappropriate or unclothed images.`
           },
           {
             role: 'user',
             content: `Create 5 different prompts for generating preview samples of ${personaName} in ${style} style.
 Each prompt should show a different use case or context.
+IMPORTANT: Every prompt MUST include specific clothing (e.g., "wearing a professional suit", "wearing a casual t-shirt", "wearing a business shirt").
 
 Return JSON:
 {
   "prompts": [
-    "Detailed prompt 1",
-    "Detailed prompt 2",
-    "Detailed prompt 3",
-    "Detailed prompt 4",
-    "Detailed prompt 5"
+    "Detailed prompt 1 with clothing specified",
+    "Detailed prompt 2 with clothing specified",
+    "Detailed prompt 3 with clothing specified",
+    "Detailed prompt 4 with clothing specified",
+    "Detailed prompt 5 with clothing specified"
   ]
 }`
           }
@@ -319,19 +323,27 @@ Return JSON:
         temperature: 1.0,
         response_format: { type: 'json_object' }
       })
-      
+
       const result = JSON.parse(completion.choices[0].message.content || '{}')
-      return result.prompts || []
+      // Ensure all prompts have clothing requirement
+      const clothingCheck = 'wearing appropriate clothing, fully clothed'
+      const prompts = (result.prompts || []).map((p: string) => {
+        if (!p.toLowerCase().includes('wearing')) {
+          return `${p}, ${clothingCheck}`
+        }
+        return p
+      })
+      return prompts
     } catch (error) {
       console.error('Sample prompt generation error:', error)
-      
-      // Fallback prompts
+
+      // Fallback prompts - all explicitly include clothing
       return [
-        `professional headshot of ${personaName}, ${style} style, high quality`,
-        `casual portrait of ${personaName}, ${style} style, natural lighting`,
-        `${personaName} in YouTube thumbnail style, ${style} aesthetic`,
-        `social media profile photo of ${personaName}, ${style} style`,
-        `creative artistic portrait of ${personaName}, ${style} mood`
+        `professional headshot of ${personaName}, wearing business suit or dress shirt, ${style} style, high quality`,
+        `casual portrait of ${personaName}, wearing casual t-shirt or sweater, ${style} style, natural lighting`,
+        `${personaName} in YouTube thumbnail style, wearing branded hoodie or shirt, ${style} aesthetic`,
+        `social media profile photo of ${personaName}, wearing smart casual attire, ${style} style`,
+        `creative artistic portrait of ${personaName}, wearing stylish outfit, ${style} mood`
       ]
     }
   }

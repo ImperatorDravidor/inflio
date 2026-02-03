@@ -37,7 +37,8 @@
       "Bash(npx tsc:*)",
       "Bash(echo:*)",
       "Bash(npm run lint:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

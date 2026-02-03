@@ -189,16 +189,22 @@ export default function ProcessingPage() {
 
         setProject({ ...updatedProject, tasks: updatedTasks })
 
-        // Check if ALL tasks are complete
+        // Check if transcription is complete (don't wait for clips - they take 15-30 min)
+        const transcriptionTask = updatedTasks.find(t => t.type === 'transcription')
+        const transcriptionComplete = transcriptionTask?.status === 'completed'
         const allTasksComplete = updatedTasks.every(t => t.status === 'completed')
 
-        // Redirect when ALL processing is done
-        if (allTasksComplete && !redirectingRef.current) {
+        // Redirect when transcription is complete (clips will continue in background)
+        if (transcriptionComplete && !redirectingRef.current) {
           redirectingRef.current = true
           clearInterval(pollingIntervalRef.current!)
           pollingIntervalRef.current = null
 
-          toast.success("Processing complete! Loading your content...")
+          if (allTasksComplete) {
+            toast.success("Processing complete! Loading your content...")
+          } else {
+            toast.success("Transcription complete! Clips will continue generating in the background...")
+          }
 
           setTimeout(() => {
             router.push(`/projects/${projectId}?tab=posts`)
@@ -293,7 +299,9 @@ export default function ProcessingPage() {
     return `${minutes}m ${seconds}s`
   }
 
-  // Check if processing is actually complete by looking at task statuses
+  // Check if transcription is complete (main gate for redirect)
+  const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
+  const transcriptionComplete = transcriptionTask?.status === 'completed'
   const allTasksComplete = project.tasks.every(t => t.status === 'completed')
   const isProcessingComplete = allTasksComplete && overallProgress === 100
 

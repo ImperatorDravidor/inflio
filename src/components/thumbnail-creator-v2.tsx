@@ -200,7 +200,8 @@ export function ThumbnailCreatorV2({
           prompt = `YouTube thumbnail for "${projectTitle}", ${template.name.toLowerCase()} style, ${template.description}, high quality, engaging, clickable`
           
           // Add persona context if available and enabled
-          if (usePersona && selectedPersona && selectedPersona.photos.length > 0) {
+          const personaImages = selectedPersona?.photos || selectedPersona?.portraits || []
+          if (usePersona && selectedPersona && personaImages.length > 0) {
             prompt = `${prompt}, featuring ${selectedPersona.name} prominently with engaging expression from the reference photos`
           }
           
@@ -211,7 +212,8 @@ export function ThumbnailCreatorV2({
         prompt = customPrompt
         
         // Add persona context if available and enabled
-        if (usePersona && selectedPersona && selectedPersona.photos.length > 0 && !customPrompt.toLowerCase().includes(selectedPersona.name.toLowerCase())) {
+        const customPersonaImages = selectedPersona?.photos || selectedPersona?.portraits || []
+        if (usePersona && selectedPersona && customPersonaImages.length > 0 && !customPrompt.toLowerCase().includes(selectedPersona.name.toLowerCase())) {
           prompt = `${prompt}, featuring ${selectedPersona.name} from the reference photos`
         }
         
@@ -220,8 +222,9 @@ export function ThumbnailCreatorV2({
       }
 
       // Prepare persona photos for API (only if persona is enabled)
-      const personaPhotos = usePersona && selectedPersona?.photos ? 
-        selectedPersona.photos.map((photo: any) => photo.url) : []
+      const allPersonaPhotos = selectedPersona?.photos || selectedPersona?.portraits || []
+      const personaPhotos = usePersona && allPersonaPhotos.length > 0 ?
+        allPersonaPhotos.map((photo: any) => photo.url || photo.image_url) : []
       
       // Add selected video frames
       const videoSnippets = selectedFrames.map(frame => {
@@ -608,10 +611,10 @@ export function ThumbnailCreatorV2({
                   <div className="bg-primary/10 rounded-xl p-4 mb-6">
                     <div className="flex items-center gap-3">
                       <div className="flex -space-x-2">
-                        {selectedPersona.photos.slice(0, 3).map((photo: any, idx: number) => (
+                        {(selectedPersona.photos || selectedPersona.portraits || []).slice(0, 3).map((photo: any, idx: number) => (
                           <img
                             key={idx}
-                            src={photo.url}
+                            src={photo.url || photo.image_url}
                             alt={`${selectedPersona.name} ${idx + 1}`}
                             className="w-10 h-10 rounded-full border-2 border-background object-cover"
                           />

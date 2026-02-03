@@ -324,8 +324,9 @@ export default function DashboardPage() {
         
         // Show 5-step setup flow if:
         // 1. User hasn't completed premium onboarding yet, OR
-        // 2. User completed premium onboarding but hasn't finished all 5 setup steps (unless they explicitly skipped)
-        const setupNotComplete = progress < 100 && !profile?.setup_skipped
+        // 2. User completed premium onboarding but hasn't finished all 5 setup steps (unless they completed or skipped)
+        const setupComplete = profile?.setup_completed || profile?.setup_skipped || progress >= 100
+        const setupNotComplete = !setupComplete
         const shouldShowSetupFlow = needsFullOnboarding || (profile?.onboarding_completed && setupNotComplete) || shouldShowLaunchpad
         
         if (shouldShowSetupFlow) {
