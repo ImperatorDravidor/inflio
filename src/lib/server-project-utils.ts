@@ -45,19 +45,28 @@ export async function updateTaskProgressServer(
         : {})
     }
 
+    // Check if ALL tasks are now completed → transition project status to 'ready'
+    const allCompleted = tasks.every(t => t.status === 'completed')
+    const projectStatusUpdate: Record<string, any> = {
+      tasks,
+      updated_at: new Date().toISOString()
+    }
+
+    if (allCompleted) {
+      projectStatusUpdate.status = 'ready'
+      console.log(`[updateTaskProgressServer] All tasks completed for project ${projectId} — setting status to 'ready'`)
+    }
+
     // Save back to database
     const { error: updateError } = await supabaseAdmin
       .from('projects')
-      .update({ 
-        tasks,
-        updated_at: new Date().toISOString()
-      })
+      .update(projectStatusUpdate)
       .eq('id', projectId)
 
     if (updateError) {
       console.error('[updateTaskProgressServer] Failed to update project:', updateError)
     } else {
-      console.log(`[updateTaskProgressServer] Updated ${taskType} to ${progress}% (${status || 'no status change'})`)
+      console.log(`[updateTaskProgressServer] Updated ${taskType} to ${progress}% (${status || 'no status change'})${allCompleted ? ' [project → ready]' : ''}`)
     }
   } catch (error) {
     console.error('[updateTaskProgressServer] Unexpected error:', error)
