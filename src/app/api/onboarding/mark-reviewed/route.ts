@@ -39,8 +39,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update', details: error.message }, { status: 500 })
     }
 
-    console.log(`[mark-reviewed] Successfully set ${field}=true, updated rows:`, data?.length || 0)
-    return NextResponse.json({ success: true, updated: data?.length || 0 })
+    const updatedCount = data?.length || 0
+    console.log(`[mark-reviewed] Successfully set ${field}=true, updated rows:`, updatedCount)
+
+    if (updatedCount === 0) {
+      console.error('[mark-reviewed] No rows updated - user profile may not exist for:', userId)
+      // Try to create the profile if it doesn't exist
+      const { data: newProfile, error: createError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          clerk_user_id: userId,
+          [field]: true,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'clerk_user_id' })
+        .select()
+
+      if (createError) {
+        console.error('[mark-reviewed] Failed to upsert profile:', createError)
+        return NextResponse.json({ error: 'User profile not found and could not create', details: createError.message }, { status: 404 })
+      }
+
+      console.log('[mark-reviewed] Created/upserted profile:', newProfile?.length || 0)
+      return NextResponse.json({ success: true, updated: newProfile?.length || 0, created: true })
+    }
+
+    return NextResponse.json({ success: true, updated: updatedCount })
   } catch (error: any) {
     console.error('[mark-reviewed] Exception:', error)
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 })

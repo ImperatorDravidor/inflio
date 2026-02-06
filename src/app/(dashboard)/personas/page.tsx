@@ -269,8 +269,21 @@ export default function PersonasPage() {
         body: JSON.stringify({ field: 'persona_reviewed' })
       })
 
-      if (!response.ok) throw new Error('Failed to mark as reviewed')
+      const data = await response.json()
 
+      if (!response.ok) {
+        console.error('[markAsReviewed] API error:', data)
+        throw new Error(data.error || 'Failed to mark as reviewed')
+      }
+
+      // Check if any rows were actually updated
+      if (data.updated === 0) {
+        console.error('[markAsReviewed] No rows updated - user profile may not exist')
+        toast.error('Could not save progress. Please try again.')
+        return
+      }
+
+      console.log('[markAsReviewed] Success, updated rows:', data.updated)
       setIsReviewed(true)
       toast.success('Avatar review complete! Continuing setup...')
       // Force full reload to refresh 5-step setup progress

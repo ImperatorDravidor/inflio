@@ -280,7 +280,7 @@ export async function POST(req: NextRequest) {
     
     // Upload to Supabase storage
     const { error: uploadError } = await supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .upload(filePath, imageBlob, {
         contentType: 'image/png',
         upsert: false
@@ -293,7 +293,7 @@ export async function POST(req: NextRequest) {
     
     // Get public URL
     const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .getPublicUrl(filePath)
 
     // Save to thumbnail history

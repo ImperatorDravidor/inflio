@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
     // Upload to Supabase storage
     const fileName = `thumbnails/${projectId}/${generationId}.png`
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .upload(fileName, optimizedBuffer, {
         contentType: 'image/png',
         upsert: false
@@ -323,7 +323,7 @@ export async function POST(req: NextRequest) {
 
     // Get public URL
     const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .getPublicUrl(fileName)
 
     // Generate text overlay suggestions

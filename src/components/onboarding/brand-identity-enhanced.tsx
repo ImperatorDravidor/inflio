@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Upload, Palette, FileText, Image, FileType, X, Loader2, 
-  CheckCircle, Sparkles, ChevronRight, Edit3, Save, Eye,
+  CheckCircle, Sparkles, ChevronRight, ChevronLeft, Edit3, Save, Eye,
   Type, Volume2, Target, Users, Trophy, Lightbulb, AlertCircle,
   FileImage, FileVideo, FilePlus, Wand2, Book, ArrowRight,
   FileWarning, SkipForward, RefreshCw
@@ -20,7 +20,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -742,41 +741,6 @@ export function BrandIdentityEnhanced({
     toast.success(`${section} saved successfully`)
   }
 
-  // Render brand sheet section
-  const renderBrandSheetSection = (
-    title: string,
-    icon: React.ReactNode,
-    sectionKey: keyof BrandAnalysis,
-    content: React.ReactNode
-  ) => (
-    <Card className="p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          {icon}
-          <h3 className="text-lg font-semibold">{title}</h3>
-        </div>
-        <Button
-          variant={editMode === sectionKey ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => editMode === sectionKey ? saveSection(title) : setEditMode(sectionKey)}
-        >
-          {editMode === sectionKey ? (
-            <>
-              <Save className="h-4 w-4 mr-1" />
-              Save
-            </>
-          ) : (
-            <>
-              <Edit3 className="h-4 w-4 mr-1" />
-              Edit
-            </>
-          )}
-        </Button>
-      </div>
-      {content}
-    </Card>
-  )
-
   if (!mode) {
     return (
       <div className="space-y-8 max-w-4xl mx-auto">
@@ -850,47 +814,59 @@ export function BrandIdentityEnhanced({
 
   if (mode === 'upload') {
     if (brandAnalysis) {
-      // Show interactive brand sheet
+      // Show interactive brand sheet - no nested scroll, page scrolls naturally
       return (
-        <div className="space-y-8 max-w-5xl mx-auto">
+        <div className="space-y-8 max-w-5xl mx-auto pb-28">
+          {/* Header */}
           <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle className="h-8 w-8 text-green-500" />
             </div>
             <h2 className="text-3xl font-bold">Your Brand Profile</h2>
-            <p className="text-muted-foreground">
-              {isRestored 
-                ? 'Your brand profile has been saved. Review or continue to the next step.' 
-                : 'Review and edit your AI-generated brand identity'}
+            <p className="text-muted-foreground max-w-lg mx-auto">
+              AI has extracted your brand identity. Review each section and click Edit to make changes.
             </p>
           </div>
-          
-          {/* Restored indicator */}
-          {isRestored && (
-            <Alert className="border-green-500/20 bg-green-500/5">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <AlertDescription>
-                <strong>Step Complete</strong> — Your brand profile has been saved. You can continue to the next step or make edits here.
-              </AlertDescription>
-            </Alert>
-          )}
 
-          <ScrollArea className="h-[600px] pr-4">
-            <div className="space-y-6">
-              {/* Colors Section */}
-              {renderBrandSheetSection(
-                'Color Palette',
-                <Palette className="h-5 w-5 text-primary" />,
-                'colors',
-                <div className="space-y-6">
+          {/* Brand sections */}
+          <div className="space-y-6">
+            
+            {/* Color Palette Section */}
+            <Card className={cn(
+              "overflow-hidden transition-all border-border/50",
+              editMode === 'colors' && "ring-2 ring-primary"
+            )}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Palette className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Color Palette</h3>
+                </div>
+                <Button 
+                  variant={editMode === 'colors' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => editMode === 'colors' ? saveSection('Colors') : setEditMode('colors')}
+                >
                   {editMode === 'colors' ? (
-                    <div className="space-y-4">
-                      <div>
-                        <Label>Primary Colors</Label>
-                        <div className="flex gap-2 mt-2">
-                          {brandAnalysis.colors.primary.hex.map((color, i) => (
-                            <Input
-                              key={i}
+                    <><Save className="h-4 w-4 mr-2" /> Save</>
+                  ) : (
+                    <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="p-5">
+                {editMode === 'colors' ? (
+                  <div className="space-y-6">
+                    {/* Primary Colors Edit */}
+                    <div>
+                      <Label className="text-sm font-medium">Primary Colors</Label>
+                      <p className="text-xs text-muted-foreground mb-3">Click a color swatch to change it, or edit the hex code directly</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {brandAnalysis.colors.primary.hex.map((color, i) => (
+                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card/50">
+                            <input
                               type="color"
                               value={color}
                               onChange={(e) => {
@@ -898,149 +874,217 @@ export function BrandIdentityEnhanced({
                                 updated.colors.primary.hex[i] = e.target.value
                                 setBrandAnalysis(updated)
                               }}
-                              className="w-16 h-16 p-1"
+                              className="w-14 h-14 rounded-xl cursor-pointer border-0 shadow-sm"
                             />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Primary Colors */}
-                      {brandAnalysis.colors.primary.hex.length > 0 && (
-                    <div>
-                          <h4 className="text-sm font-semibold mb-3">Primary Colors</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {brandAnalysis.colors.primary.hex.map((color, i) => (
-                              <div key={i} className="group">
-                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
-                                  <div
-                                    className="h-20 w-full"
-                              style={{ backgroundColor: color }}
-                            />
-                                  <div className="bg-background p-2 space-y-1">
-                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
-                                    {brandAnalysis.colors.primary.name?.[i] && (
-                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.primary.name[i]}</p>
-                                    )}
-                                  </div>
-                                </div>
+                            <div className="flex-1 space-y-2">
+                              <Input
+                                value={color}
+                                onChange={(e) => {
+                                  const updated = { ...brandAnalysis }
+                                  updated.colors.primary.hex[i] = e.target.value
+                                  setBrandAnalysis(updated)
+                                }}
+                                className="font-mono text-sm"
+                                placeholder="#000000"
+                              />
+                              <Input
+                                value={brandAnalysis.colors.primary.name?.[i] || ''}
+                                onChange={(e) => {
+                                  const updated = { ...brandAnalysis }
+                                  if (!updated.colors.primary.name) updated.colors.primary.name = []
+                                  updated.colors.primary.name[i] = e.target.value
+                                  setBrandAnalysis(updated)
+                                }}
+                                className="text-sm"
+                                placeholder="Color name"
+                              />
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                const updated = { ...brandAnalysis }
+                                updated.colors.primary.hex = updated.colors.primary.hex.filter((_, idx) => idx !== i)
+                                updated.colors.primary.name = (updated.colors.primary.name || []).filter((_, idx) => idx !== i)
+                                setBrandAnalysis(updated)
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
                         ))}
+                        <Button
+                          variant="outline"
+                          className="h-24 border-dashed border-2 hover:border-primary hover:bg-primary/5"
+                          onClick={() => {
+                            const updated = { ...brandAnalysis }
+                            updated.colors.primary.hex.push('#6366f1')
+                            if (!updated.colors.primary.name) updated.colors.primary.name = []
+                            updated.colors.primary.name.push('')
+                            setBrandAnalysis(updated)
+                          }}
+                        >
+                          + Add Color
+                        </Button>
                       </div>
-                          {brandAnalysis.colors.primary.usage && (
-                            <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.colors.primary.usage}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Secondary Colors */}
-                      {brandAnalysis.colors.secondary.hex.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-3">Secondary Colors</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {brandAnalysis.colors.secondary.hex.map((color, i) => (
-                              <div key={i} className="group">
-                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
-                                  <div
-                                    className="h-20 w-full"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <div className="bg-background p-2 space-y-1">
-                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
-                                    {brandAnalysis.colors.secondary.name?.[i] && (
-                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.secondary.name[i]}</p>
-                                    )}
-                                  </div>
-                                </div>
+                    </div>
+                    
+                    {/* Secondary Colors Edit */}
+                    {brandAnalysis.colors.secondary.hex.length > 0 && (
+                      <div>
+                        <Label className="text-sm font-medium">Secondary Colors</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+                          {brandAnalysis.colors.secondary.hex.map((color, i) => (
+                            <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card/50">
+                              <input
+                                type="color"
+                                value={color}
+                                onChange={(e) => {
+                                  const updated = { ...brandAnalysis }
+                                  updated.colors.secondary.hex[i] = e.target.value
+                                  setBrandAnalysis(updated)
+                                }}
+                                className="w-14 h-14 rounded-xl cursor-pointer border-0 shadow-sm"
+                              />
+                              <div className="flex-1">
+                                <Input
+                                  value={color}
+                                  onChange={(e) => {
+                                    const updated = { ...brandAnalysis }
+                                    updated.colors.secondary.hex[i] = e.target.value
+                                    setBrandAnalysis(updated)
+                                  }}
+                                  className="font-mono text-sm"
+                                />
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  const updated = { ...brandAnalysis }
+                                  updated.colors.secondary.hex = updated.colors.secondary.hex.filter((_, idx) => idx !== i)
+                                  setBrandAnalysis(updated)
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           ))}
                         </div>
-                          {brandAnalysis.colors.secondary.usage && (
-                            <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.colors.secondary.usage}</p>
-                      )}
-                    </div>
-                      )}
-
-                      {/* Accent Colors */}
-                      {brandAnalysis.colors.accent.hex.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-3">Accent Colors</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {brandAnalysis.colors.accent.hex.map((color, i) => (
-                              <div key={i} className="group">
-                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
-                                  <div
-                                    className="h-20 w-full"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <div className="bg-background p-2 space-y-1">
-                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
-                                    {brandAnalysis.colors.accent.name?.[i] && (
-                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.accent.name[i]}</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Neutral Colors */}
-                      {brandAnalysis.colors.neutral.hex.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-3">Neutral Colors</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {brandAnalysis.colors.neutral.hex.map((color, i) => (
-                              <div key={i} className="group">
-                                <div className="relative overflow-hidden rounded-xl border border-border hover:border-primary/50 transition-all">
-                                  <div
-                                    className="h-20 w-full"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <div className="bg-background p-2 space-y-1">
-                                    <p className="font-mono text-xs font-medium">{color.toUpperCase()}</p>
-                                    {brandAnalysis.colors.neutral.name?.[i] && (
-                                      <p className="text-xs text-muted-foreground">{brandAnalysis.colors.neutral.name[i]}</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Color Guidelines */}
-                      {brandAnalysis.colors.guidelines.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">Usage Guidelines</h4>
-                          <ul className="space-y-1">
-                            {brandAnalysis.colors.guidelines.map((guideline, i) => (
-                              <li key={i} className="text-xs text-muted-foreground flex items-start">
-                                <span className="mr-2">•</span>
-                                <span>{guideline}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Typography Section */}
-              {renderBrandSheetSection(
-                'Typography',
-                <Type className="h-5 w-5 text-primary" />,
-                'typography',
-                <div className="space-y-6">
-                  {editMode === 'typography' ? (
-                    <div className="space-y-3">
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Primary Colors Display - Rich cards */}
+                    {brandAnalysis.colors.primary.hex.length > 0 && (
                       <div>
-                        <Label>Primary Font Family</Label>
+                        <p className="text-sm font-medium mb-3">Primary Colors</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {brandAnalysis.colors.primary.hex.map((color, i) => (
+                            <div key={i} className="rounded-xl border border-border overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
+                              <div
+                                className="h-24 w-full"
+                                style={{ backgroundColor: color }}
+                              />
+                              <div className="p-3 space-y-1">
+                                <p className="font-mono text-sm font-medium">{color.toUpperCase()}</p>
+                                {brandAnalysis.colors.primary.name?.[i] && (
+                                  <p className="text-xs text-muted-foreground">{brandAnalysis.colors.primary.name[i]}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {brandAnalysis.colors.primary.usage && (
+                          <p className="text-sm text-muted-foreground mt-3 italic">{brandAnalysis.colors.primary.usage}</p>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Secondary Colors Display */}
+                    {brandAnalysis.colors.secondary.hex.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-3">Secondary Colors</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {brandAnalysis.colors.secondary.hex.map((color, i) => (
+                            <div key={i} className="rounded-xl border border-border overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
+                              <div
+                                className="h-24 w-full"
+                                style={{ backgroundColor: color }}
+                              />
+                              <div className="p-3 space-y-1">
+                                <p className="font-mono text-sm font-medium">{color.toUpperCase()}</p>
+                                {brandAnalysis.colors.secondary.name?.[i] && (
+                                  <p className="text-xs text-muted-foreground">{brandAnalysis.colors.secondary.name[i]}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Neutral Colors Display */}
+                    {brandAnalysis.colors.neutral.hex.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-3">Neutral Colors</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {brandAnalysis.colors.neutral.hex.map((color, i) => (
+                            <div key={i} className="rounded-xl border border-border overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
+                              <div
+                                className="h-24 w-full"
+                                style={{ backgroundColor: color }}
+                              />
+                              <div className="p-3 space-y-1">
+                                <p className="font-mono text-sm font-medium">{color.toUpperCase()}</p>
+                                {brandAnalysis.colors.neutral.name?.[i] && (
+                                  <p className="text-xs text-muted-foreground">{brandAnalysis.colors.neutral.name[i]}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Typography Section */}
+            <Card className={cn(
+              "overflow-hidden transition-all border-border/50",
+              editMode === 'typography' && "ring-2 ring-primary"
+            )}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Type className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Typography</h3>
+                </div>
+                <Button 
+                  variant={editMode === 'typography' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => editMode === 'typography' ? saveSection('Typography') : setEditMode('typography')}
+                >
+                  {editMode === 'typography' ? (
+                    <><Save className="h-4 w-4 mr-2" /> Save</>
+                  ) : (
+                    <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="p-5">
+                {editMode === 'typography' ? (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Primary Font</Label>
                         <Input
                           value={brandAnalysis.typography.primary.family}
                           onChange={(e) => {
@@ -1048,11 +1092,13 @@ export function BrandIdentityEnhanced({
                             updated.typography.primary.family = e.target.value
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
+                          className="mt-2"
+                          placeholder="e.g., Inter, Roboto"
                         />
+                        <p className="text-xs text-muted-foreground mt-2">Used for headings and titles</p>
                       </div>
-                      <div>
-                        <Label>Secondary Font Family</Label>
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Secondary Font</Label>
                         <Input
                           value={brandAnalysis.typography.secondary.family}
                           onChange={(e) => {
@@ -1060,358 +1106,477 @@ export function BrandIdentityEnhanced({
                             updated.typography.secondary.family = e.target.value
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
+                          className="mt-2"
+                          placeholder="e.g., Open Sans, Lato"
                         />
+                        <p className="text-xs text-muted-foreground mt-2">Used for body text</p>
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Primary Font */}
-                      {brandAnalysis.typography.primary.family && (
-                        <div className="space-y-3">
-                        <div>
-                            <h4 className="text-sm font-semibold mb-2">Primary Typography</h4>
-                            <div className="p-4 rounded-lg border border-border bg-card">
-                              <p 
-                                className="text-2xl font-bold mb-2"
-                                style={{ fontFamily: brandAnalysis.typography.primary.family }}
-                              >
-                                {brandAnalysis.typography.primary.family}
-                              </p>
-                              <p 
-                                className="text-sm text-muted-foreground mb-3"
-                                style={{ fontFamily: brandAnalysis.typography.primary.family }}
-                              >
-                                The quick brown fox jumps over the lazy dog
-                              </p>
-                              <div className="flex flex-wrap gap-4 text-xs">
-                                {brandAnalysis.typography.primary.weights.length > 0 && (
-                                  <div>
-                                    <span className="text-muted-foreground">Weights: </span>
-                                    <span className="font-medium">{brandAnalysis.typography.primary.weights.join(', ')}</span>
-                        </div>
-                                )}
-                                {brandAnalysis.typography.primary.fallback && (
-                        <div>
-                                    <span className="text-muted-foreground">Fallback: </span>
-                                    <span className="font-mono text-xs">{brandAnalysis.typography.primary.fallback}</span>
-                        </div>
-                                )}
-                      </div>
-                              {brandAnalysis.typography.primary.usage && (
-                                <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.typography.primary.usage}</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Secondary Font */}
-                      {brandAnalysis.typography.secondary.family && (
-                        <div className="space-y-3">
-                        <div>
-                            <h4 className="text-sm font-semibold mb-2">Secondary Typography</h4>
-                            <div className="p-4 rounded-lg border border-border bg-card">
-                              <p 
-                                className="text-2xl font-bold mb-2"
-                                style={{ fontFamily: brandAnalysis.typography.secondary.family }}
-                              >
-                                {brandAnalysis.typography.secondary.family}
-                              </p>
-                              <p 
-                                className="text-sm text-muted-foreground mb-3"
-                                style={{ fontFamily: brandAnalysis.typography.secondary.family }}
-                              >
-                                The quick brown fox jumps over the lazy dog
-                              </p>
-                              <div className="flex flex-wrap gap-4 text-xs">
-                                {brandAnalysis.typography.secondary.weights.length > 0 && (
-                                  <div>
-                                    <span className="text-muted-foreground">Weights: </span>
-                                    <span className="font-medium">{brandAnalysis.typography.secondary.weights.join(', ')}</span>
-                          </div>
-                                )}
-                                {brandAnalysis.typography.secondary.fallback && (
-                                  <div>
-                                    <span className="text-muted-foreground">Fallback: </span>
-                                    <span className="font-mono text-xs">{brandAnalysis.typography.secondary.fallback}</span>
-                        </div>
-                      )}
-                              </div>
-                              {brandAnalysis.typography.secondary.usage && (
-                                <p className="text-xs text-muted-foreground mt-2">{brandAnalysis.typography.secondary.usage}</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Type Scale */}
-                      {(brandAnalysis.typography.headings.h1.size || brandAnalysis.typography.body.size) && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-3">Type Scale</h4>
-                          <div className="space-y-2">
-                            {brandAnalysis.typography.headings.h1.size && (
-                              <div className="flex items-baseline gap-4">
-                                <span className="text-xs text-muted-foreground w-12">H1</span>
-                                <span 
-                                  className="font-bold"
-                                  style={{ 
-                                    fontSize: brandAnalysis.typography.headings.h1.size,
-                                    fontFamily: brandAnalysis.typography.primary.family 
-                                  }}
-                                >
-                                  Heading One
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {brandAnalysis.typography.headings.h1.size} / {brandAnalysis.typography.headings.h1.weight}
-                                </span>
-                              </div>
-                            )}
-                            {brandAnalysis.typography.headings.h2.size && (
-                              <div className="flex items-baseline gap-4">
-                                <span className="text-xs text-muted-foreground w-12">H2</span>
-                                <span 
-                                  className="font-semibold"
-                                  style={{ 
-                                    fontSize: brandAnalysis.typography.headings.h2.size,
-                                    fontFamily: brandAnalysis.typography.primary.family 
-                                  }}
-                                >
-                                  Heading Two
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {brandAnalysis.typography.headings.h2.size} / {brandAnalysis.typography.headings.h2.weight}
-                                </span>
-                              </div>
-                            )}
-                            {brandAnalysis.typography.headings.h3.size && (
-                              <div className="flex items-baseline gap-4">
-                                <span className="text-xs text-muted-foreground w-12">H3</span>
-                                <span 
-                                  className="font-medium"
-                                  style={{ 
-                                    fontSize: brandAnalysis.typography.headings.h3.size,
-                                    fontFamily: brandAnalysis.typography.primary.family 
-                                  }}
-                                >
-                                  Heading Three
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {brandAnalysis.typography.headings.h3.size} / {brandAnalysis.typography.headings.h3.weight}
-                                </span>
-                              </div>
-                            )}
-                            {brandAnalysis.typography.body.size && (
-                              <div className="flex items-baseline gap-4">
-                                <span className="text-xs text-muted-foreground w-12">Body</span>
-                                <span 
-                                  style={{ 
-                                    fontSize: brandAnalysis.typography.body.size,
-                                    lineHeight: brandAnalysis.typography.body.lineHeight,
-                                    fontFamily: brandAnalysis.typography.body.family || brandAnalysis.typography.primary.family 
-                                  }}
-                                >
-                                  Body text example
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {brandAnalysis.typography.body.size} / {brandAnalysis.typography.body.lineHeight}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Font Weights (comma-separated)</Label>
+                      <Input
+                        value={brandAnalysis.typography.primary.weights.join(', ')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.typography.primary.weights = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        className="mt-2"
+                        placeholder="400, 500, 600, 700"
+                      />
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Voice & Tone Section */}
-              {renderBrandSheetSection(
-                'Brand Voice',
-                <Volume2 className="h-5 w-5 text-primary" />,
-                'voice',
-                <div className="space-y-3">
-                  {editMode === 'voice' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Tone Keywords</Label>
-                        <Textarea
-                          value={brandAnalysis.voice.tone.join(', ')}
-                          onChange={(e) => {
-                            const updated = { ...brandAnalysis }
-                            updated.voice.tone = e.target.value.split(',').map(s => s.trim())
-                            setBrandAnalysis(updated)
-                          }}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-wrap gap-2">
-                        {brandAnalysis.voice.tone.map((tone, i) => (
-                          <Badge key={i} variant="outline">{tone}</Badge>
-                        ))}
-                      </div>
-                      {brandAnalysis.voice.phrases.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-2">Example phrases:</p>
-                          <ul className="text-sm space-y-1">
-                            {brandAnalysis.voice.phrases.slice(0, 3).map((example: string, i: number) => (
-                              <li key={i} className="italic">"{example}"</li>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {brandAnalysis.typography.primary.family && (
+                      <div className="p-5 rounded-xl border border-border bg-gradient-to-br from-card to-muted/30">
+                        <p className="text-xs font-medium text-primary mb-2">Primary Font</p>
+                        <p 
+                          className="text-3xl font-bold mb-3"
+                          style={{ fontFamily: brandAnalysis.typography.primary.family }}
+                        >
+                          {brandAnalysis.typography.primary.family}
+                        </p>
+                        <p 
+                          className="text-base text-muted-foreground leading-relaxed"
+                          style={{ fontFamily: brandAnalysis.typography.primary.family }}
+                        >
+                          The quick brown fox jumps over the lazy dog
+                        </p>
+                        {brandAnalysis.typography.primary.weights.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            {brandAnalysis.typography.primary.weights.map((weight, i) => (
+                              <span key={i} className="px-2 py-1 text-xs rounded-md bg-muted">{weight}</span>
                             ))}
-                          </ul>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {brandAnalysis.typography.secondary.family && (
+                      <div className="p-5 rounded-xl border border-border bg-gradient-to-br from-card to-muted/30">
+                        <p className="text-xs font-medium text-primary mb-2">Secondary Font</p>
+                        <p 
+                          className="text-2xl font-semibold mb-3"
+                          style={{ fontFamily: brandAnalysis.typography.secondary.family }}
+                        >
+                          {brandAnalysis.typography.secondary.family}
+                        </p>
+                        <p 
+                          className="text-base text-muted-foreground leading-relaxed"
+                          style={{ fontFamily: brandAnalysis.typography.secondary.family }}
+                        >
+                          The quick brown fox jumps over the lazy dog
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
 
-              {/* Target Audience Section */}
-              {renderBrandSheetSection(
-                'Target Audience',
-                <Users className="h-5 w-5 text-primary" />,
-                'targetAudience',
-                <div className="space-y-3">
-                  {editMode === 'targetAudience' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Demographics</Label>
-                        <Textarea
-                          value={`Age: ${brandAnalysis.targetAudience.demographics.age || ''}, Location: ${brandAnalysis.targetAudience.demographics.location || ''}, Interests: ${brandAnalysis.targetAudience.demographics.interests?.join(', ') || ''}`}
-                          onChange={(e) => {
-                            const updated = { ...brandAnalysis }
-                            // Parse demographics from text
-                            const parts = e.target.value.split(',').map(s => s.trim())
-                            const age = parts.find(p => p.startsWith('Age:'))?.replace('Age:', '').trim() || ''
-                            const location = parts.find(p => p.startsWith('Location:'))?.replace('Location:', '').trim() || ''
-                            const interestsStr = parts.find(p => p.startsWith('Interests:'))?.replace('Interests:', '').trim() || ''
-                            updated.targetAudience.demographics = {
-                              age,
-                              location,
-                              interests: interestsStr ? interestsStr.split(',').map(s => s.trim()) : []
-                            }
-                            setBrandAnalysis(updated)
-                          }}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Psychographics</Label>
-                        <Textarea
-                          value={brandAnalysis.targetAudience.psychographics.join(', ')}
-                          onChange={(e) => {
-                            const updated = { ...brandAnalysis }
-                            updated.targetAudience.psychographics = e.target.value.split(',').map(s => s.trim())
-                            setBrandAnalysis(updated)
-                          }}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
+            {/* Brand Voice Section */}
+            <Card className={cn(
+              "overflow-hidden transition-all border-border/50",
+              editMode === 'voice' && "ring-2 ring-primary"
+            )}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Volume2 className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Brand Voice</h3>
+                </div>
+                <Button 
+                  variant={editMode === 'voice' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => editMode === 'voice' ? saveSection('Voice') : setEditMode('voice')}
+                >
+                  {editMode === 'voice' ? (
+                    <><Save className="h-4 w-4 mr-2" /> Save</>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium mb-2">Demographics</p>
-                        <div className="space-y-1">
-                          {brandAnalysis.targetAudience.psychographics.map((demo: string, i: number) => (
-                            <p key={i} className="text-sm text-muted-foreground">• {demo}</p>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-2">Pain Points</p>
-                        <div className="space-y-1">
-                          {brandAnalysis.targetAudience.painPoints.map((pain, i) => (
-                            <p key={i} className="text-sm text-muted-foreground">• {pain}</p>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+                    <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
                   )}
-                </div>
-              )}
+                </Button>
+              </div>
+              
+              <div className="p-5">
+                {editMode === 'voice' ? (
+                  <div className="space-y-5">
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Tone & Personality</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Separate with commas</p>
+                      <Textarea
+                        value={brandAnalysis.voice.tone.join(', ')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.voice.tone = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        className="min-h-[80px]"
+                        placeholder="Professional, Friendly, Innovative, Trustworthy..."
+                      />
+                    </div>
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Example Phrases</Label>
+                      <p className="text-xs text-muted-foreground mb-2">One phrase per line</p>
+                      <Textarea
+                        value={brandAnalysis.voice.phrases.join('\n')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.voice.phrases = e.target.value.split('\n').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        className="min-h-[120px]"
+                        placeholder="Enter phrases that represent your brand voice..."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap gap-2">
+                      {brandAnalysis.voice.tone.map((tone, i) => (
+                        <Badge 
+                          key={i} 
+                          variant="outline" 
+                          className="px-3 py-1.5 text-sm font-medium border-primary/30 bg-primary/5"
+                        >
+                          {tone}
+                        </Badge>
+                      ))}
+                    </div>
+                    {brandAnalysis.voice.phrases.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium">Example Phrases</p>
+                        <div className="space-y-2">
+                          {brandAnalysis.voice.phrases.slice(0, 4).map((phrase, i) => (
+                            <div key={i} className="p-3 rounded-lg bg-muted/50 border-l-2 border-primary/30">
+                              <p className="text-sm italic">&ldquo;{phrase}&rdquo;</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
 
-              {/* Visual Style Section */}
-              {renderBrandSheetSection(
-                'Visual Style',
-                <Image className="h-5 w-5 text-primary" />,
-                'visualStyle',
-                <div className="space-y-3">
-                  {editMode === 'visualStyle' ? (
-                    <div className="space-y-3">
+            {/* Target Audience Section */}
+            <Card className={cn(
+              "overflow-hidden transition-all border-border/50",
+              editMode === 'targetAudience' && "ring-2 ring-primary"
+            )}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Target Audience</h3>
+                </div>
+                <Button 
+                  variant={editMode === 'targetAudience' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => editMode === 'targetAudience' ? saveSection('Audience') : setEditMode('targetAudience')}
+                >
+                  {editMode === 'targetAudience' ? (
+                    <><Save className="h-4 w-4 mr-2" /> Save</>
+                  ) : (
+                    <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="p-5">
+                {editMode === 'targetAudience' ? (
+                  <div className="space-y-5">
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Audience Traits</Label>
+                      <p className="text-xs text-muted-foreground mb-2">One trait per line</p>
+                      <Textarea
+                        value={brandAnalysis.targetAudience.psychographics.join('\n')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.targetAudience.psychographics = e.target.value.split('\n').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        className="min-h-[100px]"
+                        placeholder="Ambitious and growth-oriented&#10;Values authenticity..."
+                      />
+                    </div>
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Pain Points</Label>
+                      <p className="text-xs text-muted-foreground mb-2">One pain point per line</p>
+                      <Textarea
+                        value={brandAnalysis.targetAudience.painPoints.join('\n')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.targetAudience.painPoints = e.target.value.split('\n').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        className="min-h-[100px]"
+                        placeholder="Struggling with time management&#10;Need better tools..."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/5 to-transparent border border-blue-500/10">
+                      <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-3">Audience Profile</p>
+                      <ul className="space-y-2">
+                        {brandAnalysis.targetAudience.psychographics.slice(0, 6).map((item, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-orange-500/5 to-transparent border border-orange-500/10">
+                      <p className="text-sm font-medium text-orange-600 dark:text-orange-400 mb-3">Pain Points</p>
+                      <ul className="space-y-2">
+                        {brandAnalysis.targetAudience.painPoints.slice(0, 6).map((item, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Mission & Values Section */}
+            <Card className={cn(
+              "overflow-hidden transition-all border-border/50",
+              editMode === 'brandStrategy' && "ring-2 ring-primary"
+            )}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Lightbulb className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Mission & Values</h3>
+                </div>
+                <Button 
+                  variant={editMode === 'brandStrategy' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => editMode === 'brandStrategy' ? saveSection('Mission') : setEditMode('brandStrategy')}
+                >
+                  {editMode === 'brandStrategy' ? (
+                    <><Save className="h-4 w-4 mr-2" /> Save</>
+                  ) : (
+                    <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="p-5">
+                {editMode === 'brandStrategy' ? (
+                  <div className="space-y-5">
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Mission Statement</Label>
+                      <Textarea
+                        value={brandAnalysis.brandStrategy.mission}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.brandStrategy.mission = e.target.value
+                          setBrandAnalysis(updated)
+                        }}
+                        className="mt-2 min-h-[80px]"
+                        placeholder="Our mission is to..."
+                      />
+                    </div>
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Vision</Label>
+                      <Textarea
+                        value={brandAnalysis.brandStrategy.vision}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.brandStrategy.vision = e.target.value
+                          setBrandAnalysis(updated)
+                        }}
+                        className="mt-2"
+                        placeholder="Our vision is..."
+                      />
+                    </div>
+                    <div className="p-4 rounded-xl border border-border bg-card/50">
+                      <Label className="text-sm font-medium">Core Values</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Separate with commas</p>
+                      <Input
+                        value={brandAnalysis.brandStrategy.values.join(', ')}
+                        onChange={(e) => {
+                          const updated = { ...brandAnalysis }
+                          updated.brandStrategy.values = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          setBrandAnalysis(updated)
+                        }}
+                        placeholder="Innovation, Trust, Excellence..."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {brandAnalysis.brandStrategy.mission && (
+                      <div className="p-5 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
+                        <p className="text-xs font-medium text-primary mb-2">Mission Statement</p>
+                        <p className="text-lg leading-relaxed">&ldquo;{brandAnalysis.brandStrategy.mission}&rdquo;</p>
+                      </div>
+                    )}
+                    {brandAnalysis.brandStrategy.vision && (
+                      <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Vision</p>
+                        <p className="text-sm">{brandAnalysis.brandStrategy.vision}</p>
+                      </div>
+                    )}
+                    {brandAnalysis.brandStrategy.values.length > 0 && (
                       <div>
-                        <Label>Aesthetic Keywords</Label>
+                        <p className="text-sm font-medium mb-3">Core Values</p>
+                        <div className="flex flex-wrap gap-2">
+                          {brandAnalysis.brandStrategy.values.map((value, i) => (
+                            <div 
+                              key={i} 
+                              className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 text-sm font-medium"
+                            >
+                              <div className="h-2 w-2 bg-primary rounded-full" />
+                              {value}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Visual Style Section */}
+            {(brandAnalysis.visualStyle.principles.length > 0 || brandAnalysis.visualStyle.imagery.length > 0) && (
+              <Card className={cn(
+                "overflow-hidden transition-all border-border/50",
+                editMode === 'visualStyle' && "ring-2 ring-primary"
+              )}>
+                <div className="flex items-center justify-between p-5 border-b border-border/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                      <Image className="h-5 w-5 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Visual Style</h3>
+                  </div>
+                  <Button 
+                    variant={editMode === 'visualStyle' ? 'default' : 'outline'} 
+                    size="sm"
+                    onClick={() => editMode === 'visualStyle' ? saveSection('Visual') : setEditMode('visualStyle')}
+                  >
+                    {editMode === 'visualStyle' ? (
+                      <><Save className="h-4 w-4 mr-2" /> Save</>
+                    ) : (
+                      <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                    )}
+                  </Button>
+                </div>
+                
+                <div className="p-5">
+                  {editMode === 'visualStyle' ? (
+                    <div className="space-y-5">
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Visual Principles</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Separate with commas</p>
                         <Textarea
                           value={brandAnalysis.visualStyle.principles.join(', ')}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.visualStyle.principles = e.target.value.split(',').map(s => s.trim())
+                            updated.visualStyle.principles = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
+                          placeholder="Clean, Modern, Bold..."
                         />
                       </div>
-                      <div>
-                        <Label>Imagery Style</Label>
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Imagery Style</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Separate with commas</p>
                         <Textarea
                           value={brandAnalysis.visualStyle.imagery.join(', ')}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.visualStyle.imagery = e.target.value.split(',').map(s => s.trim())
+                            updated.visualStyle.imagery = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
+                          placeholder="Authentic photos, Minimal graphics..."
                         />
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {brandAnalysis.visualStyle.principles.map((style: string, i: number) => (
-                          <Badge key={i} variant="secondary">{style}</Badge>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm font-medium mb-1">Imagery</p>
-                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.imagery.join(', ')}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {brandAnalysis.visualStyle.principles.length > 0 && (
+                        <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                          <p className="text-sm font-medium mb-3">Design Principles</p>
+                          <div className="flex flex-wrap gap-2">
+                            {brandAnalysis.visualStyle.principles.map((style, i) => (
+                              <Badge key={i} variant="outline" className="px-3 py-1">{style}</Badge>
+                            ))}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium mb-1">Mood</p>
-                          <p className="text-sm text-muted-foreground">{brandAnalysis.visualStyle.photography.mood.join(', ')}</p>
+                      )}
+                      {brandAnalysis.visualStyle.imagery.length > 0 && (
+                        <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                          <p className="text-sm font-medium mb-3">Imagery Guidelines</p>
+                          <div className="flex flex-wrap gap-2">
+                            {brandAnalysis.visualStyle.imagery.map((img, i) => (
+                              <Badge key={i} variant="secondary" className="px-3 py-1">{img}</Badge>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </Card>
+            )}
 
-              {/* Competitive Landscape Section */}
-              {renderBrandSheetSection(
-                'Competitive Landscape',
-                <Trophy className="h-5 w-5 text-primary" />,
-                'competitors',
-                <div className="space-y-3">
+            {/* Competitors Section */}
+            {(brandAnalysis.competitors.direct.length > 0 || brandAnalysis.competitors.positioning) && (
+              <Card className={cn(
+                "overflow-hidden transition-all border-border/50",
+                editMode === 'competitors' && "ring-2 ring-primary"
+              )}>
+                <div className="flex items-center justify-between p-5 border-b border-border/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                      <Trophy className="h-5 w-5 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Competitive Position</h3>
+                  </div>
+                  <Button 
+                    variant={editMode === 'competitors' ? 'default' : 'outline'} 
+                    size="sm"
+                    onClick={() => editMode === 'competitors' ? saveSection('Competitors') : setEditMode('competitors')}
+                  >
+                    {editMode === 'competitors' ? (
+                      <><Save className="h-4 w-4 mr-2" /> Save</>
+                    ) : (
+                      <><Edit3 className="h-4 w-4 mr-2" /> Edit</>
+                    )}
+                  </Button>
+                </div>
+                
+                <div className="p-5">
                   {editMode === 'competitors' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Direct Competitors</Label>
-                        <Textarea
+                    <div className="space-y-5">
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Direct Competitors</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Separate with commas</p>
+                        <Input
                           value={brandAnalysis.competitors.direct.join(', ')}
                           onChange={(e) => {
                             const updated = { ...brandAnalysis }
-                            updated.competitors.direct = e.target.value.split(',').map(s => s.trim())
+                            updated.competitors.direct = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
                         />
                       </div>
-                      <div>
-                        <Label>Market Positioning</Label>
+                      <div className="p-4 rounded-xl border border-border bg-card/50">
+                        <Label className="text-sm font-medium">Market Positioning</Label>
                         <Textarea
                           value={brandAnalysis.competitors.positioning}
                           onChange={(e) => {
@@ -1419,149 +1584,102 @@ export function BrandIdentityEnhanced({
                             updated.competitors.positioning = e.target.value
                             setBrandAnalysis(updated)
                           }}
-                          className="mt-1"
+                          className="mt-2"
                         />
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="mb-3">
-                        <p className="text-sm font-medium mb-2">Direct Competitors</p>
-                        <div className="flex flex-wrap gap-2">
-                          {brandAnalysis.competitors.direct.map((comp, i) => (
-                            <Badge key={i} variant="outline">{comp}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-1">Market Positioning</p>
-                        <p className="text-sm text-muted-foreground">{brandAnalysis.competitors.positioning}</p>
-                      </div>
-                      {brandAnalysis.competitors.differentiators.length > 0 && (
+                    <div className="space-y-4">
+                      {brandAnalysis.competitors.direct.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium mb-1">Key Differentiators</p>
-                          <div className="space-y-1">
-                            {brandAnalysis.competitors.differentiators.map((diff, i) => (
-                              <p key={i} className="text-sm text-muted-foreground">• {diff}</p>
+                          <p className="text-sm font-medium mb-3">Key Competitors</p>
+                          <div className="flex flex-wrap gap-2">
+                            {brandAnalysis.competitors.direct.map((comp, i) => (
+                              <div 
+                                key={i} 
+                                className="px-4 py-2 rounded-lg bg-muted/50 border border-border text-sm font-medium"
+                              >
+                                {comp}
+                              </div>
                             ))}
                           </div>
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Mission & Values Section */}
-              {renderBrandSheetSection(
-                'Mission & Values',
-                <Lightbulb className="h-5 w-5 text-primary" />,
-                'brandStrategy',
-                <div className="space-y-3">
-                  {editMode === 'brandStrategy' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Mission Statement</Label>
-                        <Textarea
-                          value={brandAnalysis.brandStrategy.mission}
-                          onChange={(e) => {
-                            const updated = { ...brandAnalysis }
-                            updated.brandStrategy.mission = e.target.value
-                            setBrandAnalysis(updated)
-                          }}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Core Values</Label>
-                        <Textarea
-                          value={brandAnalysis.brandStrategy.values.join(', ')}
-                          onChange={(e) => {
-                            const updated = { ...brandAnalysis }
-                            updated.brandStrategy.values = e.target.value.split(',').map(s => s.trim())
-                            setBrandAnalysis(updated)
-                          }}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="p-3 bg-primary/5 rounded-lg mb-3">
-                        <p className="text-sm italic">&ldquo;{brandAnalysis.brandStrategy.mission}&rdquo;</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-2">Core Values</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {brandAnalysis.brandStrategy.values.map((value: string, i: number) => (
-                            <div key={i} className="flex items-center gap-2">
-                              <div className="h-2 w-2 bg-primary rounded-full" />
-                              <span className="text-sm">{value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {brandAnalysis.brandStrategy.vision && (
-                        <div>
-                          <p className="text-sm font-medium mb-1">Vision</p>
-                          <p className="text-sm text-muted-foreground">{brandAnalysis.brandStrategy.vision}</p>
+                      {brandAnalysis.competitors.positioning && (
+                        <div className="p-4 rounded-xl bg-muted/30 border border-border">
+                          <p className="text-xs font-medium text-muted-foreground mb-2">Market Positioning</p>
+                          <p className="text-sm">{brandAnalysis.competitors.positioning}</p>
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          </ScrollArea>
+              </Card>
+            )}
+          </div>
 
-          {/* Single action button - Continue saves and advances */}
-          <div className="flex justify-end">
-            <Button
-              size="lg"
-              onClick={async () => {
-                // Save the brand analysis to form data
-                updateFormData('brandAnalysis', brandAnalysis)
-                updateFormData('brandIdentity', {
-                  colors: brandAnalysis.colors,
-                  typography: brandAnalysis.typography,
-                  voice: brandAnalysis.voice,
-                  visualStyle: brandAnalysis.visualStyle,
-                  targetAudience: brandAnalysis.targetAudience,
-                  brandStrategy: brandAnalysis.brandStrategy,
-                  competitors: brandAnalysis.competitors,
-                  logoUsage: brandAnalysis.logoUsage
-                })
-                updateFormData('brandAnalysisCompleted', true)
+          {/* Fixed bottom navigation bar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background/98 to-transparent pt-8 pb-6 z-10">
+            <div className="max-w-5xl mx-auto px-6 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => setMode(null)}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              
+              <Button
+                size="lg"
+                onClick={async () => {
+                  // Close any open edit mode first
+                  setEditMode(null)
+                  
+                  // Save the brand analysis to form data
+                  updateFormData('brandAnalysis', brandAnalysis)
+                  updateFormData('brandIdentity', {
+                    colors: brandAnalysis.colors,
+                    typography: brandAnalysis.typography,
+                    voice: brandAnalysis.voice,
+                    visualStyle: brandAnalysis.visualStyle,
+                    targetAudience: brandAnalysis.targetAudience,
+                    brandStrategy: brandAnalysis.brandStrategy,
+                    competitors: brandAnalysis.competitors,
+                    logoUsage: brandAnalysis.logoUsage
+                  })
+                  updateFormData('brandAnalysisCompleted', true)
 
-                // Immediately save progress with actual data to prevent loss on refresh
-                if (onSaveProgress) {
-                  try {
-                    await onSaveProgress({
-                      brandAnalysis,
-                      brandIdentity: {
-                        colors: brandAnalysis.colors,
-                        typography: brandAnalysis.typography,
-                        voice: brandAnalysis.voice,
-                        visualStyle: brandAnalysis.visualStyle,
-                        targetAudience: brandAnalysis.targetAudience,
-                        brandStrategy: brandAnalysis.brandStrategy,
-                        competitors: brandAnalysis.competitors,
-                        logoUsage: brandAnalysis.logoUsage
-                      },
-                      brandAnalysisCompleted: true
-                    })
-                  } catch (error) {
-                    console.error('Error saving brand analysis progress:', error)
+                  // Immediately save progress with actual data to prevent loss on refresh
+                  if (onSaveProgress) {
+                    try {
+                      await onSaveProgress({
+                        brandAnalysis,
+                        brandIdentity: {
+                          colors: brandAnalysis.colors,
+                          typography: brandAnalysis.typography,
+                          voice: brandAnalysis.voice,
+                          visualStyle: brandAnalysis.visualStyle,
+                          targetAudience: brandAnalysis.targetAudience,
+                          brandStrategy: brandAnalysis.brandStrategy,
+                          competitors: brandAnalysis.competitors,
+                          logoUsage: brandAnalysis.logoUsage
+                        },
+                        brandAnalysisCompleted: true
+                      })
+                    } catch (error) {
+                      console.error('Error saving brand analysis progress:', error)
+                    }
                   }
-                }
 
-                // Trigger completion callback to advance
-                if (onComplete) onComplete()
-              }}
-            >
-              Continue to AI Avatar
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+                  // Trigger completion callback to advance
+                  if (onComplete) onComplete()
+                }}
+              >
+                Continue to AI Avatar
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
       )

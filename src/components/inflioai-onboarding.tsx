@@ -172,16 +172,19 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
         const skippedBrand = profile.brand_analysis_skipped === true
         const skippedPersona = profile.persona_skipped === true
 
-        // Check if user has any personas (either from persona_id or by checking personas table)
+        // Check if user has any personas (using API to bypass RLS)
         let hasPersona = !!profile.persona_id
         if (!hasPersona) {
-          // Check if they have personas in the personas table
-          const { data: personas } = await supabase
-            .from('personas')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1)
-          hasPersona = !!(personas && personas.length > 0)
+          // Check if they have personas via the API endpoint (which uses admin client)
+          try {
+            const personaResponse = await fetch('/api/personas/check-persona')
+            if (personaResponse.ok) {
+              const personaData = await personaResponse.json()
+              hasPersona = !!(personaData.personas && personaData.personas.length > 0)
+            }
+          } catch (err) {
+            console.error('[5-step] Error checking personas:', err)
+          }
         }
 
         console.log('[5-step] Status check:', { hasCompletedOnboarding, hasBrand, hasPersona, skippedBrand, skippedPersona })
@@ -440,15 +443,36 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
   const completedSteps = steps.filter(s => s.status === 'completed').length
   const progress = (completedSteps / steps.length) * 100
 
-  // Auto-redirect when everything is complete
+  // Auto-complete setup when everything is done
   useEffect(() => {
     if (completedSteps === steps.length) {
-      // Give user a moment to see the completion message
-      setTimeout(() => {
-        window.location.href = '/dashboard'
-      }, 3000)
+      // Mark setup as complete in the database so dashboard shows normal view
+      const markSetupComplete = async () => {
+        try {
+          const supabase = createSupabaseBrowserClient()
+          await supabase
+            .from('user_profiles')
+            .update({ 
+              setup_completed: true,
+              show_launchpad: false 
+            })
+            .eq('clerk_user_id', userId)
+          
+          // Give user a moment to see the completion message, then redirect
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        } catch (error) {
+          console.error('Error marking setup complete:', error)
+          // Still redirect even if update fails
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        }
+      }
+      markSetupComplete()
     }
-  }, [completedSteps, steps.length])
+  }, [completedSteps, steps.length, userId, router])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
@@ -693,7 +717,8 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                                         body: JSON.stringify({ field: 'brand_reviewed' })
                                       })
                                       if (response.ok) {
-                                        window.location.href = '/dashboard'
+                                        // Refresh progress locally instead of full page reload
+                                        loadUserProgress()
                                       }
                                     } catch (err) {
                                       console.error('Error:', err)
@@ -717,7 +742,8 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                                         body: JSON.stringify({ field: 'persona_reviewed' })
                                       })
                                       if (response.ok) {
-                                        window.location.href = '/dashboard'
+                                        // Refresh progress locally instead of full page reload
+                                        loadUserProgress()
                                       }
                                     } catch (err) {
                                       console.error('Error:', err)
@@ -811,8 +837,8 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                   console.error('Error saving skip state:', error)
                 }
                 
-                // Reload to show regular dashboard
-                window.location.href = '/dashboard'
+                // Use router for smooth navigation
+                router.push('/dashboard')
               }}
               className="text-muted-foreground"
             >

@@ -63,20 +63,20 @@ export async function POST(req: NextRequest) {
           const filePath = `personas/${userId}/${fileName}`
           
           const { error: uploadError } = await supabaseAdmin.storage
-            .from('images')
+            .from('ai-generated-images')
             .upload(filePath, imageBlob, {
               contentType: 'image/png',
               upsert: false
             })
-            
+
           if (uploadError) {
             console.error(`Upload error for variation ${i + 1}:`, uploadError)
             continue
           }
-          
+
           // Get public URL
           const { data: { publicUrl } } = supabaseAdmin.storage
-            .from('images')
+            .from('ai-generated-images')
             .getPublicUrl(filePath)
           
           generatedImages.push(publicUrl)

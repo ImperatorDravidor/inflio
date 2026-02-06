@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SubmagicAPIService } from '@/lib/submagic-api'
 import { VizardAPIService } from '@/lib/vizard-api'
 import { ProjectService } from '@/lib/services'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
@@ -13,7 +12,7 @@ export const maxDuration = 10
 
 /**
  * POST /api/process-klap
- * Queue Submagic processing job with Inngest
+ * Queue Vizard processing job with Inngest
  * (Keeping route name for backward compatibility)
  */
 export async function POST(request: NextRequest) {
@@ -53,9 +52,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Send event to Inngest (using Submagic event)
+    // Send event to Inngest for Vizard processing
     await inngest.send({
-      name: 'submagic/video.process',
+      name: 'vizard/video.process',
       data: {
         projectId,
         videoUrl: project.video_url,
@@ -70,7 +69,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true,
       message: 'Clip generation queued successfully',
-      provider: 'submagic'
+      provider: 'vizard'
     })
   } catch (error) {
     console.error('[Process Clips] Error:', error)

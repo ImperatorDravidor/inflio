@@ -145,6 +145,7 @@ Consider incorporating these trending topics where relevant:
         id: suggestionId,
         project_id: projectId,
         user_id: effectiveUserId || userId,
+        type: post.contentType.format, // Required NOT NULL field
         content_type: post.contentType.format,
         title: post.content.title,
         description: post.contentType.description,

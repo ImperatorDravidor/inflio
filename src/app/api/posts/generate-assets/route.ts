@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       const buffer = Buffer.from(b64, 'base64')
       const fileName = `posts/${suggestion.project_id}/${suggestionId}-${Date.now()}-${i}.${transparent ? 'webp' : 'png'}`
       const { error: uploadError } = await supabaseAdmin.storage
-        .from('images')
+        .from('ai-generated-images')
         .upload(fileName, buffer, {
           contentType: `image/${transparent ? 'webp' : 'png'}`,
           upsert: false
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       if (uploadError) continue
 
       const { data: { publicUrl } } = supabaseAdmin.storage
-        .from('images')
+        .from('ai-generated-images')
         .getPublicUrl(fileName)
 
       images.push({ id: crypto.randomUUID(), url: publicUrl, position: i })

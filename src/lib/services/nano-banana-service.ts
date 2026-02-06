@@ -122,7 +122,7 @@ export class NanoBananaService {
     title: string
     prompt: string
   }> {
-    // Base instructions for all portraits - emphasizes hyperrealism
+    // Base instructions for all portraits - emphasizes hyperrealism AND appropriate attire
     const hyperrealismBase = `CRITICAL REQUIREMENTS:
 - HYPERREALISTIC photo, indistinguishable from a real photograph
 - This must look like an actual studio photograph, NOT AI-generated
@@ -130,7 +130,13 @@ export class NanoBananaService {
 - Maintain the person's EXACT skin texture, pores, and natural imperfections
 - Keep their natural hair color, texture, and style from reference photos
 - Real camera characteristics: subtle depth of field, natural lens bokeh, film grain
-- Professional studio photography quality with catchlights in eyes`
+- Professional studio photography quality with catchlights in eyes
+
+MANDATORY ATTIRE REQUIREMENT:
+- The person MUST be wearing appropriate clothing - NEVER generate with bare shoulders or without a shirt
+- Default attire: professional shirt, t-shirt, sweater, or business casual top
+- Clothing should be clearly visible and appropriate for a professional context
+- No bare skin below the neck/collarbone area`
 
     return [
       // ========== GENERAL PORTRAITS (4) ==========
@@ -147,6 +153,10 @@ IDENTITY PRESERVATION:
 - Copy their exact facial structure, features, and proportions
 - Match their skin tone and complexion precisely
 - Preserve any distinctive features (moles, freckles, dimples, etc.)
+
+ATTIRE:
+- Wearing a clean, professional dark-colored dress shirt or business casual top
+- Clothing clearly visible, no bare shoulders
 
 EXPRESSION & POSE:
 - Neutral, calm, confident expression with slight hint of approachability
@@ -182,6 +192,10 @@ IDENTITY PRESERVATION:
 - Copy their exact smile, teeth, and the way their face creases when smiling
 - Preserve their natural laugh lines and how their eyes crinkle
 
+ATTIRE:
+- Wearing a comfortable, professional sweater or casual button-up shirt
+- Clothing clearly visible, no bare shoulders
+
 EXPRESSION & POSE:
 - Warm, genuine, NATURAL smile - not forced or fake
 - Eyes should show real warmth (Duchenne smile - smile with eyes)
@@ -215,6 +229,10 @@ IDENTITY PRESERVATION:
 - Preserve their profile shape, jawline, and nose bridge
 - Match their exact features even from this angle
 
+ATTIRE:
+- Wearing a professional dark t-shirt or casual blazer
+- Clothing clearly visible, no bare shoulders
+
 EXPRESSION & POSE:
 - Body and face turned about 30-45 degrees to the left
 - Looking back at camera with confident expression
@@ -247,6 +265,10 @@ IDENTITY PRESERVATION:
 - This person must be IMMEDIATELY recognizable from their reference photos
 - Preserve their profile shape, jawline, and nose bridge
 - Match their exact features even from this angle
+
+ATTIRE:
+- Wearing a professional dark t-shirt or casual blazer
+- Clothing clearly visible, no bare shoulders
 
 EXPRESSION & POSE:
 - Body and face turned about 30-45 degrees to the right
@@ -283,6 +305,10 @@ IDENTITY PRESERVATION:
 - Preserve their exact facial features even with exaggerated expression
 - Keep their natural appearance, just with genuine excitement
 
+ATTIRE:
+- Wearing a vibrant colored t-shirt or branded hoodie
+- Clothing clearly visible, no bare shoulders
+
 EXPRESSION & POSE:
 - Genuinely excited, surprised, or amazed expression
 - Wide eyes, raised eyebrows, mouth open in authentic excitement
@@ -315,6 +341,10 @@ IDENTITY PRESERVATION:
 - This person must be IMMEDIATELY recognizable from reference photos
 - Their face and body proportions must match exactly
 - Preserve their natural hand size and proportions
+
+ATTIRE:
+- Wearing a clean t-shirt, polo shirt, or casual top
+- Clothing clearly visible, no bare shoulders or arms
 
 EXPRESSION & POSE:
 - Upper body visible with clear pointing gesture
@@ -352,6 +382,10 @@ IDENTITY PRESERVATION:
 - Their casual expression and posture should still be clearly them
 - Preserve exact features in this relaxed setting
 
+ATTIRE:
+- Wearing a stylish casual outfit - sweater, casual jacket, or nice t-shirt
+- Clothing clearly visible, no bare shoulders
+
 EXPRESSION & POSE:
 - Relaxed, authentic, candid expression
 - Natural slight smile, genuine vibe
@@ -385,6 +419,10 @@ IDENTITY PRESERVATION:
 - This person must be IMMEDIATELY recognizable from reference photos
 - Their features must be identical, just in podcast setting
 - Preserve their natural presence and energy
+
+ATTIRE:
+- Wearing a casual button-up shirt or smart casual top
+- Clothing clearly visible, no bare shoulders
 
 EXPRESSION & POSE:
 - Engaged, thoughtful, mid-conversation expression
@@ -459,6 +497,10 @@ IDENTITY PRESERVATION:
 - This person must be IMMEDIATELY recognizable from reference photos
 - In their natural creator environment, still clearly identifiable
 - Preserve their authentic presence
+
+ATTIRE:
+- Wearing a comfortable hoodie, t-shirt, or casual work outfit
+- Clothing clearly visible, no bare shoulders
 
 EXPRESSION & POSE:
 - Focused yet approachable, in their element

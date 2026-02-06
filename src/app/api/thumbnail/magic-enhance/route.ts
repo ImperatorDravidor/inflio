@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
     
     const fileName = `thumbnails/${projectId}/enhanced_${generationId}.png`
     const { error: uploadError } = await supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .upload(fileName, Buffer.from(imageBuffer), {
         contentType: 'image/png',
         upsert: false
@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
 
     // Get public URL
     const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .getPublicUrl(fileName)
 
     // Calculate improved performance score

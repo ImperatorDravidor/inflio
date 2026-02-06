@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight, IconUser, IconPalette, IconChevronDown } from "@tabler/icons-react"
+import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight, IconUser, IconPalette, IconChevronDown, IconLoader2 } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
 import { extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils-simple"
 import { generateVideoThumbnail } from "@/lib/video-thumbnail-fix"
@@ -28,6 +29,9 @@ interface PersonaOption {
   name: string
   avatar_url?: string
   description?: string
+  status?: 'analyzing' | 'training' | 'processing' | 'ready' | 'failed'
+  photoCount?: number
+  portraitsGenerated?: number
 }
 
 interface BrandSettings {
@@ -294,6 +298,31 @@ export default function UploadPage() {
     setUploadProgress(0);
     const toastId = toast.loading("Uploading video to cloud storage...");
 
+    // Set upload timeout based on file size (5 min base + 1 min per 100MB)
+    const fileSizeMB = file.size / (1024 * 1024);
+    const timeoutMs = Math.max(5 * 60 * 1000, (5 + Math.ceil(fileSizeMB / 100)) * 60 * 1000);
+    let uploadTimedOut = false;
+
+    // Simulated progress interval (since Supabase doesn't provide upload progress)
+    // Progress goes from 0-80% during upload, then jumps to 100% on completion
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 80) return prev; // Cap at 80% until actual completion
+        // Slower progress for larger files
+        const increment = Math.max(0.5, 5 - (fileSizeMB / 200));
+        return Math.min(80, prev + increment);
+      });
+    }, 500);
+
+    // Create a timeout promise for upload
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        uploadTimedOut = true;
+        clearInterval(progressInterval);
+        reject(new Error(`Upload timed out. Large videos (${Math.round(fileSizeMB)}MB) may take longer. Please try again or check your connection.`));
+      }, timeoutMs);
+    });
+
     try {
       // Generate unique filename
       const timestamp = Date.now();
@@ -321,21 +350,38 @@ export default function UploadPage() {
       // Upload directly using Supabase client (handles CORS properly)
       const supabase = createSupabaseBrowserClient();
 
-      console.log('[Upload] Starting Supabase upload:', { fileName, fileSize: file.size });
+      console.log('[Upload] Starting Supabase upload:', { fileName, fileSize: file.size, timeoutMs });
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Race the upload against the timeout
+      const uploadPromise = supabase.storage
         .from('videos')
         .upload(fileName, file, {
           contentType: file.type || 'video/mp4',
           upsert: true,
         });
 
+      const { data: uploadData, error: uploadError } = await Promise.race([
+        uploadPromise,
+        timeoutPromise
+      ]) as Awaited<typeof uploadPromise>;
+
       if (uploadError) {
         console.error('Supabase upload failed:', uploadError);
+        // More specific error messages
+        if (uploadError.message?.includes('row-level security')) {
+          throw new Error('Storage permission error. Please contact support.');
+        } else if (uploadError.message?.includes('exceeded')) {
+          throw new Error('File size exceeds the maximum allowed (2GB).');
+        }
         throw new Error(uploadError.message || 'Failed to upload video to storage');
       }
 
+      if (!uploadData?.path) {
+        throw new Error('Upload completed but no path returned. Please try again.');
+      }
+
       console.log('[Upload] Supabase upload success:', uploadData.path);
+      clearInterval(progressInterval);
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -395,6 +441,7 @@ export default function UploadPage() {
 
     } catch (err) {
       console.error('Upload error:', err);
+      clearInterval(progressInterval);
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload and create project.';
       toast.error(errorMessage, { id: toastId });
       setError(errorMessage);
@@ -551,20 +598,40 @@ export default function UploadPage() {
                                       <div className="flex items-center gap-3">
                                         {selectedPersona ? (
                                           <>
-                                            {selectedPersona.avatar_url ? (
-                                              <Image
-                                                src={selectedPersona.avatar_url}
-                                                alt={selectedPersona.name}
-                                                width={32}
-                                                height={32}
-                                                className="rounded-full object-cover"
-                                              />
-                                            ) : (
-                                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                                <IconUser className="h-4 w-4 text-primary" />
-                                              </div>
-                                            )}
+                                            <div className="relative">
+                                              {selectedPersona.avatar_url ? (
+                                                <Image
+                                                  src={selectedPersona.avatar_url}
+                                                  alt={selectedPersona.name}
+                                                  width={32}
+                                                  height={32}
+                                                  className="rounded-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                  <IconUser className="h-4 w-4 text-primary" />
+                                                </div>
+                                              )}
+                                              {(selectedPersona.status === 'analyzing' || selectedPersona.status === 'training' || selectedPersona.status === 'processing') && (
+                                                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center">
+                                                  <IconLoader2 className="h-2 w-2 text-white animate-spin" />
+                                                </div>
+                                              )}
+                                            </div>
                                             <span className="font-medium">{selectedPersona.name}</span>
+                                            {selectedPersona.status === 'ready' && (
+                                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/30">
+                                                Ready
+                                              </Badge>
+                                            )}
+                                            {(selectedPersona.status === 'analyzing' || selectedPersona.status === 'training' || selectedPersona.status === 'processing') && (
+                                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                                                <IconLoader2 className="h-2.5 w-2.5 animate-spin" />
+                                                {selectedPersona.portraitsGenerated !== undefined && selectedPersona.portraitsGenerated > 0 
+                                                  ? `${selectedPersona.portraitsGenerated}/10` 
+                                                  : 'Training'}
+                                              </Badge>
+                                            )}
                                           </>
                                         ) : (
                                           <>
@@ -593,37 +660,73 @@ export default function UploadPage() {
                                           </div>
                                           <span className="text-muted-foreground">No persona (generic content)</span>
                                         </button>
-                                        {personas.map((persona) => (
-                                          <button
-                                            key={persona.id}
-                                            type="button"
-                                            onClick={() => {
-                                              setSelectedPersonaId(persona.id)
-                                              setShowPersonaDropdown(false)
-                                            }}
-                                            className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${selectedPersonaId === persona.id ? 'bg-primary/5' : ''}`}
-                                          >
-                                            {persona.avatar_url ? (
-                                              <Image
-                                                src={persona.avatar_url}
-                                                alt={persona.name}
-                                                width={32}
-                                                height={32}
-                                                className="rounded-full object-cover"
-                                              />
-                                            ) : (
-                                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                                <IconUser className="h-4 w-4 text-primary" />
+                                        {personas.map((persona) => {
+                                          const isTraining = persona.status === 'analyzing' || persona.status === 'training' || persona.status === 'processing'
+                                          const isReady = persona.status === 'ready'
+                                          const isFailed = persona.status === 'failed'
+                                          
+                                          return (
+                                            <button
+                                              key={persona.id}
+                                              type="button"
+                                              onClick={() => {
+                                                setSelectedPersonaId(persona.id)
+                                                setShowPersonaDropdown(false)
+                                              }}
+                                              className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${selectedPersonaId === persona.id ? 'bg-primary/5' : ''}`}
+                                            >
+                                              <div className="relative">
+                                                {persona.avatar_url ? (
+                                                  <Image
+                                                    src={persona.avatar_url}
+                                                    alt={persona.name}
+                                                    width={32}
+                                                    height={32}
+                                                    className="rounded-full object-cover"
+                                                  />
+                                                ) : (
+                                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                    <IconUser className="h-4 w-4 text-primary" />
+                                                  </div>
+                                                )}
+                                                {isTraining && (
+                                                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center">
+                                                    <IconLoader2 className="h-2 w-2 text-white animate-spin" />
+                                                  </div>
+                                                )}
                                               </div>
-                                            )}
-                                            <div>
-                                              <p className="font-medium">{persona.name}</p>
-                                              {persona.description && (
-                                                <p className="text-xs text-muted-foreground truncate max-w-[250px]">{persona.description}</p>
-                                              )}
-                                            </div>
-                                          </button>
-                                        ))}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <p className="font-medium truncate">{persona.name}</p>
+                                                  {isReady && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/30">
+                                                      Ready
+                                                    </Badge>
+                                                  )}
+                                                  {isTraining && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                                                      <IconLoader2 className="h-2.5 w-2.5 animate-spin" />
+                                                      {persona.portraitsGenerated !== undefined && persona.portraitsGenerated > 0 
+                                                        ? `${persona.portraitsGenerated}/10` 
+                                                        : 'Training'}
+                                                    </Badge>
+                                                  )}
+                                                  {isFailed && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-red-500/10 text-red-600 border-red-500/30">
+                                                      Failed
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                {isTraining && persona.portraitsGenerated !== undefined && persona.portraitsGenerated > 0 && (
+                                                  <p className="text-xs text-amber-600">Generating portraits ({persona.portraitsGenerated}/10 done)</p>
+                                                )}
+                                                {!isTraining && persona.description && (
+                                                  <p className="text-xs text-muted-foreground truncate max-w-[250px]">{persona.description}</p>
+                                                )}
+                                              </div>
+                                            </button>
+                                          )
+                                        })}
                                       </div>
                                     )}
                                   </div>
@@ -838,9 +941,36 @@ export default function UploadPage() {
                     <h3 className="text-xl font-semibold">Submitting Your Project</h3>
                     <p className="text-muted-foreground">{submissionStatus || "Please wait while we process your request..."}</p>
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  {file && (
+                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  <div className="text-sm text-muted-foreground space-y-1">
                     <p>This may take a few moments. Please don't close this page.</p>
+                    {file && submissionStatus === "Uploading video to cloud storage..." && (
+                      <p className="text-xs">
+                        Large videos may take several minutes to upload.
+                      </p>
+                    )}
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setSubmittingWorkflow(false);
+                      setUploading(false);
+                      setUploadProgress(0);
+                      setSubmissionStatus("");
+                      toast.info("Upload cancelled. You can try again.");
+                    }}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </CardContent>
             </Card>

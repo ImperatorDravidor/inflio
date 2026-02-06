@@ -371,19 +371,71 @@ export function AIAvatarTraining({
     }
   }
 
-  // Handle file upload
+  // Handle file upload with proper validation feedback
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (!files || files.length === 0 || isFull) return
+    if (!files || files.length === 0) return
+
+    // Check if already at max
+    if (isFull) {
+      toast.error(`Maximum ${maxPhotos} photos allowed`, {
+        description: 'Remove some photos to add new ones'
+      })
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
 
     setIsProcessing(true)
     const validFiles: File[] = []
+    const rejectedFiles: { name: string; reason: string }[] = []
+    const availableSlots = maxPhotos - photos.length
 
-    for (let i = 0; i < files.length && photos.length + validFiles.length < maxPhotos; i++) {
+    for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      if (!file.type.startsWith('image/')) continue
-      if (file.size > 10 * 1024 * 1024) continue
+      
+      // Check if we've reached available slots
+      if (validFiles.length >= availableSlots) {
+        rejectedFiles.push({ name: file.name, reason: `Limit reached (max ${maxPhotos})` })
+        continue
+      }
+      
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        rejectedFiles.push({ name: file.name, reason: 'Not an image file' })
+        continue
+      }
+      
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        rejectedFiles.push({ name: file.name, reason: `Too large (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)` })
+        continue
+      }
+      
       validFiles.push(file)
+    }
+
+    // Show rejection feedback
+    if (rejectedFiles.length > 0) {
+      const skippedCount = rejectedFiles.length
+      if (skippedCount === 1) {
+        toast.warning(`Skipped: ${rejectedFiles[0].name}`, {
+          description: rejectedFiles[0].reason
+        })
+      } else if (skippedCount <= 3) {
+        toast.warning(`${skippedCount} files skipped`, {
+          description: rejectedFiles.map(f => `${f.name}: ${f.reason}`).join('\n')
+        })
+      } else {
+        toast.warning(`${skippedCount} files skipped`, {
+          description: `${rejectedFiles.slice(0, 2).map(f => f.name).join(', ')} and ${skippedCount - 2} more. Check file types and sizes.`
+        })
+      }
+    }
+
+    if (validFiles.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      setIsProcessing(false)
+      return
     }
 
     try {
@@ -399,7 +451,7 @@ export function AIAvatarTraining({
           const quality = await analyzePhotoQuality(imageUrl)
 
           return {
-            id: `photo-${Date.now()}-${index}`,
+            id: `photo-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
             url: imageUrl,
             type: 'uploaded' as const,
             quality,
@@ -409,9 +461,25 @@ export function AIAvatarTraining({
       )
 
       setPhotos(prev => [...prev, ...newPhotos])
-      toast.success(`${newPhotos.length} photo${newPhotos.length !== 1 ? 's' : ''} uploaded!`)
+      
+      // Show success with context
+      const totalAfter = photos.length + newPhotos.length
+      if (totalAfter >= recommendedPhotos) {
+        toast.success(`${newPhotos.length} photo${newPhotos.length !== 1 ? 's' : ''} added!`, {
+          description: `You now have ${totalAfter} photos - ready to create your avatar!`
+        })
+      } else if (totalAfter >= minPhotos) {
+        toast.success(`${newPhotos.length} photo${newPhotos.length !== 1 ? 's' : ''} added!`, {
+          description: `${totalAfter}/${recommendedPhotos} photos. Add ${recommendedPhotos - totalAfter} more for best results.`
+        })
+      } else {
+        toast.success(`${newPhotos.length} photo${newPhotos.length !== 1 ? 's' : ''} added!`, {
+          description: `${totalAfter}/${minPhotos} minimum photos. Add ${minPhotos - totalAfter} more.`
+        })
+      }
     } catch (error) {
-      toast.error('Some photos failed to upload')
+      console.error('Upload error:', error)
+      toast.error('Some photos failed to process')
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
       setIsProcessing(false)
@@ -627,211 +695,216 @@ export function AIAvatarTraining({
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 pb-24 max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center space-y-3">
+      <div className="space-y-6 max-w-5xl mx-auto pb-28">
+        {/* Header - Compact */}
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+            <User className="h-7 w-7 text-primary" />
+          </div>
           <h2 className="text-2xl font-bold">Create Your AI Avatar</h2>
-          <p className="text-muted-foreground text-sm max-w-lg mx-auto">
-            Upload {minPhotos}-{recommendedPhotos} high-quality photos to create hyperrealistic AI portraits.
-            <span className="block mt-1 text-primary font-medium">
-              Pro tip: Professional headshots or studio photos give the best results!
-            </span>
+          <p className="text-muted-foreground text-sm">
+            Upload {minPhotos}-{maxPhotos} photos for hyperrealistic AI portraits
           </p>
         </div>
 
-        {/* Progress */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium">
-              {photos.length} of {recommendedPhotos} photos
-              {photos.length < minPhotos && ` (${minPhotos - photos.length} more needed)`}
-            </span>
-            {isOptimal && (
-              <Badge className="bg-green-500">
+        {/* Progress Bar */}
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold">{photos.length}</span>
+              <span className="text-muted-foreground">/ {recommendedPhotos} photos</span>
+            </div>
+            {isReady ? (
+              <Badge className="bg-green-500/10 text-green-600 border-green-500/30">
                 <Check className="h-3 w-3 mr-1" />
-                Ready
+                Ready to create
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">
+                {minPhotos - photos.length} more needed
               </Badge>
             )}
           </div>
           <Progress value={progress} className="h-2" />
         </div>
 
-        {/* Main Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Take Photos Card */}
-          <Card
-            className="p-6 cursor-pointer hover:border-primary transition-colors group"
-            onClick={openCameraModal}
-          >
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                <Camera className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Take Photos</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Use your camera to capture photos with guided poses
-                </p>
-              </div>
-              <Button className="w-full">
-                <Camera className="h-4 w-4 mr-2" />
-                Open Camera
-              </Button>
-            </div>
-          </Card>
-
-          {/* Upload Photos Card */}
-          <Card
-            className={cn(
-              "p-6 cursor-pointer transition-colors",
-              isDragging ? "border-primary bg-primary/5" : "hover:border-primary"
-            )}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                <Upload className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Upload Photos</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Upload existing photos from your device
-                </p>
-              </div>
-              <Button variant="outline" className="w-full" disabled={isProcessing}>
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Browse Files
-                  </>
+        {/* Main Content - Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left: Upload Options + Gallery */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Upload Actions - Horizontal */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Take Photos */}
+              <Card
+                className={cn(
+                  "p-4 cursor-pointer transition-all hover:border-primary hover:shadow-md group",
+                  isFull && "opacity-50 pointer-events-none"
                 )}
-              </Button>
-            </div>
-          </Card>
-        </div>
-
-        {/* Photo Gallery */}
-        {photos.length > 0 && (
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Your Photos ({photos.length}/{maxPhotos})</h3>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={deleteAllPhotos}
-                className="text-destructive hover:text-destructive"
+                onClick={openCameraModal}
               >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Clear All
-              </Button>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors shrink-0">
+                    <Camera className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold">Take Photos</h3>
+                    <p className="text-xs text-muted-foreground">Use camera with guided poses</p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Upload Photos */}
+              <Card
+                className={cn(
+                  "p-4 cursor-pointer transition-all hover:shadow-md",
+                  isDragging ? "border-primary bg-primary/5" : "hover:border-primary",
+                  isFull && "opacity-50 pointer-events-none"
+                )}
+                onClick={() => !isFull && fileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    {isProcessing ? (
+                      <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                    ) : (
+                      <Upload className="h-6 w-6 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold">{isProcessing ? 'Processing...' : 'Upload Photos'}</h3>
+                    <p className="text-xs text-muted-foreground">Drop or browse files</p>
+                  </div>
+                </div>
+              </Card>
             </div>
 
-            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
-              {photos.map((photo) => (
-                <motion.div
-                  key={photo.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="relative group aspect-square"
-                >
-                  <img
-                    src={photo.url}
-                    alt=""
-                    className="w-full h-full object-cover rounded-lg"
-                    onClick={() => setSelectedPhoto(photo.id)}
-                  />
+            {/* Photo Gallery */}
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Your Photos</h3>
+                {photos.length > 0 && (
                   <Button
-                    size="icon"
-                    variant="destructive"
-                    onClick={() => deletePhoto(photo.id)}
-                    className="absolute top-1 right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    size="sm"
+                    variant="ghost"
+                    onClick={deleteAllPhotos}
+                    className="h-7 text-xs text-muted-foreground hover:text-destructive"
                   >
-                    <X className="h-3 w-3" />
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Clear
                   </Button>
-                </motion.div>
-              ))}
+                )}
+              </div>
 
-              {/* Empty slots indicator */}
-              {photos.length < minPhotos && (
-                <div className="aspect-square border-2 border-dashed border-muted-foreground/25 rounded-lg flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground text-center px-1">
-                    +{minPhotos - photos.length} needed
-                  </span>
+              {photos.length > 0 ? (
+                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                  {photos.map((photo, idx) => (
+                    <motion.div
+                      key={photo.id}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="relative group aspect-square"
+                    >
+                      <img
+                        src={photo.url}
+                        alt=""
+                        className="w-full h-full object-cover rounded-lg cursor-pointer hover:ring-2 ring-primary transition-all"
+                        onClick={() => setSelectedPhoto(photo.id)}
+                      />
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        onClick={(e) => { e.stopPropagation(); deletePhoto(photo.id); }}
+                        className="absolute -top-1 -right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <div className="absolute bottom-0.5 left-0.5 bg-black/60 text-white text-[10px] px-1 rounded">
+                        {idx + 1}
+                      </div>
+                    </motion.div>
+                  ))}
+                  
+                  {/* Add more indicator */}
+                  {!isFull && (
+                    <div 
+                      className="aspect-square border-2 border-dashed border-muted-foreground/30 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4 text-muted-foreground mb-1" />
+                      <span className="text-[10px] text-muted-foreground">Add</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div 
+                  className="h-32 border-2 border-dashed border-muted-foreground/30 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImageIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">No photos yet</p>
+                  <p className="text-xs text-muted-foreground">Click to upload or use camera</p>
                 </div>
               )}
-            </div>
-          </Card>
-        )}
-
-        {/* Tips - Enhanced guidance for better results */}
-        <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-          <div className="flex items-start gap-3">
-            <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-            <div className="text-sm space-y-3">
-              <div>
-                <p className="font-semibold text-primary mb-1">📸 For BEST results, use professional photos:</p>
-                <ul className="text-muted-foreground space-y-1">
-                  <li>• <span className="text-foreground font-medium">Studio headshots</span> or professional photography work best</li>
-                  <li>• <span className="text-foreground font-medium">High resolution</span> photos with your face clearly visible</li>
-                  <li>• <span className="text-foreground font-medium">Good lighting</span> - face a window, use ring light, or studio lighting</li>
-                </ul>
-              </div>
-
-              <Separator />
-
-              <div>
-                <p className="font-medium mb-1">📐 Variety of angles needed:</p>
-                <ul className="text-muted-foreground space-y-1">
-                  <li>• Front facing (looking at camera)</li>
-                  <li>• 3/4 angle left & right</li>
-                  <li>• Slight up/down angles</li>
-                </ul>
-              </div>
-
-              <Separator />
-
-              <div>
-                <p className="font-medium mb-1">😊 Mix of expressions:</p>
-                <ul className="text-muted-foreground space-y-1">
-                  <li>• Neutral/calm expression</li>
-                  <li>• Natural smile</li>
-                  <li>• Professional/confident look</li>
-                </ul>
-              </div>
-
-              <Alert className="bg-amber-500/10 border-amber-500/30 mt-2">
-                <AlertCircle className="h-4 w-4 text-amber-500" />
-                <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
-                  <strong>Note:</strong> The AI will generate hyperrealistic portraits based on your photos.
-                  Better quality reference photos = more realistic AI portraits that look exactly like you.
-                </AlertDescription>
-              </Alert>
-            </div>
+            </Card>
           </div>
-        </Card>
 
-        {/* Actions - Fixed at bottom */}
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 z-40">
-          <div className="max-w-4xl mx-auto">
+          {/* Right: Tips - Compact */}
+          <div className="lg:col-span-1">
+            <Card className="p-4 bg-gradient-to-br from-primary/5 to-transparent border-primary/20 sticky top-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold text-sm">Photo Tips</h3>
+              </div>
+              
+              <div className="space-y-3 text-xs">
+                <div>
+                  <p className="font-medium text-primary mb-1">📸 Best Photos</p>
+                  <ul className="text-muted-foreground space-y-0.5">
+                    <li>• Professional headshots</li>
+                    <li>• High resolution, clear face</li>
+                    <li>• Good lighting</li>
+                  </ul>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <p className="font-medium mb-1">📐 Variety Needed</p>
+                  <ul className="text-muted-foreground space-y-0.5">
+                    <li>• Front facing</li>
+                    <li>• Left & right angles</li>
+                    <li>• Different expressions</li>
+                  </ul>
+                </div>
+                
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 mt-3">
+                  <p className="text-amber-700 dark:text-amber-300">
+                    <strong>Tip:</strong> Better photos = more realistic AI portraits
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* Fixed Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6 z-40">
+          <div className="max-w-5xl mx-auto px-6">
             {!hideNavigation ? (
               <div className="flex items-center justify-between">
-                <Button variant="ghost" onClick={onBack}>
+                <Button variant="ghost" size="lg" onClick={onBack}>
                   <ChevronLeft className="h-4 w-4 mr-2" />
                   Back
                 </Button>
@@ -843,17 +916,37 @@ export function AIAvatarTraining({
                     </Button>
                   )}
 
-                  <Button onClick={handleComplete} disabled={!isReady || isProcessing}>
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    {isReady ? 'Create AI Avatar' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
+                  <Button 
+                    size="lg" 
+                    onClick={handleComplete} 
+                    disabled={!isReady || isProcessing || isTraining}
+                  >
+                    {isReady ? (
+                      <>
+                        Create AI Avatar
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </>
+                    ) : (
+                      `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`
+                    )}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="flex justify-center">
-                <Button onClick={handleComplete} disabled={!isReady || isProcessing} size="lg">
-                  <Wand2 className="h-4 w-4 mr-2" />
-                  {isReady ? 'Create AI Avatar' : `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`}
+                <Button 
+                  size="lg" 
+                  onClick={handleComplete} 
+                  disabled={!isReady || isProcessing || isTraining}
+                >
+                  {isReady ? (
+                    <>
+                      Create AI Avatar
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  ) : (
+                    `Add ${minPhotos - photos.length} more photo${minPhotos - photos.length !== 1 ? 's' : ''}`
+                  )}
                 </Button>
               </div>
             )}

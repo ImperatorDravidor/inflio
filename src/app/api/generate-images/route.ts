@@ -216,15 +216,15 @@ export async function POST(req: NextRequest) {
         const filePath = `${projectId}/social-graphics/${fileName}`
         
         const { error: uploadError } = await supabaseAdmin.storage
-          .from('images')
+          .from('ai-generated-images')
           .upload(filePath, imageData, {
             contentType: `image/${needsTransparency ? 'webp' : 'png'}`,
             upsert: false
           })
-        
+
         if (!uploadError) {
           const { data: { publicUrl } } = supabaseAdmin.storage
-            .from('images')
+            .from('ai-generated-images')
             .getPublicUrl(filePath)
           
           images.push({
