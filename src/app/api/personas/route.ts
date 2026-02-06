@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch personas' }, { status: 500 })
     }
 
-    // Transform personas to include avatar_url from metadata if available
+    // Transform personas to include avatar_url and training progress from metadata
     const transformedPersonas = (personas || []).map(persona => {
       // Get avatar from metadata portraits
       let avatar_url = null
@@ -40,13 +40,22 @@ export async function GET(request: NextRequest) {
         avatar_url = persona.metadata.portraitUrls[0]
       }
 
+      // Calculate training progress from metadata
+      const photoCount = persona.metadata?.photoCount || 0
+      const portraitsGenerated = persona.metadata?.portraits?.length || 
+                                 persona.metadata?.generalPortraitUrls?.length || 
+                                 persona.metadata?.portraitUrls?.length || 0
+
       return {
         id: persona.id,
         name: persona.name,
         description: persona.description,
         status: persona.status,
         avatar_url,
-        created_at: persona.created_at
+        created_at: persona.created_at,
+        // Training progress info
+        photoCount,
+        portraitsGenerated
       }
     })
 

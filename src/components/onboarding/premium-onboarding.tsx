@@ -731,6 +731,30 @@ export function PremiumOnboarding({ userId, onComplete, initialStep }: PremiumOn
                   </motion.div>
                 )}
                 
+                {/* Progress dots in header */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  {ONBOARDING_FLOW.map((step, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "rounded-full transition-all flex items-center justify-center",
+                        i === currentStep 
+                          ? "w-6 h-1.5 bg-primary" 
+                          : completedSteps.has(i) 
+                            ? "w-4 h-4 bg-green-500" 
+                            : i < currentStep 
+                              ? "w-1.5 h-1.5 bg-primary/50" 
+                              : "w-1.5 h-1.5 bg-muted"
+                      )}
+                      title={step.title}
+                    >
+                      {completedSteps.has(i) && i !== currentStep && (
+                        <Check className="h-2.5 w-2.5 text-white" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
                 <Badge variant="outline" className="text-xs">
                   Step {currentStep + 1} of {totalSteps}
                 </Badge>
@@ -1128,43 +1152,19 @@ export function PremiumOnboarding({ userId, onComplete, initialStep }: PremiumOn
           </div>
         </div>
 
-        {/* Bottom navigation - transparent, no border */}
-        <div className="fixed bottom-0 left-0 right-0 bg-transparent">
-          <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              onClick={handleBack}
-              disabled={currentStep === 0 && currentSection === 0}
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            
-            <div className="flex items-center gap-2">
-              {ONBOARDING_FLOW.map((step, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "rounded-full transition-all flex items-center justify-center",
-                    i === currentStep 
-                      ? "w-8 h-2 bg-primary" 
-                      : completedSteps.has(i) 
-                        ? "w-5 h-5 bg-green-500" 
-                        : i < currentStep 
-                          ? "w-2 h-2 bg-primary/50" 
-                          : "w-2 h-2 bg-muted"
-                  )}
-                  title={step.title}
-                >
-                  {completedSteps.has(i) && i !== currentStep && (
-                    <Check className="h-3 w-3 text-white" />
-                  )}
-                </div>
-              ))}
-            </div>
-            
-            {/* Hide these buttons when brand profile is showing (it has its own Continue button) */}
-            {!(currentStep === 2 && formData.brandAnalysis) && (
+        {/* Bottom navigation - hide entirely when brand profile is showing (it has its own navigation) */}
+        {!(currentStep === 2 && formData.brandAnalysis) && (
+          <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background/95 to-transparent pt-8 pb-6">
+            <div className="max-w-4xl mx-auto px-6 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                onClick={handleBack}
+                disabled={currentStep === 0 && currentSection === 0}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              
               <div className="flex items-center gap-2">
                 {currentStep === 2 && !formData.brandAnalysis && (
                   <Button
@@ -1187,9 +1187,9 @@ export function PremiumOnboarding({ userId, onComplete, initialStep }: PremiumOn
                   <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Skip dialog */}
         <Dialog open={showSkip} onOpenChange={setShowSkip}>
