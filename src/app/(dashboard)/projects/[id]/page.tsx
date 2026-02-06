@@ -135,6 +135,7 @@ import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
 import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 import { UnifiedContentGenerator } from "@/components/unified-content-generator"
 import { SimplifiedGraphicsTab } from "@/components/simplified-graphics-tab"
+import { useTaskPolling } from "@/hooks/use-task-polling"
 
 
 const platformIcons = {
@@ -236,6 +237,25 @@ function ProjectDetailPageContent() {
     voice?: string
     primaryColor?: string
   } | null>(null)
+
+  // Task polling — auto-refresh project when clips or other tasks complete
+  const { tasks: polledTasks, hasIncompleteTasks } = useTaskPolling(
+    projectId,
+    project?.tasks,
+    { enabled: !!project && !loading }
+  )
+
+  // When polling detects task completion, reload the full project
+  useEffect(() => {
+    if (polledTasks && project?.tasks) {
+      const prevCompleted = project.tasks.filter(t => t.status === 'completed').length
+      const nowCompleted = polledTasks.filter(t => t.status === 'completed').length
+      if (nowCompleted > prevCompleted) {
+        // A task just finished — reload project to get new data (e.g. clips)
+        loadProject()
+      }
+    }
+  }, [polledTasks]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Project loading is handled by useProject hook
   

@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { 
-  Sparkles, User, Users, Wand2, Settings, ChevronRight, 
-  AlertCircle, CheckCircle2, TrendingUp, Hash, Eye, 
-  Target, Zap, Brain, Palette, Clock, ArrowRight,
+  Sparkles, User, Users, Wand2,
+  CheckCircle2, TrendingUp, Hash, Eye, 
+  Target, Brain,
   Instagram, Twitter, Linkedin, Facebook, Youtube,
-  Info, Plus, X, Check, Edit3, RefreshCw, Save,
-  MessageSquare, Image, Film, Layout, Smartphone
+  Info, Plus, RefreshCw,
+  MessageSquare, Image, Film, Layout, Smartphone,
+  Quote, ChevronDown, ChevronUp, Lightbulb
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,15 +19,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Slider } from '@/components/ui/slider'
-import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import confetti from 'canvas-confetti' // Fixed missing dependency
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface SmartPostsGeneratorProps {
   projectId: string
@@ -56,54 +56,19 @@ interface ContentSettings {
   optimizeForEngagement: boolean
   usePersona: boolean
   selectedPersonaId?: string
-  useTrendingTopics: boolean
   targetAudience: string
   contentGoal: 'awareness' | 'engagement' | 'conversion' | 'education'
 }
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
 const CONTENT_TYPES = [
-  { 
-    id: 'carousel', 
-    name: 'Carousel', 
-    icon: Layout, 
-    description: 'Multi-slide posts for storytelling',
-    color: 'from-purple-500 to-pink-500' 
-  },
-  { 
-    id: 'quote', 
-    name: 'Quote', 
-    icon: MessageSquare, 
-    description: 'Powerful quotes with visual design',
-    color: 'from-blue-500 to-cyan-500' 
-  },
-  { 
-    id: 'single', 
-    name: 'Single', 
-    icon: Image, 
-    description: 'Eye-catching single image posts',
-    color: 'from-green-500 to-emerald-500' 
-  },
-  { 
-    id: 'thread', 
-    name: 'Thread', 
-    icon: Hash, 
-    description: 'Multi-part text threads',
-    color: 'from-orange-500 to-red-500' 
-  },
-  { 
-    id: 'reel', 
-    name: 'Reel/Short', 
-    icon: Film, 
-    description: 'Short-form video ideas',
-    color: 'from-pink-500 to-rose-500' 
-  },
-  { 
-    id: 'story', 
-    name: 'Story', 
-    icon: Smartphone, 
-    description: 'Ephemeral content ideas',
-    color: 'from-indigo-500 to-purple-500' 
-  }
+  { id: 'carousel', name: 'Carousel', icon: Layout, description: 'Multi-slide posts for storytelling', color: 'from-purple-500 to-pink-500' },
+  { id: 'quote', name: 'Quote', icon: MessageSquare, description: 'Powerful quotes with visual design', color: 'from-blue-500 to-cyan-500' },
+  { id: 'single', name: 'Single', icon: Image, description: 'Eye-catching single image posts', color: 'from-green-500 to-emerald-500' },
+  { id: 'thread', name: 'Thread', icon: Hash, description: 'Multi-part text threads', color: 'from-orange-500 to-red-500' },
+  { id: 'reel', name: 'Reel/Short', icon: Film, description: 'Short-form video ideas', color: 'from-pink-500 to-rose-500' },
+  { id: 'story', name: 'Story', icon: Smartphone, description: 'Ephemeral content ideas', color: 'from-indigo-500 to-purple-500' },
 ]
 
 const PLATFORMS = [
@@ -112,8 +77,203 @@ const PLATFORMS = [
   { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: 'bg-blue-700' },
   { id: 'facebook', name: 'Facebook', icon: Facebook, color: 'bg-blue-600' },
   { id: 'youtube', name: 'YouTube', icon: Youtube, color: 'bg-red-600' },
-  { id: 'tiktok', name: 'TikTok', icon: Hash, color: 'bg-black' }
+  { id: 'tiktok', name: 'TikTok', icon: Hash, color: 'bg-black' },
 ]
+
+const CONTENT_TYPE_ICONS: Record<string, typeof Layout> = {
+  carousel: Layout,
+  quote: MessageSquare,
+  single: Image,
+  thread: Hash,
+  reel: Film,
+  story: Smartphone,
+}
+
+// ─── Suggestion Card ────────────────────────────────────────────────────────
+
+function SuggestionCard({ suggestion, index }: { suggestion: any; index: number }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const contentType = suggestion.content_type || suggestion.type || 'single'
+  const TypeIcon = CONTENT_TYPE_ICONS[contentType] || MessageSquare
+  const platforms = suggestion.platforms || Object.keys(suggestion.copy_variants || {})
+  const hook = suggestion.metadata?.hook || suggestion.description || ''
+  const transcriptQuote = suggestion.metadata?.transcript_quote || ''
+  const engagementData = suggestion.engagement_data || {}
+  const copyVariants = suggestion.copy_variants || {}
+  const carouselSlides = suggestion.metadata?.carousel_slides || []
+  const personaUsed = suggestion.persona_used
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08 }}
+    >
+      <Card className="h-full hover:shadow-lg transition-all group">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 rounded-md bg-primary/10 flex-shrink-0">
+                <TypeIcon className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-sm leading-tight line-clamp-2">
+                {suggestion.title}
+              </CardTitle>
+            </div>
+            <Badge variant="outline" className="text-[10px] flex-shrink-0 capitalize">
+              {contentType}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3 pt-0">
+          {/* Hook / Opening Line */}
+          {hook && (
+            <p className="text-sm font-medium text-foreground leading-snug line-clamp-3">
+              {hook}
+            </p>
+          )}
+
+          {/* Transcript Quote */}
+          {transcriptQuote && (
+            <div className="flex gap-2 p-2.5 rounded-md bg-muted/50 border border-border/50">
+              <Quote className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground italic leading-relaxed line-clamp-2">
+                "{transcriptQuote}"
+              </p>
+            </div>
+          )}
+
+          {/* Platform Badges */}
+          <div className="flex gap-1.5 flex-wrap">
+            {platforms.map((platform: string) => {
+              const cfg = PLATFORMS.find(p => p.id === platform)
+              return cfg ? (
+                <Badge key={platform} variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  <cfg.icon className="h-3 w-3 mr-1" />
+                  {cfg.name}
+                </Badge>
+              ) : (
+                <Badge key={platform} variant="secondary" className="text-[10px] capitalize">
+                  {platform}
+                </Badge>
+              )
+            })}
+            {personaUsed && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-purple-300 text-purple-600 dark:text-purple-400">
+                <User className="h-3 w-3 mr-1" />
+                Persona
+              </Badge>
+            )}
+          </div>
+
+          {/* Why It Works */}
+          {engagementData.why_it_works && (
+            <div className="flex gap-2 items-start">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                {engagementData.why_it_works}
+              </p>
+            </div>
+          )}
+
+          {/* Reach Badge */}
+          {engagementData.predicted_reach && (
+            <div className="flex items-center justify-between">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px]",
+                  engagementData.predicted_reach === 'viral' && 'border-red-300 text-red-600 dark:text-red-400',
+                  engagementData.predicted_reach === 'high' && 'border-orange-300 text-orange-600 dark:text-orange-400',
+                  engagementData.predicted_reach === 'medium' && 'border-blue-300 text-blue-600 dark:text-blue-400',
+                  engagementData.predicted_reach === 'targeted' && 'border-green-300 text-green-600 dark:text-green-400',
+                )}
+              >
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {engagementData.predicted_reach} reach
+              </Badge>
+              {engagementData.best_time && (
+                <span className="text-[10px] text-muted-foreground">
+                  {engagementData.best_time}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Expandable: Platform Copy + Carousel Slides */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground h-7"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3 w-3 mr-1" />
+                Hide details
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3 w-3 mr-1" />
+                Show platform copy{carouselSlides.length > 0 ? ' & slides' : ''}
+              </>
+            )}
+          </Button>
+
+          {expanded && (
+            <div className="space-y-3 pt-1">
+              {/* Platform-specific copy */}
+              {Object.entries(copyVariants).map(([platform, copy]: [string, any]) => {
+                const cfg = PLATFORMS.find(p => p.id === platform)
+                return (
+                  <div key={platform} className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      {cfg && <cfg.icon className="h-3 w-3 text-muted-foreground" />}
+                      <span className="text-xs font-medium capitalize">{platform}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap border-l-2 border-border pl-3">
+                      {copy.caption?.substring(0, 300)}{copy.caption?.length > 300 ? '...' : ''}
+                    </p>
+                    {copy.hashtags?.length > 0 && (
+                      <p className="text-[10px] text-blue-500">
+                        {copy.hashtags.slice(0, 8).map((h: string) => `#${h}`).join(' ')}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Carousel slides */}
+              {carouselSlides.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-medium">Carousel Slides</span>
+                  {carouselSlides.map((slide: any, i: number) => (
+                    <div key={i} className="text-xs p-2 bg-muted/30 rounded-md space-y-0.5">
+                      <span className="font-medium text-foreground">Slide {slide.slideNumber || i + 1}: {slide.headline}</span>
+                      {slide.body && <p className="text-muted-foreground">{slide.body}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Engagement details */}
+              {engagementData.target_audience && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Audience: </span>
+                  {engagementData.target_audience}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </motion.div>
+  )
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export function SmartPostsGenerator({
   projectId,
@@ -128,11 +288,10 @@ export function SmartPostsGenerator({
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationStep, setGenerationStep] = useState('')
-  const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState('content')
   const [generationInProgress, setGenerationInProgress] = useState(false)
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(true)
-  
+
   const [settings, setSettings] = useState<ContentSettings>({
     contentTypes: ['carousel', 'quote', 'single'],
     platforms: ['instagram', 'twitter', 'linkedin'],
@@ -144,42 +303,37 @@ export function SmartPostsGenerator({
     optimizeForEngagement: true,
     usePersona: false,
     selectedPersonaId: undefined,
-    useTrendingTopics: true,
     targetAudience: '',
-    contentGoal: 'engagement'
+    contentGoal: 'engagement',
   })
 
-  // Load personas on mount and check for selected post idea
+  // ── Load on mount ─────────────────────────────────────────────────────
+
   useEffect(() => {
     loadPersonas()
-    
-    // Check if there's a selected post idea from AI insights
+
+    // Check for a pre-selected post idea from AI insights
     const storedPost = sessionStorage.getItem('selectedPostIdea')
     if (storedPost) {
       try {
         const post = JSON.parse(storedPost)
-        // Pre-populate with AI-generated post content
         const generatedPost = {
           id: `ai-${Date.now()}`,
           type: post.type,
-          platform: post.platform[0] || 'instagram',
+          platform: post.platform?.[0] || 'instagram',
           content: `${post.hook}\n\n${post.mainContent}\n\n${post.callToAction}`,
           hashtags: contentAnalysis?.keywords?.slice(0, 5).map((k: string) => `#${k.replace(/\s+/g, '')}`) || [],
-          estimatedEngagement: post.estimatedEngagement,
-          bestTimeToPost: post.bestTimeToPost,
-          synergies: post.synergies
         }
         setSuggestions([generatedPost])
-        toast.success('AI post idea loaded and ready!')
-        
-        // Clear the stored post after using it
+        toast.success('AI post idea loaded!')
         sessionStorage.removeItem('selectedPostIdea')
-      } catch (error) {
-        console.error('Error loading post idea:', error)
-      }
+      } catch { /* ignore */ }
     }
+
     loadExistingSuggestionsAndAutoGenerate()
-  }, [projectId])
+  }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Data loaders ──────────────────────────────────────────────────────
 
   const loadPersonas = async () => {
     setLoadingPersonas(true)
@@ -188,18 +342,11 @@ export function SmartPostsGenerator({
       if (response.ok) {
         const data = await response.json()
         setPersonas(data.personas || [])
-        
-        // Auto-select first persona if available
         if (data.personas?.length > 0 && !settings.selectedPersonaId) {
-          setSettings(prev => ({
-            ...prev,
-            selectedPersonaId: data.personas[0].id
-          }))
+          setSettings(prev => ({ ...prev, selectedPersonaId: data.personas[0].id }))
         }
       }
-    } catch (error) {
-      console.error('Failed to load personas:', error)
-    } finally {
+    } catch { /* ignore */ } finally {
       setLoadingPersonas(false)
     }
   }
@@ -207,46 +354,18 @@ export function SmartPostsGenerator({
   const loadExistingSuggestions = async () => {
     setIsLoadingSuggestions(true)
     try {
-      console.log('[SmartPostsGenerator] Loading suggestions for project:', projectId)
       const response = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
-      console.log('[SmartPostsGenerator] Response status:', response.status)
-      
       if (response.ok) {
         const data = await response.json()
-        console.log('[SmartPostsGenerator] Loaded suggestions:', data)
         setSuggestions(data.suggestions || [])
         return data.suggestions || []
-      } else {
-        const errorData = await response.text()
-        console.error('[SmartPostsGenerator] Failed to load suggestions:', errorData)
       }
-    } catch (error) {
-      console.error('[SmartPostsGenerator] Error loading suggestions:', error)
-    } finally {
+    } catch { /* ignore */ } finally {
       setIsLoadingSuggestions(false)
     }
     return []
   }
 
-  const loadExistingSuggestionsAndAutoGenerate = async () => {
-    // First, try to load existing suggestions
-    const existingSuggestions = await loadExistingSuggestions()
-    
-    // Check if generation is already in progress for this project
-    const generationStatus = await checkGenerationStatus()
-    
-    if (generationStatus === 'in_progress') {
-      setGenerationInProgress(true)
-      setIsGenerating(true)
-      setGenerationStep('Generation in progress...')
-      // Poll for completion
-      pollForCompletion()
-    } else if (existingSuggestions.length === 0 && contentAnalysis && transcript) {
-      // Auto-trigger generation with smart defaults
-      await autoGeneratePosts()
-    }
-  }
-  
   const checkGenerationStatus = async () => {
     try {
       const response = await fetch(`/api/posts/generation-status?projectId=${projectId}`)
@@ -254,13 +373,25 @@ export function SmartPostsGenerator({
         const data = await response.json()
         return data.status
       }
-    } catch (error) {
-      console.error('Failed to check generation status:', error)
-    }
+    } catch { /* ignore */ }
     return 'idle'
   }
-  
-  const pollForCompletion = async () => {
+
+  const loadExistingSuggestionsAndAutoGenerate = async () => {
+    const existingSuggestions = await loadExistingSuggestions()
+    const status = await checkGenerationStatus()
+
+    if (status === 'in_progress') {
+      setGenerationInProgress(true)
+      setIsGenerating(true)
+      setGenerationStep('Generation in progress...')
+      pollForCompletion()
+    } else if (existingSuggestions.length === 0 && contentAnalysis && transcript) {
+      await autoGeneratePosts()
+    }
+  }
+
+  const pollForCompletion = () => {
     const interval = setInterval(async () => {
       const status = await checkGenerationStatus()
       if (status === 'completed') {
@@ -268,37 +399,53 @@ export function SmartPostsGenerator({
         setIsGenerating(false)
         setGenerationInProgress(false)
         await loadExistingSuggestions()
-        toast.success('✨ AI posts created successfully!')
+        toast.success('AI posts created successfully!')
       } else if (status === 'failed') {
         clearInterval(interval)
         setIsGenerating(false)
         setGenerationInProgress(false)
         toast.error('Generation failed. Please try again.')
       }
-    }, 2000)
+    }, 3000)
+  }
+
+  // ── Generation ────────────────────────────────────────────────────────
+
+  const callGenerateAPI = async (settingsOverride: ContentSettings) => {
+    const response = await fetch('/api/posts/generate-smart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        projectTitle,
+        contentAnalysis,
+        transcript, // Send full transcript — API handles truncation
+        settings: settingsOverride,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[SmartPostsGenerator] Generation failed:', errorText)
+      throw new Error('Failed to generate posts')
+    }
+
+    return response.json()
   }
 
   const autoGeneratePosts = async () => {
     setIsGenerating(true)
-    setGenerationStep('Analyzing content...')
-    
-    // Mark generation as in progress in database
+    setGenerationStep('Analyzing video content with GPT-5.2...')
+
     await fetch('/api/posts/generation-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        projectId, 
-        status: 'in_progress' 
-      })
-    })
-    
-    // Show subtle notification
-    toast.info('✨ Creating AI-powered posts for you...', {
-      duration: 3000
-    })
+      body: JSON.stringify({ projectId, status: 'in_progress' }),
+    }).catch(() => {})
 
-    // Smart defaults for automatic generation
-    const autoSettings = {
+    toast.info('Creating AI-powered posts from your video...', { duration: 3000 })
+
+    const autoSettings: ContentSettings = {
       ...settings,
       contentTypes: ['carousel', 'quote', 'single'],
       platforms: ['instagram', 'twitter', 'linkedin'],
@@ -308,167 +455,49 @@ export function SmartPostsGenerator({
       includeHashtags: true,
       includeCTA: true,
       optimizeForEngagement: true,
-      usePersona: personas.length > 0 && !!personas[0].id,
+      usePersona: personas.length > 0 && !!personas[0]?.id,
       selectedPersonaId: personas[0]?.id || undefined,
-      useTrendingTopics: true
+      targetAudience: '',
+      contentGoal: 'engagement',
     }
 
-    // Small celebration effect
-    const duration = 3000
-    const animationEnd = Date.now() + duration
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
-    
-    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
-    
-    const interval = setInterval(() => {
-      const timeLeft = animationEnd - Date.now()
-      if (timeLeft <= 0) return clearInterval(interval)
-      
-      const particleCount = 20 * (timeLeft / duration)
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-        colors: ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B']
-      })
-    }, 250)
-
     try {
-      setGenerationStep('Creating AI-powered content ideas...')
-      
-      const response = await fetch('/api/posts/generate-smart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          projectTitle,
-          contentAnalysis,
-          transcript: transcript?.substring(0, 3000),
-          settings: autoSettings
-        })
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[SmartPostsGenerator] Generation failed:', errorText)
-        throw new Error('Failed to generate posts')
-      }
-
-      const data = await response.json()
-      console.log('[SmartPostsGenerator] Generation response:', data)
-      
-      setGenerationStep('Optimizing for each platform...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // Reload suggestions from database to ensure we have the latest
+      const data = await callGenerateAPI(autoSettings)
       await loadExistingSuggestions()
-      
-      toast.success('🎉 Smart posts ready!', {
-        duration: 2000
-      })
-      
+      toast.success(`${data.count || 5} smart posts ready!`)
       if (onPostsGenerated && data.suggestions) {
         onPostsGenerated(data.suggestions)
       }
     } catch (error) {
       console.error('Auto-generation error:', error)
-      // Mark generation as failed
       await fetch('/api/posts/generation-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          projectId, 
-          status: 'failed' 
-        })
-      })
-      // Don't show error toast for auto-generation
+        body: JSON.stringify({ projectId, status: 'failed' }),
+      }).catch(() => {})
     } finally {
       setIsGenerating(false)
       setGenerationStep('')
-      // Mark generation as completed if not already marked as failed
       const status = await checkGenerationStatus()
       if (status === 'in_progress') {
         await fetch('/api/posts/generation-status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            projectId, 
-            status: 'completed' 
-          })
-        })
+          body: JSON.stringify({ projectId, status: 'completed' }),
+        }).catch(() => {})
       }
     }
   }
 
   const handleGeneratePosts = async () => {
     setIsGenerating(true)
-    setGenerationStep('Analyzing content...')
-
-    // Celebration effect
-    const duration = 5000
-    const animationEnd = Date.now() + duration
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
-    
-    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
-    
-    const interval = setInterval(() => {
-      const timeLeft = animationEnd - Date.now()
-      if (timeLeft <= 0) return clearInterval(interval)
-      
-      const particleCount = 50 * (timeLeft / duration)
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-        colors: ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B']
-      })
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-        colors: ['#3B82F6', '#EF4444', '#14B8A6', '#F97316']
-      })
-    }, 250)
+    setGenerationStep('Generating content-aware posts with GPT-5.2...')
 
     try {
-      // Step 1: Generate suggestions
-      setGenerationStep('Creating AI-powered content ideas...')
-      const response = await fetch('/api/posts/generate-smart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          projectTitle,
-          contentAnalysis,
-          transcript: transcript?.substring(0, 3000),
-          settings
-        })
-      })
-
-      if (!response.ok) throw new Error('Failed to generate posts')
-
-      const data = await response.json()
-      
-      // Step 2: Enhance with trends if enabled
-      if (settings.useTrendingTopics) {
-        setGenerationStep('Incorporating trending topics...')
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-
-      // Step 3: Optimize for platforms
-      setGenerationStep('Optimizing for each platform...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // Step 4: Apply persona if selected
-      if (settings.usePersona && settings.selectedPersonaId) {
-        setGenerationStep('Applying your brand persona...')
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-
+      const data = await callGenerateAPI(settings)
       await loadExistingSuggestions()
       setShowIntakeDialog(false)
-      toast.success('🎉 Smart posts generated successfully!')
-      
+      toast.success(`${data.count || 5} smart posts generated!`)
       if (onPostsGenerated) {
         onPostsGenerated(data.suggestions)
       }
@@ -481,12 +510,14 @@ export function SmartPostsGenerator({
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────────────────
+
   const toggleContentType = (typeId: string) => {
     setSettings(prev => ({
       ...prev,
       contentTypes: prev.contentTypes.includes(typeId)
         ? prev.contentTypes.filter(t => t !== typeId)
-        : [...prev.contentTypes, typeId]
+        : [...prev.contentTypes, typeId],
     }))
   }
 
@@ -495,14 +526,16 @@ export function SmartPostsGenerator({
       ...prev,
       platforms: prev.platforms.includes(platformId)
         ? prev.platforms.filter(p => p !== platformId)
-        : [...prev.platforms, platformId]
+        : [...prev.platforms, platformId],
     }))
   }
+
+  // ── Render ────────────────────────────────────────────────────────────
 
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Main Action Card */}
+        {/* Header Card */}
         <Card className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-pink-500/10 to-blue-500/10" />
           <CardHeader className="relative">
@@ -510,14 +543,14 @@ export function SmartPostsGenerator({
               <div>
                 <CardTitle className="text-2xl flex items-center gap-2">
                   <Sparkles className="h-6 w-6 text-purple-500" />
-                  AI Social Posts Generator
+                  AI Social Posts
                 </CardTitle>
                 <CardDescription className="mt-2">
-                  Create market-ready content optimized for engagement across all platforms
+                  Content-aware posts generated from your video using GPT-5.2
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                Powered by GPT-5
+                GPT-5.2
               </Badge>
             </div>
           </CardHeader>
@@ -526,30 +559,40 @@ export function SmartPostsGenerator({
               <Button
                 size="lg"
                 onClick={() => setShowIntakeDialog(true)}
+                disabled={isGenerating}
                 className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               >
-                <Wand2 className="mr-2 h-5 w-5" />
-                Generate Smart Posts
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    {generationStep || 'Generating...'}
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="mr-2 h-5 w-5" />
+                    {suggestions.length > 0 ? 'Regenerate Posts' : 'Generate Smart Posts'}
+                  </>
+                )}
               </Button>
               {suggestions.length > 0 && (
                 <Badge variant="outline" className="px-4 py-2 self-center">
-                  {suggestions.length} posts created
+                  {suggestions.length} posts
                 </Badge>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Generation Dialog with Sophisticated Intake Form */}
+        {/* ── Generation Dialog ──────────────────────────────────────────── */}
         <Dialog open={showIntakeDialog} onOpenChange={setShowIntakeDialog}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl flex items-center gap-2">
                 <Brain className="h-6 w-6 text-purple-500" />
-                Smart Content Configuration
+                Post Generation Settings
               </DialogTitle>
               <DialogDescription>
-                Configure AI to generate market-ready posts optimized for your goals
+                Configure content types, platforms, persona, and tone
               </DialogDescription>
             </DialogHeader>
 
@@ -561,12 +604,10 @@ export function SmartPostsGenerator({
                 <TabsTrigger value="optimization">AI Settings</TabsTrigger>
               </TabsList>
 
+              {/* ── Content Tab ─────────────────────────────────────────── */}
               <TabsContent value="content" className="space-y-6">
-                {/* Content Types Selection */}
                 <div>
-                  <Label className="text-base font-semibold mb-3 block">
-                    Content Types to Generate
-                  </Label>
+                  <Label className="text-base font-semibold mb-3 block">Content Types</Label>
                   <div className="grid grid-cols-2 gap-3">
                     {CONTENT_TYPES.map(type => (
                       <Card
@@ -581,18 +622,12 @@ export function SmartPostsGenerator({
                       >
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
-                            <div className={cn(
-                              "p-2 rounded-lg bg-gradient-to-br",
-                              type.color,
-                              "text-white"
-                            )}>
+                            <div className={cn("p-2 rounded-lg bg-gradient-to-br text-white", type.color)}>
                               <type.icon className="h-5 w-5" />
                             </div>
                             <div className="flex-1">
                               <div className="font-medium">{type.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {type.description}
-                              </div>
+                              <div className="text-sm text-muted-foreground">{type.description}</div>
                             </div>
                             {settings.contentTypes.includes(type.id) && (
                               <CheckCircle2 className="h-5 w-5 text-purple-500 flex-shrink-0" />
@@ -604,20 +639,14 @@ export function SmartPostsGenerator({
                   </div>
                 </div>
 
-                {/* Platform Selection */}
                 <div>
-                  <Label className="text-base font-semibold mb-3 block">
-                    Target Platforms
-                  </Label>
+                  <Label className="text-base font-semibold mb-3 block">Target Platforms</Label>
                   <div className="grid grid-cols-3 gap-3">
                     {PLATFORMS.map(platform => (
                       <Button
                         key={platform.id}
                         variant={settings.platforms.includes(platform.id) ? "default" : "outline"}
-                        className={cn(
-                          "h-auto py-3 justify-start",
-                          settings.platforms.includes(platform.id) && platform.color
-                        )}
+                        className={cn("h-auto py-3 justify-start", settings.platforms.includes(platform.id) && platform.color)}
                         onClick={() => togglePlatform(platform.id)}
                       >
                         <platform.icon className="h-4 w-4 mr-2" />
@@ -628,29 +657,23 @@ export function SmartPostsGenerator({
                 </div>
               </TabsContent>
 
+              {/* ── Persona Tab ─────────────────────────────────────────── */}
               <TabsContent value="persona" className="space-y-6">
-                {/* Persona Selection */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <Label className="text-base font-semibold">
-                      Use Brand Persona
-                    </Label>
+                    <Label className="text-base font-semibold">Use Brand Persona</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
                           <Switch
                             checked={settings.usePersona}
-                            onCheckedChange={(checked) => {
-                              setSettings(prev => ({ ...prev, usePersona: checked }))
-                            }}
+                            onCheckedChange={(checked) => setSettings(prev => ({ ...prev, usePersona: checked }))}
                             disabled={personas.length === 0}
                           />
                         </div>
                       </TooltipTrigger>
                       {personas.length === 0 && (
-                        <TooltipContent>
-                          <p>No personas available. Create one first.</p>
-                        </TooltipContent>
+                        <TooltipContent><p>No personas available. Create one first.</p></TooltipContent>
                       )}
                     </Tooltip>
                   </div>
@@ -663,19 +686,9 @@ export function SmartPostsGenerator({
                     <Card className="border-dashed bg-muted/10">
                       <CardContent className="py-8 text-center">
                         <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="text-muted-foreground mb-4">
-                          No personas found
-                        </p>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Create a persona to maintain consistent brand voice across all content
-                        </p>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => window.location.href = '/personas'}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Create Persona
+                        <p className="text-muted-foreground mb-4">No personas found</p>
+                        <Button variant="outline" size="sm" onClick={() => window.location.href = '/personas'}>
+                          <Plus className="h-4 w-4 mr-1" /> Create Persona
                         </Button>
                       </CardContent>
                     </Card>
@@ -691,23 +704,15 @@ export function SmartPostsGenerator({
                               : "hover:border-gray-300",
                             !settings.usePersona && "opacity-50 cursor-not-allowed"
                           )}
-                          onClick={() => {
-                            if (settings.usePersona) {
-                              setSettings(prev => ({ ...prev, selectedPersonaId: persona.id }))
-                            }
-                          }}
+                          onClick={() => settings.usePersona && setSettings(prev => ({ ...prev, selectedPersonaId: persona.id }))}
                         >
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3">
                               {persona.avatar_url ? (
-                                <img 
-                                  src={persona.avatar_url} 
-                                  alt={persona.name}
-                                  className="w-12 h-12 rounded-full object-cover"
-                                />
+                                <img src={persona.avatar_url} alt={persona.name} className="w-12 h-12 rounded-full object-cover" />
                               ) : (
                                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold">
-                                  {persona.name[0].toUpperCase()}
+                                  {persona.name[0]?.toUpperCase()}
                                 </div>
                               )}
                               <div className="flex-1">
@@ -715,11 +720,7 @@ export function SmartPostsGenerator({
                                 <div className="text-sm text-muted-foreground">
                                   {persona.description || `${persona.photo_count} photos available`}
                                 </div>
-                                {persona.brand_voice && (
-                                  <Badge variant="secondary" className="mt-1">
-                                    {persona.brand_voice}
-                                  </Badge>
-                                )}
+                                {persona.brand_voice && <Badge variant="secondary" className="mt-1">{persona.brand_voice}</Badge>}
                               </div>
                               {settings.usePersona && settings.selectedPersonaId === persona.id && (
                                 <CheckCircle2 className="h-5 w-5 text-purple-500" />
@@ -736,11 +737,9 @@ export function SmartPostsGenerator({
                       <div className="flex gap-2">
                         <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
                         <div className="text-sm">
-                          <p className="font-medium text-blue-900 dark:text-blue-100">
-                            Persona Integration Active
-                          </p>
+                          <p className="font-medium text-blue-900 dark:text-blue-100">Persona Active</p>
                           <p className="text-blue-700 dark:text-blue-300 mt-1">
-                            Your selected persona's brand voice and visual style will be applied to all generated content for consistency.
+                            Brand voice and visual style will be applied to generated content.
                           </p>
                         </div>
                       </div>
@@ -749,41 +748,36 @@ export function SmartPostsGenerator({
                 </div>
               </TabsContent>
 
+              {/* ── Audience Tab ────────────────────────────────────────── */}
               <TabsContent value="audience" className="space-y-6">
-                {/* Target Audience */}
                 <div>
-                  <Label htmlFor="audience" className="text-base font-semibold mb-2 block">
-                    Target Audience
-                  </Label>
+                  <Label htmlFor="audience" className="text-base font-semibold mb-2 block">Target Audience</Label>
                   <Textarea
                     id="audience"
-                    placeholder="e.g., Young professionals interested in productivity, entrepreneurs, content creators..."
+                    placeholder="e.g., Young professionals interested in productivity..."
                     value={settings.targetAudience}
                     onChange={(e) => setSettings(prev => ({ ...prev, targetAudience: e.target.value }))}
                     className="min-h-[100px]"
                   />
                 </div>
 
-                {/* Content Goal */}
                 <div>
-                  <Label className="text-base font-semibold mb-3 block">
-                    Primary Content Goal
-                  </Label>
+                  <Label className="text-base font-semibold mb-3 block">Primary Content Goal</Label>
                   <RadioGroup
                     value={settings.contentGoal}
                     onValueChange={(value: any) => setSettings(prev => ({ ...prev, contentGoal: value }))}
                   >
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { value: 'awareness', label: 'Brand Awareness', icon: Eye, description: 'Increase visibility and reach' },
-                        { value: 'engagement', label: 'Engagement', icon: TrendingUp, description: 'Maximize likes and comments' },
-                        { value: 'conversion', label: 'Conversion', icon: Target, description: 'Drive sales and sign-ups' },
-                        { value: 'education', label: 'Education', icon: Brain, description: 'Share knowledge and insights' }
+                        { value: 'awareness', label: 'Brand Awareness', icon: Eye, description: 'Increase visibility' },
+                        { value: 'engagement', label: 'Engagement', icon: TrendingUp, description: 'Maximize interactions' },
+                        { value: 'conversion', label: 'Conversion', icon: Target, description: 'Drive sales/sign-ups' },
+                        { value: 'education', label: 'Education', icon: Brain, description: 'Share knowledge' },
                       ].map(goal => (
                         <div key={goal.value}>
                           <RadioGroupItem value={goal.value} id={goal.value} className="peer sr-only" />
-                          <Label 
-                            htmlFor={goal.value} 
+                          <Label
+                            htmlFor={goal.value}
                             className={cn(
                               "flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer transition-all",
                               "hover:border-purple-300",
@@ -792,9 +786,7 @@ export function SmartPostsGenerator({
                           >
                             <goal.icon className="h-8 w-8 mb-2 text-purple-500" />
                             <span className="font-medium">{goal.label}</span>
-                            <span className="text-xs text-muted-foreground text-center mt-1">
-                              {goal.description}
-                            </span>
+                            <span className="text-xs text-muted-foreground text-center mt-1">{goal.description}</span>
                           </Label>
                         </div>
                       ))}
@@ -802,18 +794,10 @@ export function SmartPostsGenerator({
                   </RadioGroup>
                 </div>
 
-                {/* Tone Selection */}
                 <div>
-                  <Label className="text-base font-semibold mb-3 block">
-                    Content Tone
-                  </Label>
-                  <Select
-                    value={settings.tone}
-                    onValueChange={(value: any) => setSettings(prev => ({ ...prev, tone: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Label className="text-base font-semibold mb-3 block">Content Tone</Label>
+                  <Select value={settings.tone} onValueChange={(value: any) => setSettings(prev => ({ ...prev, tone: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="professional">Professional</SelectItem>
                       <SelectItem value="casual">Casual</SelectItem>
@@ -825,24 +809,18 @@ export function SmartPostsGenerator({
                 </div>
               </TabsContent>
 
+              {/* ── AI Settings Tab ─────────────────────────────────────── */}
               <TabsContent value="optimization" className="space-y-6">
-                {/* AI Settings */}
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <Label className="text-base font-semibold">
-                        Creativity Level
-                      </Label>
-                      <span className="text-sm text-muted-foreground">
-                        {Math.round(settings.creativity * 100)}%
-                      </span>
+                      <Label className="text-base font-semibold">Creativity Level</Label>
+                      <span className="text-sm text-muted-foreground">{Math.round(settings.creativity * 100)}%</span>
                     </div>
                     <Slider
                       value={[settings.creativity]}
                       onValueChange={([value]) => setSettings(prev => ({ ...prev, creativity: value }))}
-                      min={0}
-                      max={1}
-                      step={0.1}
+                      min={0} max={1} step={0.1}
                       className="w-full"
                     />
                     <div className="flex justify-between text-xs text-muted-foreground mt-1">
@@ -854,30 +832,23 @@ export function SmartPostsGenerator({
 
                   <div className="space-y-3">
                     {[
-                      { key: 'includeEmojis', label: 'Include Emojis', icon: '😊', description: 'Add relevant emojis to posts' },
+                      { key: 'includeEmojis', label: 'Include Emojis', icon: '😊', description: 'Add relevant emojis' },
                       { key: 'includeHashtags', label: 'Auto-generate Hashtags', icon: '#', description: 'Create trending hashtags' },
                       { key: 'includeCTA', label: 'Add Call-to-Actions', icon: '🎯', description: 'Include action prompts' },
                       { key: 'optimizeForEngagement', label: 'Optimize for Engagement', icon: '📈', description: 'Maximize interactions' },
-                      { key: 'useTrendingTopics', label: 'Incorporate Trending Topics', icon: '🔥', description: 'Use current trends' }
                     ].map(setting => (
                       <div key={setting.key} className="flex items-center justify-between p-3 rounded-lg border">
                         <div className="flex items-center gap-3">
                           <span className="text-xl">{setting.icon}</span>
                           <div>
-                            <Label htmlFor={setting.key} className="cursor-pointer font-medium">
-                              {setting.label}
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              {setting.description}
-                            </p>
+                            <Label htmlFor={setting.key} className="cursor-pointer font-medium">{setting.label}</Label>
+                            <p className="text-xs text-muted-foreground">{setting.description}</p>
                           </div>
                         </div>
                         <Switch
                           id={setting.key}
                           checked={settings[setting.key as keyof ContentSettings] as boolean}
-                          onCheckedChange={(checked) => {
-                            setSettings(prev => ({ ...prev, [setting.key]: checked }))
-                          }}
+                          onCheckedChange={(checked) => setSettings(prev => ({ ...prev, [setting.key]: checked }))}
                         />
                       </div>
                     ))}
@@ -887,9 +858,7 @@ export function SmartPostsGenerator({
             </Tabs>
 
             <DialogFooter className="mt-6">
-              <Button variant="outline" onClick={() => setShowIntakeDialog(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setShowIntakeDialog(false)}>Cancel</Button>
               <Button
                 onClick={handleGeneratePosts}
                 disabled={isGenerating || settings.contentTypes.length === 0 || settings.platforms.length === 0}
@@ -903,7 +872,7 @@ export function SmartPostsGenerator({
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Generate Smart Posts
+                    Generate Posts
                   </>
                 )}
               </Button>
@@ -911,116 +880,64 @@ export function SmartPostsGenerator({
           </DialogContent>
         </Dialog>
 
-        {/* Loading State */}
-        {isLoadingSuggestions && (
-          <Card className="animate-pulse">
+        {/* ── Generation In-Progress ─────────────────────────────────────── */}
+        {(isGenerating || generationInProgress) && (
+          <Card>
             <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center space-y-2">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto" />
-                <p className="text-muted-foreground">Loading suggestions...</p>
+              <div className="text-center space-y-3">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto" />
+                <p className="font-medium">{generationStep || 'Generating posts...'}</p>
+                <p className="text-sm text-muted-foreground">
+                  GPT-5.2 is analyzing your video content and creating platform-optimized posts.
+                </p>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Empty State */}
+        {/* ── Loading State ──────────────────────────────────────────────── */}
+        {isLoadingSuggestions && !isGenerating && (
+          <Card className="animate-pulse">
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto" />
+                <p className="text-muted-foreground">Loading posts...</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Empty State ────────────────────────────────────────────────── */}
         {!isLoadingSuggestions && suggestions.length === 0 && !isGenerating && !generationInProgress && (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
               <p className="text-muted-foreground mb-4">
-                {contentAnalysis && transcript 
-                  ? "Click 'Generate Smart Posts' to create AI-powered content"
+                {contentAnalysis && transcript
+                  ? "Click 'Generate Smart Posts' to create AI-powered content from your video"
                   : "Waiting for video analysis to complete..."}
               </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Generated Suggestions Display */}
-        {!isLoadingSuggestions && suggestions.length > 0 && (
+        {/* ── Generated Suggestions ──────────────────────────────────────── */}
+        {!isLoadingSuggestions && suggestions.length > 0 && !isGenerating && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Generated Posts</h3>
               <div className="flex gap-2">
-                <Badge variant="secondary">
-                  {suggestions.length} posts ready
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadExistingSuggestions}
-                >
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Refresh
+                <Badge variant="secondary">{suggestions.length} posts</Badge>
+                <Button variant="outline" size="sm" onClick={loadExistingSuggestions}>
+                  <RefreshCw className="h-4 w-4 mr-1" /> Refresh
                 </Button>
               </div>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {suggestions.map((suggestion, index) => (
-                <motion.div
-                  key={suggestion.id || index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Card className="h-full hover:shadow-lg transition-shadow">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-base">
-                          {suggestion.title}
-                        </CardTitle>
-                        <Badge variant="secondary">
-                          {suggestion.content_type}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {suggestion.description}
-                      </p>
-                      {suggestion.engagement_prediction && (
-                        <div className="mb-3">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span>Engagement Score</span>
-                            <span>{Math.round(suggestion.engagement_prediction * 100)}%</span>
-                          </div>
-                          <Progress value={suggestion.engagement_prediction * 100} className="h-2" />
-                        </div>
-                      )}
-                      <div className="flex gap-2 flex-wrap">
-                        {suggestion.eligible_platforms?.map((platform: string) => {
-                          const platformConfig = PLATFORMS.find(p => p.id === platform)
-                          return platformConfig ? (
-                            <Tooltip key={platform}>
-                              <TooltipTrigger>
-                                <Badge variant="outline" className="text-xs">
-                                  <platformConfig.icon className="h-3 w-3 mr-1" />
-                                  {platformConfig.name}
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Optimized for {platformConfig.name}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Badge key={platform} variant="outline" className="text-xs">
-                              {platform}
-                            </Badge>
-                          )
-                        })}
-                      </div>
-                      {suggestion.persona_used && (
-                        <Badge variant="secondary" className="mt-2">
-                          <User className="h-3 w-3 mr-1" />
-                          Persona Applied
-                        </Badge>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                <SuggestionCard key={suggestion.id || index} suggestion={suggestion} index={index} />
               ))}
             </div>
           </div>

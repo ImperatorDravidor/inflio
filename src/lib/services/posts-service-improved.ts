@@ -1,7 +1,12 @@
 /**
- * Improved Posts Service
+ * @deprecated — Use AdvancedPostsService from '@/lib/ai-posts-advanced' instead.
  *
- * Generates content-aware, intuitive social post suggestions
+ * This service is superseded by AdvancedPostsService which uses GPT-5.2 via
+ * the Responses API with full brand identity and persona context.
+ * Kept temporarily for backward compatibility with any remaining callers.
+ *
+ * Previous: Improved Posts Service
+ * - Generates content-aware, intuitive social post suggestions
  * - Tied to actual transcript content
  * - Uses brand voice and settings
  * - Generates images with Nano Banana Pro + persona

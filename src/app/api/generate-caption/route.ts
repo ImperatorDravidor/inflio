@@ -7,6 +7,9 @@ import { z } from 'zod'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { SafeJsonParser } from '@/lib/safe-json'
+import { extractOutputText } from '@/lib/ai-posts-advanced'
+import { fetchBrandAndPersonaContext } from '@/lib/ai-context'
+import type { BrandContext } from '@/lib/ai-context'
 
 // Request validation schema - updated to accept more context
 const requestSchema = z.object({
@@ -90,23 +93,32 @@ export async function POST(request: NextRequest) {
 
     // Fetch additional project context if projectId is provided
     let enrichedProjectContext = projectContext || ''
-    let contentAnalysis = null
+    let contentAnalysis: any = null
+    let contentBrief: any = null
     
     if (projectId) {
       try {
         const { data: project } = await supabaseAdmin
           .from('projects')
-          .select('title, description, content_analysis, transcription')
+          .select('title, description, content_analysis, transcription, content_brief')
           .eq('id', projectId)
           .single()
         
         if (project) {
           enrichedProjectContext = `Project: ${project.title}. ${project.description || ''}`
           contentAnalysis = project.content_analysis
+          contentBrief = project.content_brief
         }
       } catch (error) {
         console.error('Error fetching project context:', error)
       }
+    }
+
+    // Fetch brand + persona context
+    let brand: BrandContext | undefined
+    if (userId) {
+      const ctx = await fetchBrandAndPersonaContext(userId)
+      brand = ctx.brand
     }
 
     // Generate caption with error handling and retry logic
@@ -208,61 +220,81 @@ export async function POST(request: NextRequest) {
           transcript: content.transcript ? content.transcript.substring(0, 500) : null
         }
 
+        // Build brand context block
+        let brandBlock = ''
+        if (brand) {
+          const parts: string[] = []
+          if (brand.voice) parts.push(`Brand voice: ${brand.voice}`)
+          if (brand.companyName) parts.push(`Brand: ${brand.companyName}`)
+          if (brand.targetAudience?.description) parts.push(`Target audience: ${brand.targetAudience.description}`)
+          if (brand.contentGoals?.length) parts.push(`Goals: ${brand.contentGoals.join(', ')}`)
+          if (parts.length > 0) brandBlock = `\n\nBRAND IDENTITY:\n${parts.join('\n')}`
+        }
+
+        // Content brief alignment
+        let briefBlock = ''
+        if (contentBrief) {
+          const parts: string[] = []
+          if (contentBrief.toneGuidance) parts.push(`Tone: ${contentBrief.toneGuidance}`)
+          if (contentBrief.cta) parts.push(`Align CTA with: ${contentBrief.cta}`)
+          if (contentBrief.targetAudience) parts.push(`Audience: ${contentBrief.targetAudience}`)
+          if (parts.length > 0) briefBlock = `\n\nCONTENT BRIEF:\n${parts.join('\n')}`
+        }
+
         const systemPrompt = `You are an expert social media content creator specializing in ${platform}.
-        
+
 Platform constraints:
 - Maximum caption length: ${constraints.maxLength} characters
-- Tone: ${constraints.tone}
+- Default tone: ${constraints.tone}
 - Hashtags: ${constraints.hashtags} relevant hashtags
 ${constraints.notes ? `- Special rules: ${constraints.notes}` : ''}
-        
-You have access to detailed content analysis including virality scores, sentiment analysis, and project context.
-Your goal is to create highly engaging, platform-optimized captions that maximize reach and engagement.
-Match the tonality and energy of the content based on the provided context.`
+${brandBlock}
+${briefBlock}
+
+Create highly engaging, platform-optimized captions. Match the brand voice and speak to the target audience.`
 
         const userPrompt = `Generate a ${platform} caption for this content:
-        
+
 ${JSON.stringify(contextDetails, null, 2)}
-        
+
 Requirements:
-1. Hook the audience in the first line based on the virality insights
-2. Match the tone and energy indicated by the sentiment and virality score
-3. Include a clear, compelling call-to-action
+1. Hook the audience in the first line
+2. Match the brand voice and tone${brand?.voice ? ` (${brand.voice})` : ''}
+3. Include a compelling call-to-action
 4. Use platform-appropriate language and emojis
-5. Generate ${constraints.hashtags} highly relevant and trending hashtags
+5. Generate ${constraints.hashtags} relevant hashtags
 6. Keep within ${constraints.maxLength} characters
 7. If virality score is high (>7), emphasize what makes it engaging
-8. Use keywords and topics from content analysis for SEO optimization
-9. Reference key moments or insights if available
-        
-Return JSON in this format:
+8. Reference keywords and topics for SEO
+
+Return JSON:
 {
-  "caption": "The actual caption text that captures the essence and energy of the content",
+  "caption": "Platform-optimized caption matching brand voice",
   "hashtags": ["relevant1", "trending2", "niche3"],
-  "cta": "The call-to-action text",
-  "hook": "The attention-grabbing first line",
+  "cta": "Call-to-action text",
+  "hook": "Attention-grabbing first line",
   "suggestions": {
-    "tip": "Specific tip for this content on ${platform}",
-    "optimalPostTime": "Best time to post based on content type"
+    "tip": "Specific tip for ${platform}",
+    "optimalPostTime": "Best posting time"
   }
 }`
 
-        let completion
+        let parsed: any
         try {
-          completion = await openai.chat.completions.create({
-            model: 'gpt-4.1', // Using the standard GPT-4.1 model
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7, // Slightly lower for more consistent results
-            max_tokens: 1500,
-            response_format: { type: 'json_object' }
+          const response = await openai.responses.create({
+            model: 'gpt-5.2',
+            input: userPrompt,
+            instructions: systemPrompt,
+            reasoning: { effort: 'low' },
+            text: { format: { type: 'json_object' } },
+            max_output_tokens: 1000,
           })
+
+          const outputText = extractOutputText(response)
+          parsed = JSON.parse(outputText)
         } catch (apiError: any) {
           console.error('OpenAI API error:', apiError)
-          
-          // Handle specific OpenAI errors
+
           if (apiError?.status === 401) {
             throw new AppError('Invalid OpenAI API key. Please check your configuration.', 'OPENAI_AUTH_ERROR', 401)
           } else if (apiError?.status === 429) {
@@ -279,13 +311,6 @@ Return JSON in this format:
             )
           }
         }
-
-        const response = completion.choices[0].message.content
-        if (!response) {
-          throw new Error('No response from AI')
-        }
-
-        const parsed = JSON.parse(response)
         
         // Validate and extract AI response safely
         const caption = SafeJsonParser.get(parsed, 'caption', 'No caption generated.')
