@@ -5,16 +5,16 @@ import Link from "next/link"
 
 export default function TermsPage() {
   return (
-    <div className="pt-28 pb-20">
+    <div className="pt-32 pb-24">
       <div className="mx-auto max-w-2xl px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-12 pb-8 border-b border-white/10"
+          className="mb-12 pb-8 border-b border-white/[0.06]"
         >
-          <p className="text-xs text-primary font-medium uppercase tracking-wider mb-2">Legal</p>
+          <p className="text-sm font-medium text-primary/80 tracking-wide uppercase mb-3">Legal</p>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-white">
             Terms of Service
           </h1>

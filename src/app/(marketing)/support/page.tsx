@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Mail,
   ChevronDown,
-  ArrowRight,
   ExternalLink,
   Clock,
   Sparkles,
@@ -50,7 +49,7 @@ const faqs = [
   },
   {
     question: "Can I cancel anytime?",
-    answer: "Yes, no contracts or commitments. Cancel from your dashboard anytime and keep access until the end of your billing period. We also offer a 30-day money-back guarantee.",
+    answer: "Yes, no contracts or commitments. Cancel from your dashboard anytime and keep access until the end of your billing period. We also offer a 14-day money-back guarantee.",
   },
   {
     question: "What if I need more than the Studio plan?",
@@ -81,22 +80,22 @@ export default function SupportPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
 
   return (
-    <div className="pt-28 pb-20">
+    <div className="pt-32 pb-24">
       <div className="mx-auto max-w-3xl px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-12"
+          className="text-center mb-14"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mx-auto mb-4">
-            <HelpCircle className="h-6 w-6" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-b from-violet-500/20 to-violet-500/5 border border-white/[0.06] mx-auto mb-5">
+            <HelpCircle className="h-6 w-6 text-white/80" />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-white">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4 text-white">
             Help Center
           </h1>
-          <p className="text-white/50 max-w-lg mx-auto">
+          <p className="text-white/40 max-w-lg mx-auto leading-relaxed">
             Find answers to common questions or get in touch with our team.
           </p>
         </motion.div>
@@ -106,7 +105,7 @@ export default function SupportPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="grid sm:grid-cols-2 gap-4 mb-12"
+          className="grid sm:grid-cols-2 gap-4 mb-14"
         >
           {contactOptions.map((option, index) => (
             <motion.a
@@ -115,20 +114,20 @@ export default function SupportPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 + index * 0.05 }}
-              className="group p-5 rounded-xl bg-white/[0.02] border border-white/10 hover:border-primary/30 transition-all"
+              className="group p-5 rounded-xl bg-white/[0.015] border border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all duration-300"
             >
               <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors">
-                  <option.icon className="h-5 w-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-b from-violet-500/15 to-violet-500/5 border border-white/[0.06] group-hover:scale-105 transition-transform duration-300">
+                  <option.icon className="h-5 w-5 text-white/70" />
                 </div>
                 <div>
-                  <h3 className="font-medium text-white text-sm">{option.title}</h3>
-                  <p className="text-xs text-white/40">{option.description}</p>
+                  <h3 className="font-medium text-white/90 text-sm">{option.title}</h3>
+                  <p className="text-xs text-white/35">{option.description}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-primary">{option.detail}</span>
-                <span className="flex items-center gap-1 text-xs text-white/40">
+                <span className="text-sm font-medium text-primary/80">{option.detail}</span>
+                <span className="flex items-center gap-1 text-xs text-white/30">
                   <Clock className="h-3 w-3" />
                   {option.response}
                 </span>
@@ -143,9 +142,12 @@ export default function SupportPage() {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           viewport={{ once: true }}
-          className="mb-12"
+          className="mb-14"
         >
-          <h2 className="text-lg font-semibold text-white mb-4">Frequently asked questions</h2>
+          <p className="text-sm font-medium text-primary/70 tracking-wide uppercase mb-4">
+            FAQ
+          </p>
+          <h2 className="text-lg font-semibold text-white/90 mb-5">Frequently asked questions</h2>
           <div className="space-y-2">
             {faqs.map((faq, index) => (
               <motion.div
@@ -154,15 +156,15 @@ export default function SupportPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.03 }}
                 viewport={{ once: true }}
-                className="rounded-xl bg-white/[0.02] border border-white/5 overflow-hidden"
+                className="rounded-xl bg-white/[0.015] border border-white/[0.06] overflow-hidden"
               >
                 <button
                   onClick={() => setOpenFaq(openFaq === index ? null : index)}
-                  className="w-full flex items-center justify-between p-4 text-left hover:bg-white/[0.02] transition-colors"
+                  className="w-full flex items-center justify-between p-5 text-left hover:bg-white/[0.02] transition-colors duration-200"
                 >
-                  <span className="font-medium text-white text-sm pr-4">{faq.question}</span>
+                  <span className="font-medium text-white/80 text-sm pr-4">{faq.question}</span>
                   <ChevronDown
-                    className={`h-4 w-4 text-white/40 shrink-0 transition-transform ${
+                    className={`h-4 w-4 text-white/30 shrink-0 transition-transform duration-200 ${
                       openFaq === index ? "rotate-180" : ""
                     }`}
                   />
@@ -171,9 +173,9 @@ export default function SupportPage() {
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
-                    className="px-4 pb-4"
+                    className="px-5 pb-5"
                   >
-                    <p className="text-sm text-white/50 leading-relaxed">{faq.answer}</p>
+                    <p className="text-sm text-white/40 leading-relaxed">{faq.answer}</p>
                   </motion.div>
                 )}
               </motion.div>
@@ -187,22 +189,22 @@ export default function SupportPage() {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           viewport={{ once: true }}
-          className="p-8 rounded-2xl bg-gradient-to-br from-primary/5 via-purple-500/5 to-pink-500/5 border border-white/10 text-center"
+          className="p-10 rounded-2xl bg-gradient-to-br from-primary/[0.04] via-purple-500/[0.03] to-pink-500/[0.03] border border-white/[0.06] text-center"
         >
-          <Sparkles className="h-8 w-8 text-primary mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Still have questions?</h2>
-          <p className="text-sm text-white/50 max-w-md mx-auto mb-5">
-            Can't find what you're looking for? Our team is happy to help.
+          <Sparkles className="h-8 w-8 text-primary/70 mx-auto mb-5" />
+          <h2 className="text-xl font-bold text-white mb-3">Still have questions?</h2>
+          <p className="text-sm text-white/40 max-w-md mx-auto mb-6 leading-relaxed">
+            Can&apos;t find what you&apos;re looking for? Our team is happy to help.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a href="mailto:support@inflio.com">
-              <Button className="gap-2 bg-white text-black hover:bg-white/90">
+              <Button className="group gap-2 bg-white text-black hover:bg-white/90 rounded-xl h-11 px-6 font-medium">
                 <Mail className="h-4 w-4" />
                 Contact support
               </Button>
             </a>
             <Link href="/contact">
-              <Button variant="outline" className="border-white/10 text-white hover:bg-white/5">
+              <Button variant="ghost" className="border border-white/[0.06] text-white/70 hover:bg-white/[0.04] rounded-xl h-11 px-6">
                 General inquiries
               </Button>
             </Link>
@@ -221,9 +223,12 @@ export default function SupportPage() {
             href="https://status.inflio.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-xs text-white/40 hover:text-white transition-colors"
+            className="inline-flex items-center gap-2 text-xs text-white/30 hover:text-white/50 transition-colors"
           >
-            <span className="flex h-2 w-2 rounded-full bg-green-400" />
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+            </span>
             All systems operational
             <ExternalLink className="h-3 w-3" />
           </a>
