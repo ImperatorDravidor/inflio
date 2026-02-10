@@ -3,6 +3,12 @@
     "src/app/api/upload/route.ts": {
       "maxDuration": 300
     },
+    "src/app/api/analyze-brand/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/onboarding/upload-photos/route.ts": {
+      "maxDuration": 60
+    },
     "src/app/api/process/route.ts": {
       "maxDuration": 300
     },
