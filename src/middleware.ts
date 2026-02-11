@@ -42,6 +42,11 @@ const isOnboardingRoute = createRouteMatcher([
   '/onboarding(.*)'
 ])
 
+// API routes used during onboarding — must not be redirected
+const isApiRoute = createRouteMatcher([
+  '/api(.*)'
+])
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth()
 
@@ -95,8 +100,9 @@ export default clerkMiddleware(async (auth, req) => {
     const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
     
     // If they have not completed onboarding and are not on the onboarding page, redirect them
-    // Unless in development mode or explicitly skipping
-    if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
+    // Unless in development mode, explicitly skipping, or it's an API route
+    // API routes must NEVER be redirected — they return JSON, not pages
+    if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isApiRoute(req) && !isDevelopment && !skipOnboarding) {
       return NextResponse.redirect(onboardingUrl);
     }
 
