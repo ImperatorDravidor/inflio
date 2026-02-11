@@ -152,10 +152,27 @@ export const generatePersonaPortraits = inngest.createFunction(
     id: 'generate-persona-portraits',
     name: 'Generate Persona Portraits',
     concurrency: {
-      limit: 2,        // Max 2 concurrent persona generations per user
+      limit: 2,
       key: 'event.data.userId'
     },
-    retries: 1
+    retries: 1,
+    onFailure: async ({ event, error }) => {
+      // If the entire function fails (not just individual portraits), mark persona as failed
+      const personaId = event.data.event.data.personaId
+      if (personaId) {
+        console.error(`[Inngest:Persona] Function failed for ${personaId}:`, error.message)
+        await supabaseAdmin
+          .from('personas')
+          .update({
+            status: 'failed',
+            metadata: {
+              error: error.message || 'Portrait generation failed',
+              processingFailed: new Date().toISOString()
+            }
+          })
+          .eq('id', personaId)
+      }
+    }
   },
   { event: 'persona/generate.portraits' },
   async ({ event, step }) => {
