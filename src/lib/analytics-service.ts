@@ -92,10 +92,10 @@ export class AnalyticsService {
     try {
       const supabase = createSupabaseBrowserClient()
       
-      // Get all user's projects
+      // Get all user's projects (tasks is a JSONB column, not a separate table)
       const { data: projects } = await supabase
         .from('projects')
-        .select('*, tasks(*)')
+        .select('*')
         .eq('user_id', userId)
       
       if (!projects) {
@@ -107,21 +107,19 @@ export class AnalyticsService {
       const activeProjects = projects.filter(p => p.status === 'processing').length
       const completedProjects = projects.filter(p => p.status === 'completed').length
       
-      // Count clips from tasks
+      // Count clips and blog posts from project folders (stored in JSONB, not separate tables)
       const totalClips = projects.reduce((acc, project) => {
-        const clipTasks = project.tasks?.filter((t: any) => t.type === 'clips') || []
-        return acc + clipTasks.filter((t: any) => t.status === 'completed').length
+        return acc + (project.folders?.clips?.length || 0)
       }, 0)
       
-      // Count blog posts
-      const { count: blogCount } = await supabase
-        .from('blog_posts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
+      // Count blog posts from project folders
+      const blogCount = projects.reduce((acc, project) => {
+        return acc + (project.folders?.blog?.length || 0)
+      }, 0)
       
       // Count social posts
       const { count: socialCount } = await supabase
-        .from('social_media_posts')
+        .from('social_posts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
       
@@ -132,7 +130,7 @@ export class AnalyticsService {
       
       // Calculate posting streak
       const { data: recentPosts } = await supabase
-        .from('social_media_posts')
+        .from('social_posts')
         .select('publish_date')
         .eq('user_id', userId)
         .eq('state', 'published')
@@ -143,7 +141,7 @@ export class AnalyticsService {
       
       // Get unique platforms used
       const { data: integrations } = await supabase
-        .from('social_media_integrations')
+        .from('social_integrations')
         .select('platform')
         .eq('user_id', userId)
         .eq('is_active', true)

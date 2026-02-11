@@ -174,7 +174,22 @@ export class ProjectService {
         return null
       }
 
-      return data as Project
+      // Ensure folders always has a safe default structure
+      // (database may return null if the column was never set)
+      const project = data as Project
+      if (!project.folders) {
+        project.folders = { clips: [], blog: [], social: [], images: [] }
+      } else {
+        if (!project.folders.clips) project.folders.clips = []
+        if (!project.folders.blog) project.folders.blog = []
+        if (!project.folders.social) project.folders.social = []
+        if (!project.folders.images) project.folders.images = []
+      }
+      if (!project.tasks) {
+        project.tasks = []
+      }
+
+      return project
     } catch (error) {
       console.error('Failed to fetch project:', error)
       return null
@@ -422,24 +437,25 @@ export class ProjectService {
 
   // Calculate project progress
   static calculateProjectProgress(project: Project): number {
-    const tasks = project.tasks
+    const tasks = project.tasks || []
+    if (tasks.length === 0) return 0
     const totalProgress = tasks.reduce((sum, task) => sum + task.progress, 0)
     return Math.round(totalProgress / tasks.length)
   }
 
   // Get project statistics
   static getProjectStats(project: Project) {
-    // Count images (handle both undefined and array cases)
-    const totalImages = project.folders.images?.length || 0
+    const folders = project.folders || { clips: [], blog: [], social: [], images: [] }
+    const tasks = project.tasks || []
     
     return {
-      totalClips: project.folders.clips.length,
-      totalBlogs: project.folders.blog.length,
-      totalSocialPosts: project.folders.social.length,
-      totalImages,
+      totalClips: folders.clips?.length || 0,
+      totalBlogs: folders.blog?.length || 0,
+      totalSocialPosts: folders.social?.length || 0,
+      totalImages: folders.images?.length || 0,
 
-      completedTasks: project.tasks.filter(t => t.status === 'completed').length,
-      totalTasks: project.tasks.length,
+      completedTasks: tasks.filter(t => t.status === 'completed').length,
+      totalTasks: tasks.length,
       overallProgress: this.calculateProjectProgress(project)
     }
   }

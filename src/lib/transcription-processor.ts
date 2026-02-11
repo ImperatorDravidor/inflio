@@ -1,4 +1,3 @@
-import { ProjectService } from '@/lib/services'
 import { AIContentService } from '@/lib/ai-content-service'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
@@ -384,11 +383,17 @@ export async function processTranscription(params: {
     
     try {
       console.log('[TranscriptionProcessor] Updating project with transcription and content analysis...')
-      await ProjectService.updateProject(projectId, {
-        transcription,
-        content_analysis: contentAnalysis,
-        updated_at: new Date().toISOString()
-      })
+      // Use admin client — this runs server-side in the processing pipeline
+      const { error: updateErr } = await supabaseAdmin
+        .from('projects')
+        .update({
+          transcription,
+          content_analysis: contentAnalysis,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId)
+      
+      if (updateErr) throw updateErr
       console.log('[TranscriptionProcessor] Project updated successfully')
     } catch (updateError) {
       console.error('[TranscriptionProcessor] Failed to update project with full data:', {
@@ -399,10 +404,15 @@ export async function processTranscription(params: {
       console.log('[TranscriptionProcessor] Attempting to save with transcription only...')
       // Try one more time with just transcription if content analysis was the issue
       try {
-        await ProjectService.updateProject(projectId, {
-          transcription,
-          updated_at: new Date().toISOString()
-        })
+        const { error: secondErr } = await supabaseAdmin
+          .from('projects')
+          .update({
+            transcription,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', projectId)
+        
+        if (secondErr) throw secondErr
         console.log('[TranscriptionProcessor] Project updated successfully with transcription only')
       } catch (secondError) {
         console.error('[TranscriptionProcessor] Failed to update project even with transcription only:', {

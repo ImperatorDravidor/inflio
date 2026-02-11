@@ -34,11 +34,8 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // Fetch related data
-    const [clipsResult, chaptersResult] = await Promise.all([
-      supabase.from('clips').select('*').eq('project_id', projectId),
-      supabase.from('chapters').select('*').eq('project_id', projectId)
-    ])
+    // Extract data from JSONB folders (clips and other content are stored here, not separate tables)
+    const folders = project.folders || { clips: [], blog: [], social: [], images: [] }
 
     // Compile export data
     const exportData = {
@@ -50,15 +47,15 @@ export async function GET(
         user_id: undefined,
         id: undefined
       },
-      clips: clipsResult.data || [],
-      chapters: chaptersResult.data || [],
+      clips: folders.clips || [],
+      chapters: [],
       metadata: {
         originalId: projectId,
         originalUserId: userId,
-        totalClips: clipsResult.data?.length || 0,
-        totalChapters: chaptersResult.data?.length || 0,
-        totalBlogs: project.folders?.blog?.length || 0,
-        totalSocialPosts: project.folders?.social?.length || 0
+        totalClips: folders.clips?.length || 0,
+        totalChapters: 0,
+        totalBlogs: folders.blog?.length || 0,
+        totalSocialPosts: folders.social?.length || 0
       }
     }
 

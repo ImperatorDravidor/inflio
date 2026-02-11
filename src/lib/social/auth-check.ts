@@ -13,7 +13,7 @@ export class SocialAuthChecker {
       const supabase = createSupabaseBrowserClient()
       
       const { data, error } = await supabase
-        .from('social_media_integrations')
+        .from('social_integrations')
         .select('id, platform, token_expiration')
         .eq('user_id', userId)
         .eq('platform', platform)
@@ -43,7 +43,7 @@ export class SocialAuthChecker {
       const supabase = createSupabaseBrowserClient()
       
       const { data, error } = await supabase
-        .from('social_media_integrations')
+        .from('social_integrations')
         .select('platform, name, token_expiration')
         .eq('user_id', userId)
       

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { KlapJobQueue, type KlapJob } from '@/lib/redis'
 import { KlapAPIService } from '@/lib/klap-api'
-import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { updateTaskProgressServer } from '@/lib/server-project-utils'
 
@@ -79,11 +78,15 @@ export async function POST(request: NextRequest) {
 async function processKlapJob(job: KlapJob) {
   const { projectId, videoUrl, id: jobId } = job
 
-  // First check if the project still exists
+  // First check if the project still exists (use admin client - this runs server-side)
   console.log(`[Worker] Checking if project ${projectId} exists...`)
-  const project = await ProjectService.getProject(projectId)
+  const { data: project, error: projectError } = await supabaseAdmin
+    .from('projects')
+    .select('*')
+    .eq('id', projectId)
+    .single()
   
-  if (!project) {
+  if (projectError || !project) {
     console.log(`[Worker] Project ${projectId} no longer exists, removing job completely`)
     await KlapJobQueue.removeJob(jobId, projectId)
     throw new Error('Project no longer exists - job removed')
@@ -114,14 +117,15 @@ async function processKlapJob(job: KlapJob) {
   })
   console.log(`[Worker] Updated job with Klap task ID: ${task.id}`)
 
-  // Update project with task ID
+  // Update project with task ID (use admin client)
   try {
-    const updateResult = await ProjectService.updateProject(projectId, {
-      klap_project_id: task.id
-    })
+    const { error: updateErr } = await supabaseAdmin
+      .from('projects')
+      .update({ klap_project_id: task.id, updated_at: new Date().toISOString() })
+      .eq('id', projectId)
     
-    if (!updateResult) {
-      console.error(`[Worker] Failed to update project ${projectId} - project may have been deleted`)
+    if (updateErr) {
+      console.error(`[Worker] Failed to update project ${projectId}:`, updateErr.message)
       // Continue processing anyway as the Klap task is already created
     }
   } catch (error: any) {
@@ -227,21 +231,26 @@ async function processAndStoreClips(
   folderId: string,
   jobId: string
 ) {
-  // First check if project still exists
-  const projectExists = await ProjectService.getProject(projectId)
-  if (!projectExists) {
+  // First check if project still exists (use admin client)
+  const { data: projectCheck, error: checkError } = await supabaseAdmin
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .single()
+  
+  if (checkError || !projectCheck) {
     console.log(`[Worker] Project ${projectId} no longer exists, skipping clip storage`)
     throw new Error('Project no longer exists')
   }
 
-  // Update project with folder ID
-  const updateResult = await ProjectService.updateProject(projectId, {
-    klap_folder_id: folderId,
-    klap_project_id: folderId
-  })
+  // Update project with folder ID (use admin client)
+  const { error: folderUpdateError } = await supabaseAdmin
+    .from('projects')
+    .update({ klap_folder_id: folderId, klap_project_id: folderId, updated_at: new Date().toISOString() })
+    .eq('id', projectId)
   
-  if (!updateResult) {
-    console.error(`[Worker] Failed to update project ${projectId} with folder ID`)
+  if (folderUpdateError) {
+    console.error(`[Worker] Failed to update project ${projectId} with folder ID:`, folderUpdateError.message)
     throw new Error('Failed to update project')
   }
 
@@ -313,25 +322,35 @@ async function processAndStoreClips(
     }
   }
 
-  // Check again if project exists before final update
-  const project = await ProjectService.getProject(projectId)
-  if (!project) {
+  // Check again if project exists before final update (use admin client)
+  const { data: projectForSave, error: saveCheckError } = await supabaseAdmin
+    .from('projects')
+    .select('id, folders')
+    .eq('id', projectId)
+    .single()
+  
+  if (saveCheckError || !projectForSave) {
     console.log(`[Worker] Project ${projectId} disappeared during processing`)
     throw new Error('Project no longer exists')
   }
 
-  // Store all clips
-  const finalUpdate = await ProjectService.updateProject(projectId, {
-    folders: {
-      clips: processedClips,
-      images: project.folders?.images || [],
-      social: project.folders?.social || [],
-      blog: project.folders?.blog || []
-    }
-  })
+  // Store all clips (use admin client to bypass any RLS)
+  const existingFolders = projectForSave.folders || {}
+  const { error: clipSaveError } = await supabaseAdmin
+    .from('projects')
+    .update({
+      folders: {
+        clips: processedClips,
+        images: (existingFolders as any).images || [],
+        social: (existingFolders as any).social || [],
+        blog: (existingFolders as any).blog || [],
+      },
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', projectId)
   
-  if (!finalUpdate) {
-    console.error(`[Worker] Failed to store clips for project ${projectId}`)
+  if (clipSaveError) {
+    console.error(`[Worker] Failed to store clips for project ${projectId}:`, clipSaveError.message)
     throw new Error('Failed to store clips')
   }
 

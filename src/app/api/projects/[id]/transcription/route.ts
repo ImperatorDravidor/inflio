@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ProjectService } from '@/lib/services'
 import { validateProjectOwnership } from '@/lib/auth-utils'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export async function PATCH(
   request: NextRequest,
@@ -36,9 +36,11 @@ export async function PATCH(
       editedAt: new Date().toISOString()
     }
 
-    await ProjectService.updateProject(projectId, {
-      transcription: updatedTranscription
-    })
+    // Use admin client for server-side route
+    await supabaseAdmin
+      .from('projects')
+      .update({ transcription: updatedTranscription, updated_at: new Date().toISOString() })
+      .eq('id', projectId)
 
     return NextResponse.json(updatedTranscription)
   } catch (error) {

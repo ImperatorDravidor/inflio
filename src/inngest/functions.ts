@@ -1,6 +1,5 @@
 import { inngest } from './client'
 import { VizardAPIService } from '@/lib/vizard-api'
-import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
 
@@ -25,7 +24,13 @@ export const processVizardVideo = inngest.createFunction(
     console.log('[Inngest] Starting Vizard clip generation for:', projectId)
 
     // Check if Vizard project already exists (idempotency)
-    const existingProject = await ProjectService.getProject(projectId)
+    // Use admin client since this runs server-side in Inngest (browser client won't work here)
+    const { data: existingProject } = await supabaseAdmin
+      .from('projects')
+      .select('vizard_project_id')
+      .eq('id', projectId)
+      .single()
+    
     if (existingProject?.vizard_project_id) {
       console.log('[Inngest] Vizard project already exists:', existingProject.vizard_project_id)
       console.log('[Inngest] Skipping duplicate creation')
@@ -102,7 +107,13 @@ export const checkVizardStatus = inngest.createFunction(
   async ({ event, step }) => {
     const { projectId } = event.data
 
-    const project = await ProjectService.getProject(projectId)
+    // Use admin client since this runs server-side in Inngest
+    const { data: project } = await supabaseAdmin
+      .from('projects')
+      .select('vizard_project_id')
+      .eq('id', projectId)
+      .single()
+    
     if (!project?.vizard_project_id) {
       return { status: 'not_started' }
     }

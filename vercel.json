@@ -9,6 +9,12 @@
     "src/app/api/onboarding/upload-photos/route.ts": {
       "maxDuration": 60
     },
+    "src/app/api/posts/worker/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/posts/generate-assets/route.ts": {
+      "maxDuration": 120
+    },
     "src/app/api/process/route.ts": {
       "maxDuration": 300
     },

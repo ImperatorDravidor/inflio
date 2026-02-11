@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ProjectService } from '@/lib/services'
 import { TranscriptionService } from '@/lib/transcription-service'
 import { auth } from '@clerk/nextjs/server'
 import { processTranscription } from '@/lib/transcription-processor'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 // Extend timeout for transcription processing
 export const maxDuration = 300; // 5 minutes
@@ -29,7 +29,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const project = await ProjectService.getProject(projectId)
+    // Use admin client for server-side route
+    const { data: project } = await supabaseAdmin
+      .from('projects')
+      .select('title, transcription')
+      .eq('id', projectId)
+      .single()
+    
     if (!project?.transcription) {
       return NextResponse.json(
         { error: 'No transcription found for this project' },

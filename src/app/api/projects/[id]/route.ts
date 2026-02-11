@@ -116,11 +116,7 @@ export async function GET(
 
     const { data: project, error } = await supabase
       .from('projects')
-      .select(`
-        *,
-        clips:clips(*),
-        chapters:chapters(*)
-      `)
+      .select('*')
       .eq('id', projectId)
       .eq('user_id', userId)
       .single()
@@ -128,6 +124,18 @@ export async function GET(
     if (error || !project) {
       console.error('Error fetching project:', error)
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // Ensure folders always has a safe default structure
+    if (!project.folders) {
+      project.folders = { clips: [], blog: [], social: [], images: [] }
+    } else {
+      if (!project.folders.clips) project.folders.clips = []
+      if (!project.folders.blog) project.folders.blog = []
+      if (!project.folders.social) project.folders.social = []
+    }
+    if (!project.tasks) {
+      project.tasks = []
     }
 
     return NextResponse.json(project)

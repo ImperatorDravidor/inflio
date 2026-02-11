@@ -3,6 +3,7 @@ import { ProjectService } from '@/lib/services'
 import { ServerUsageService } from '@/lib/server-usage-service'
 import { requireAuth } from '@/lib/auth-utils'
 import { VideoMetadata } from '@/lib/project-types'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 // Brand settings type for enhanced content generation
 interface BrandSettings {
@@ -102,7 +103,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (Object.keys(additionalUpdates).length > 0) {
-      await ProjectService.updateProject(project.id, additionalUpdates)
+      // Use admin client for server-side route
+      await supabaseAdmin
+        .from('projects')
+        .update({ ...additionalUpdates, updated_at: new Date().toISOString() })
+        .eq('id', project.id)
     }
 
     // Increment usage after successful project creation
