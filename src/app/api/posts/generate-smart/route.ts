@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { v4 as uuidv4 } from 'uuid'
+import { inngest } from '@/inngest/client'
 
 /**
  * Thin trigger endpoint for post generation.
@@ -110,21 +111,10 @@ export async function POST(req: NextRequest) {
 
     console.log('[generate-smart] Created job:', jobId)
 
-    // ── Fire worker (separate serverless invocation) ────────────────────────
-    // This creates a new function invocation on Vercel. The worker runs
-    // independently with its own timeout. We don't await the response.
-    const workerUrl = new URL('/api/posts/worker', req.url)
-
-    fetch(workerUrl.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
-      },
-      body: JSON.stringify({ jobId }),
-    }).catch((err) => {
-      // Log but don't fail — worst case the job stays pending and can be retried
-      console.error('[generate-smart] Failed to trigger worker:', err)
+    // ── Send to Inngest for durable background processing ──────────────────
+    await inngest.send({
+      name: 'posts/generate.worker',
+      data: { jobId, userId: effectiveUserId }
     })
 
     // ── Return immediately ──────────────────────────────────────────────────
