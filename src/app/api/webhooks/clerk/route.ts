@@ -101,7 +101,7 @@ export async function POST(req: Request) {
       await supabaseAdmin
         .from('projects')
         .delete()
-        .eq('userId', id)
+        .eq('user_id', id)
 
       // Then delete the user
       const { error } = await supabaseAdmin

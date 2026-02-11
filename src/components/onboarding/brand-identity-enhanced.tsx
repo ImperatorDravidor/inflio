@@ -547,6 +547,25 @@ export function BrandIdentityEnhanced({
     setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'pending' as const })))
   }, [])
 
+  // Upload a single file directly to Supabase storage using a signed URL
+  const uploadFileToStorage = async (
+    file: File,
+    signedUrl: string,
+    token: string
+  ): Promise<void> => {
+    const response = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+      },
+      body: file,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload ${file.name} to storage (${response.status})`)
+    }
+  }
+
   // Analyze brand materials with AI
   const analyzeBrandMaterials = async () => {
     if (uploadedFiles.length === 0) {
@@ -566,68 +585,85 @@ export function BrandIdentityEnhanced({
       // Update file statuses
       setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'analyzing' as const })))
       
-      // Simplified progress steps for faster feedback
-      const steps = [
-        { step: 'Uploading files to secure storage...', progress: 10 },
-        { step: 'Processing brand materials...', progress: 30 },
-        { step: 'Analyzing visual identity and content...', progress: 60 },
-        { step: 'Building your brand profile...', progress: 90 }
-      ]
+      // Progress steps
+      setAnalysisStep('Preparing secure upload...')
+      setAnalysisProgress(5)
 
-      // Show initial progress
-      setAnalysisStep(steps[0].step)
-      setAnalysisProgress(steps[0].progress)
+      // Step 1: Get signed upload URLs from our API
+      console.log('Requesting signed upload URLs for', uploadedFiles.length, 'files')
+      const signedUrlResponse = await fetch('/api/storage/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'brand-material',
+          files: uploadedFiles.map(({ file }) => ({
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,
+          })),
+        }),
+        signal: abortControllerRef.current.signal,
+      })
 
-      // Start progress animation (fast updates)
-      let currentStep = 1
-      let apiCallStarted = false
+      if (!signedUrlResponse.ok) {
+        const err = await signedUrlResponse.json().catch(() => ({}))
+        throw new Error(err.error || `Failed to prepare upload (${signedUrlResponse.status})`)
+      }
+
+      const { uploads } = await signedUrlResponse.json()
+      console.log('Got signed URLs for', uploads.length, 'files')
+
+      // Step 2: Upload each file directly to Supabase (bypasses Vercel body limit)
+      setAnalysisStep('Uploading files to secure storage...')
+      setAnalysisProgress(15)
+
+      const fileRefs: Array<{ storagePath: string; fileName: string; fileType: string; fileSize: number }> = []
+
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        const { file } = uploadedFiles[i]
+        const uploadInfo = uploads[i]
+
+        console.log(`Uploading ${file.name} directly to storage...`)
+        setAnalysisStep(`Uploading ${file.name}...`)
+        setAnalysisProgress(15 + Math.round((i / uploadedFiles.length) * 30))
+
+        await uploadFileToStorage(file, uploadInfo.signedUrl, uploadInfo.token)
+
+        fileRefs.push({
+          storagePath: uploadInfo.storagePath,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        })
+
+        console.log(`Uploaded ${file.name} -> ${uploadInfo.storagePath}`)
+      }
+
+      // Step 3: Call analyze-brand with storage paths (tiny JSON payload)
+      setAnalysisStep('Analyzing with AI...')
+      setAnalysisProgress(50)
+
+      // Start progress animation during AI analysis
+      let analysisProgressValue = 50
       const progressInterval = setInterval(() => {
-        if (currentStep < steps.length && !apiCallStarted) {
-          setAnalysisStep(steps[currentStep].step)
-          setAnalysisProgress(steps[currentStep].progress)
-          currentStep++
-        }
-      }, 2000) // Smooth, steady progress
+        analysisProgressValue = Math.min(analysisProgressValue + 3, 90)
+        setAnalysisProgress(analysisProgressValue)
+      }, 3000)
 
-      // Prepare files for upload - Claude handles PDFs natively!
-      const formDataToSend = new FormData()
-      let appendedCount = 0
-      
-      for (const { file } of uploadedFiles) {
-        console.log('Processing file:', file.name, 'type:', file.type, 'size:', (file.size / 1024 / 1024).toFixed(2) + 'MB')
-        // Files API supports PDFs, images, text files, and more
-        formDataToSend.append('files', file)
-        appendedCount++
-      }
-
-      if (appendedCount === 0) {
-        clearInterval(progressInterval)
-        setIsAnalyzing(false)
-        setAnalysisProgress(0)
-        setAnalysisStep('')
-        return
-      }
-
-      // Start the API call with timeout
-      console.log('Starting API call with', appendedCount, 'files')
       const timeoutId = setTimeout(() => {
         if (abortControllerRef.current) {
           abortControllerRef.current.abort()
         }
       }, 180000) // 180s timeout for large PDFs
-      
-      // Mark that API call has started
-      apiCallStarted = true
-      setAnalysisStep('Analyzing with AI...')
-      setAnalysisProgress(70)
-      
+
       let response: Response
       try {
-        console.log('Sending request to /api/analyze-brand')
+        console.log('Sending analyze request with', fileRefs.length, 'storage paths')
         response = await fetch('/api/analyze-brand', {
           method: 'POST',
-          body: formDataToSend,
-          signal: abortControllerRef.current.signal
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: fileRefs }),
+          signal: abortControllerRef.current.signal,
         })
         console.log('API response received:', response.status)
       } catch (fetchError: any) {
@@ -635,7 +671,6 @@ export function BrandIdentityEnhanced({
         clearTimeout(timeoutId)
         console.error('API call failed:', fetchError)
         if (fetchError.name === 'AbortError') {
-          // Check if it was a user cancellation vs timeout
           if (!isAnalyzing) {
             return // User cancelled, don't show error
           }
@@ -643,7 +678,7 @@ export function BrandIdentityEnhanced({
         }
         throw fetchError
       }
-      
+
       clearTimeout(timeoutId)
       clearInterval(progressInterval)
 

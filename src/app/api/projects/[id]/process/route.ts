@@ -32,7 +32,8 @@ export async function POST(
     const promises = [];
 
     // Process transcription if needed
-    const hasTranscriptionTask = project.tasks.some(
+    const tasks = (project.tasks as any[]) || [];
+    const hasTranscriptionTask = tasks.some(
       (task: any) => task.type === 'transcription' && (task.status === 'pending' || task.status === 'processing')
     );
 
@@ -66,7 +67,7 @@ export async function POST(
     }
 
     // Process clips if needed
-    const hasClipsTask = project.tasks.some(
+    const hasClipsTask = tasks.some(
       (task: any) => task.type === 'clips' && (task.status === 'pending' || task.status === 'processing')
     );
 

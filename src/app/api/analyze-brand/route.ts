@@ -4,7 +4,7 @@ import Anthropic, { toFile } from '@anthropic-ai/sdk'
 import { Readable } from 'stream'
 import { createClient } from '@supabase/supabase-js'
 
-// Configure for file uploads - 25MB per file limit, up to 10 files
+// Configure for file processing - no large uploads hit this route anymore
 export const runtime = 'nodejs'
 export const maxDuration = 300 // Allow up to 5 minutes for large documents
 
@@ -12,11 +12,18 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!
 })
 
-// Supabase admin client for URL fallback uploads
+// Supabase admin client for fetching files from storage
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+interface StorageFileRef {
+  storagePath: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}
 
 export async function POST(request: NextRequest) {
   console.log('[Brand Analysis] Request received')
@@ -28,42 +35,57 @@ export async function POST(request: NextRequest) {
     }
     console.log('[Brand Analysis] User authenticated:', userId)
 
-    const formData = await request.formData()
-    let files = formData.getAll('files') as File[]
-    // Backward compatibility: accept single 'file' field too
-    const singleFile = formData.get('file') as File | null
-    if (files.length === 0 && singleFile) {
-      files = [singleFile]
-    }
-    console.log('[Brand Analysis] Files received:', files.length, files.map(f => ({ name: f.name, type: f.type, size: f.size })))
-    
-    if (files.length === 0) {
+    // Accept JSON body with storage paths (new approach - bypasses Vercel body limit)
+    const body = await request.json()
+    const fileRefs = body.files as StorageFileRef[]
+
+    if (!fileRefs || !Array.isArray(fileRefs) || fileRefs.length === 0) {
       console.log('[Brand Analysis] No files provided')
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
-    // Upload files to Claude's Files API first (limited to 25MB per file)
+    console.log('[Brand Analysis] File refs received:', fileRefs.length, fileRefs.map(f => ({
+      name: f.fileName,
+      type: f.fileType,
+      size: f.fileSize,
+      path: f.storagePath
+    })))
+
+    // Download files from Supabase and upload to Claude's Files API
     const messageContent: any[] = []
     const uploadedFileIds: string[] = []
     const uploadedIdByKey = new Map<string, string>()
-    
-    try {
-      for (const file of files) {
-        console.log(`[Brand Analysis] Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB) to Files API`)
 
-        // Stream upload to Files API to avoid loading entire file into memory
-        const nodeStream = Readable.fromWeb(file.stream() as any)
+    try {
+      for (const fileRef of fileRefs) {
+        console.log(`[Brand Analysis] Downloading ${fileRef.fileName} from storage: ${fileRef.storagePath}`)
+
+        // Download from Supabase storage
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('videos')
+          .download(fileRef.storagePath)
+
+        if (downloadError || !fileData) {
+          console.error(`[Brand Analysis] Failed to download ${fileRef.fileName}:`, downloadError)
+          throw new Error(`Failed to download file: ${fileRef.fileName}`)
+        }
+
+        console.log(`[Brand Analysis] Uploading ${fileRef.fileName} (${(fileRef.fileSize / 1024 / 1024).toFixed(2)}MB) to Files API`)
+
+        // Convert Blob to stream for Anthropic upload
+        const buffer = Buffer.from(await fileData.arrayBuffer())
+        const nodeStream = Readable.from(buffer)
         const uploadedFile = await (anthropic.beta.files.upload as any)(
-          { file: await toFile(nodeStream, file.name, { type: file.type || 'application/octet-stream' }) },
+          { file: await toFile(nodeStream, fileRef.fileName, { type: fileRef.fileType || 'application/octet-stream' }) },
           { betas: ['files-api-2025-04-14'] }
         )
-        
-        console.log(`[Brand Analysis] Uploaded ${file.name} with file_id: ${uploadedFile.id}`)
+
+        console.log(`[Brand Analysis] Uploaded ${fileRef.fileName} with file_id: ${uploadedFile.id}`)
         uploadedFileIds.push(uploadedFile.id)
-        uploadedIdByKey.set(`${file.name}:${file.size}`, uploadedFile.id)
-        
+        uploadedIdByKey.set(`${fileRef.fileName}:${fileRef.fileSize}`, uploadedFile.id)
+
         // Add appropriate content block based on file type
-        if (file.type === 'application/pdf') {
+        if (fileRef.fileType === 'application/pdf') {
           messageContent.push({
             type: 'document',
             source: {
@@ -71,7 +93,7 @@ export async function POST(request: NextRequest) {
               file_id: uploadedFile.id
             }
           })
-        } else if (file.type && file.type.startsWith('image/')) {
+        } else if (fileRef.fileType && fileRef.fileType.startsWith('image/')) {
           messageContent.push({
             type: 'image',
             source: {
@@ -79,8 +101,7 @@ export async function POST(request: NextRequest) {
               file_id: uploadedFile.id
             }
           })
-        } else if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
-          // Text files also use document blocks
+        } else if (fileRef.fileType === 'text/plain' || fileRef.fileName.endsWith('.txt') || fileRef.fileName.endsWith('.md')) {
           messageContent.push({
             type: 'document',
             source: {
@@ -89,8 +110,7 @@ export async function POST(request: NextRequest) {
             }
           })
         } else {
-          // For unsupported file types, we could convert to text and include directly
-          console.log('[Brand Analysis] File type not directly supported, will include as document:', file.type)
+          console.log('[Brand Analysis] File type not directly supported, will include as document:', fileRef.fileType)
           messageContent.push({
             type: 'document',
             source: {
@@ -110,12 +130,15 @@ export async function POST(request: NextRequest) {
           console.error(`[Brand Analysis] Failed to cleanup file ${fileId}:`, deleteError)
         }
       }
+      // Clean up Supabase storage files on error
+      cleanupStorageFiles(fileRefs)
       throw uploadError
     }
 
     console.log('[Brand Analysis] Processed files:', messageContent.length)
     if (messageContent.length === 0) {
       console.log('[Brand Analysis] No content to analyze after processing')
+      cleanupStorageFiles(fileRefs)
       return NextResponse.json({ error: 'No content to analyze' }, { status: 400 })
     }
 
@@ -243,7 +266,7 @@ Return a comprehensive JSON object. Be extremely detailed. Output must be valid 
 
     // Call Claude API with file references
     console.log('[Brand Analysis] Calling Claude API with', messageContent.length, 'files')
-    
+
     let message
     try {
       message = await (anthropic.beta.messages.create as any)({
@@ -269,19 +292,25 @@ Keep all string values under 150 characters. Use this structure:
         console.log('[Brand Analysis] Claude could not process PDF via file_id. Retrying with base64 document...')
         // Fallback: rebuild content with base64 for PDFs, keep images via file_id
         const fallbackContent: any[] = []
-        for (const file of files) {
-          if (file.type === 'application/pdf') {
-            const base64 = Buffer.from(await file.arrayBuffer()).toString('base64')
-            fallbackContent.push({
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: base64
-              }
-            })
-          } else if (file.type && file.type.startsWith('image/')) {
-            const id = uploadedIdByKey.get(`${file.name}:${file.size}`)
+        for (const fileRef of fileRefs) {
+          if (fileRef.fileType === 'application/pdf') {
+            // Re-download and convert to base64
+            const { data: pdfData } = await supabase.storage
+              .from('videos')
+              .download(fileRef.storagePath)
+            if (pdfData) {
+              const base64 = Buffer.from(await pdfData.arrayBuffer()).toString('base64')
+              fallbackContent.push({
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: base64
+                }
+              })
+            }
+          } else if (fileRef.fileType && fileRef.fileType.startsWith('image/')) {
+            const id = uploadedIdByKey.get(`${fileRef.fileName}:${fileRef.fileSize}`)
             if (id) {
               fallbackContent.push({
                 type: 'image',
@@ -313,6 +342,7 @@ Keep all string values under 150 characters. Use this structure:
         } catch (secondErr: any) {
           const msg2 = secondErr?.error?.message || secondErr?.message || ''
           console.error('[Brand Analysis] Fallback also failed:', msg2)
+          cleanupStorageFiles(fileRefs)
           return NextResponse.json({
             error: 'The PDF could not be processed. Try exporting to a standard, non-encrypted PDF, or upload key pages as images.'
           }, { status: 400 })
@@ -321,7 +351,7 @@ Keep all string values under 150 characters. Use this structure:
         throw apiErr
       }
     }
-    
+
     console.log('[Brand Analysis] Claude API response received')
 
     // Extract the text content from Claude's response (join all text blocks)
@@ -334,7 +364,7 @@ Keep all string values under 150 characters. Use this structure:
     if (!rawText) {
       throw new Error('No analysis content returned from Claude')
     }
-    
+
     // Log response length for debugging
     console.log(`[Brand Analysis] Response length: ${rawText.length} chars`)
 
@@ -383,48 +413,13 @@ Keep all string values under 150 characters. Use this structure:
     // Attempt to repair common JSON issues
     function repairJson(input: string): string {
       let result = input
-      
+
       // Remove control characters except newlines and tabs
       result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-      
-      // Fix unescaped newlines inside strings (common LLM issue)
-      // This is tricky - we need to be inside a string context
-      let inString = false
-      let escaped = false
-      let chars = result.split('')
-      
-      for (let i = 0; i < chars.length; i++) {
-        const ch = chars[i]
-        
-        if (inString) {
-          if (!escaped && ch === '"') {
-            inString = false
-          } else if (!escaped && (ch === '\n' || ch === '\r')) {
-            // Replace unescaped newline in string with escaped version
-            chars[i] = '\\n'
-          }
-          escaped = ch === '\\' ? !escaped : false
-        } else if (ch === '"') {
-          inString = true
-          escaped = false
-        }
-      }
-      result = chars.join('')
-      
+
       // Fix trailing commas before } or ]
       result = result.replace(/,(\s*[}\]])/g, '$1')
-      
-      // Fix missing commas between properties ("}"{" or "]["  patterns with optional whitespace)
-      result = result.replace(/}(\s*)"/g, '},$1"')
-      result = result.replace(/](\s*)"/g, '],$1"')
-      result = result.replace(/"(\s*)"/g, '",$1"') // This might be too aggressive, be careful
-      
-      // Actually, the above "," insertion can break things. Let's be more conservative.
-      // Reset and just do safe fixes
-      result = input
-      result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove control chars
-      result = result.replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
-      
+
       return result
     }
 
@@ -433,7 +428,7 @@ Keep all string values under 150 characters. Use this structure:
       analysis = JSON.parse(jsonCandidate)
     } catch (parseError) {
       console.log('[Brand Analysis] First parse failed, attempting repair...')
-      
+
       // Try to repair and parse again
       try {
         const repaired = repairJson(jsonCandidate)
@@ -443,7 +438,7 @@ Keep all string values under 150 characters. Use this structure:
         // Log the problematic JSON for debugging (first 500 chars)
         console.error('[Brand Analysis] JSON repair failed. Raw response preview:', jsonCandidate.substring(0, 500))
         console.error('[Brand Analysis] Parse error:', parseError)
-        
+
         // Try one more thing: use a more lenient approach - extract key fields manually
         try {
           console.log('[Brand Analysis] Attempting manual field extraction...')
@@ -455,7 +450,7 @@ Keep all string values under 150 characters. Use this structure:
         }
       }
     }
-    
+
     // Manual field extraction as last resort
     function extractFieldsManually(input: string): any {
       const result: any = {
@@ -468,7 +463,7 @@ Keep all string values under 150 characters. Use this structure:
         competitors: { direct: [], indirect: [], positioning: '', differentiators: [] },
         logoUsage: { guidelines: [], clearSpace: '', minimumSize: '', variations: [] }
       }
-      
+
       // Extract hex colors using regex
       const hexColors = input.match(/#[0-9A-Fa-f]{6}/g) || []
       if (hexColors.length > 0) {
@@ -476,7 +471,7 @@ Keep all string values under 150 characters. Use this structure:
         result.colors.secondary.hex = hexColors.slice(3, 6)
         result.colors.accent.hex = hexColors.slice(6, 9)
       }
-      
+
       // Extract font families (common patterns)
       const fontMatch = input.match(/"family"\s*:\s*"([^"]+)"/g)
       if (fontMatch && fontMatch.length > 0) {
@@ -484,24 +479,24 @@ Keep all string values under 150 characters. Use this structure:
         if (fonts[0]) result.typography.primary.family = fonts[0] as string
         if (fonts[1]) result.typography.secondary.family = fonts[1] as string
       }
-      
+
       // Extract tone/personality words
       const toneMatch = input.match(/"tone"\s*:\s*\[([^\]]+)\]/i)
       if (toneMatch) {
         const tones = toneMatch[1].match(/"([^"]+)"/g)?.map(t => t.replace(/"/g, '')) || []
         result.voice.tone = tones
       }
-      
+
       // Extract mission statement
       const missionMatch = input.match(/"mission"\s*:\s*"([^"]{10,500})"/i)
       if (missionMatch) {
         result.brandStrategy.mission = missionMatch[1]
       }
-      
+
       return result
     }
 
-    // Clean up uploaded files after successful analysis
+    // Clean up uploaded Anthropic files after successful analysis
     console.log('[Brand Analysis] Cleaning up uploaded files')
     for (const fileId of uploadedFileIds) {
       try {
@@ -511,17 +506,20 @@ Keep all string values under 150 characters. Use this structure:
         console.error(`[Brand Analysis] Failed to delete file ${fileId}:`, deleteError)
       }
     }
-    
+
+    // Clean up Supabase storage files (they're temporary)
+    cleanupStorageFiles(fileRefs)
+
     // Return exactly what AI extracted; UI handles conditional rendering
     console.log('[Brand Analysis] Returning analysis with keys:', Object.keys(analysis))
     return NextResponse.json(analysis)
   } catch (error: any) {
     console.error('Brand analysis error:', error)
-    
+
     // Provide specific error messages
     let errorMessage = 'Failed to analyze brand materials'
     let statusCode = 500
-    
+
     if (error.status === 413 || error.message?.includes('request_too_large')) {
       errorMessage = 'File exceeds the 25MB limit per file'
       statusCode = 413
@@ -539,10 +537,25 @@ Keep all string values under 150 characters. Use this structure:
     } else if (error.message) {
       errorMessage = error.message
     }
-    
+
     return NextResponse.json(
       { error: errorMessage },
       { status: statusCode }
     )
   }
+}
+
+// Clean up temporary files from Supabase storage (fire-and-forget)
+function cleanupStorageFiles(fileRefs: StorageFileRef[]) {
+  const paths = fileRefs.map(f => f.storagePath)
+  supabase.storage
+    .from('videos')
+    .remove(paths)
+    .then(({ error }) => {
+      if (error) {
+        console.error('[Brand Analysis] Failed to cleanup storage files:', error)
+      } else {
+        console.log(`[Brand Analysis] Cleaned up ${paths.length} storage files`)
+      }
+    })
 }

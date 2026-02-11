@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { publishToSocialPlatform, refreshAccessToken } from '@/lib/social/platform-publishers'
 import { handleError, AppError } from '@/lib/error-handler'
 import { z } from 'zod'
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { content, platforms, media, scheduledFor, projectId, clipIds } = validation.data
-    const supabase = createSupabaseBrowserClient()
+    const supabase = supabaseAdmin  // Use admin client — server-side route
     
     // If we have clip IDs and a project ID, ensure clips are downloaded
     let finalMediaUrls = media || []

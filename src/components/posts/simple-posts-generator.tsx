@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Sparkles, Image as ImageIcon, Copy, Check, RefreshCw, Eye } from 'lucide-react'
+import { Loader2, Sparkles, Image as ImageIcon, Copy, Check, RefreshCw, Eye, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -42,39 +42,138 @@ export function SimplePostsGenerator({
   const [suggestions, setSuggestions] = useState<SimplifiedPostSuggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [generationStatus, setGenerationStatus] = useState<string>('')
   const [selectedSuggestion, setSelectedSuggestion] = useState<SimplifiedPostSuggestion | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [generationError, setGenerationError] = useState<string | null>(null)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const activeJobIdRef = useRef<string | null>(null)
 
-  // Load existing suggestions
+  // Clean up polling on unmount
   useEffect(() => {
-    loadSuggestions()
-  }, [projectId])
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+      }
+    }
+  }, [])
 
-  const loadSuggestions = async () => {
+  // Load existing suggestions + check for in-progress jobs on mount
+  useEffect(() => {
+    loadSuggestionsAndCheckStatus()
+  }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadSuggestionsAndCheckStatus = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const response = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
-      const data = await response.json()
-      
-      if (data.success && data.suggestions) {
-        setSuggestions(data.suggestions)
-        if (data.suggestions.length > 0 && !selectedSuggestion) {
-          setSelectedSuggestion(data.suggestions[0])
+      // Load suggestions
+      const suggestionsResponse = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
+      if (suggestionsResponse.ok) {
+        const data = await suggestionsResponse.json()
+        const loaded = data.suggestions || []
+        setSuggestions(loaded)
+        if (loaded.length > 0 && !selectedSuggestion) {
+          setSelectedSuggestion(loaded[0])
+        }
+      }
+
+      // Check if there's already a running/pending job
+      const statusResponse = await fetch(`/api/posts/generation-status?projectId=${projectId}`)
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json()
+        if (statusData.status === 'pending' || statusData.status === 'running') {
+          // Resume polling for this job
+          activeJobIdRef.current = statusData.jobId
+          setGenerating(true)
+          setGenerationStatus(statusData.status === 'pending' ? 'Queued...' : 'AI is generating posts...')
+          startPolling(statusData.jobId)
         }
       }
     } catch (error) {
       console.error('Error loading suggestions:', error)
-      toast.error('Failed to load post suggestions')
     } finally {
       setLoading(false)
     }
   }
 
+  const loadSuggestions = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/posts/suggestions?projectId=${projectId}`)
+      if (response.ok) {
+        const data = await response.json()
+        const loaded = data.suggestions || []
+        setSuggestions(loaded)
+        if (loaded.length > 0) {
+          setSelectedSuggestion(loaded[0])
+        }
+      }
+    } catch (error) {
+      console.error('Error loading suggestions:', error)
+    }
+  }, [projectId])
+
+  // ── Polling ──────────────────────────────────────────────────────────────
+
+  const startPolling = useCallback((jobId: string) => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+    }
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/posts/generation-status?jobId=${jobId}`)
+        if (!response.ok) return
+
+        const data = await response.json()
+
+        if (data.status === 'completed') {
+          // Done! Load results
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current)
+            pollIntervalRef.current = null
+          }
+          activeJobIdRef.current = null
+          setGenerating(false)
+          setGenerationStatus('')
+          setGenerationError(null)
+          await loadSuggestions()
+          toast.success(`Generated ${data.completedItems || 5} post suggestions!`)
+        } else if (data.status === 'failed') {
+          // Failed
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current)
+            pollIntervalRef.current = null
+          }
+          activeJobIdRef.current = null
+          setGenerating(false)
+          setGenerationStatus('')
+          setGenerationError(data.error || 'Generation failed. Please try again.')
+          toast.error(data.error || 'Post generation failed.')
+        } else if (data.status === 'running') {
+          setGenerationStatus('AI is generating your posts...')
+        } else if (data.status === 'pending') {
+          setGenerationStatus('Queued — starting shortly...')
+        }
+      } catch (err) {
+        console.error('Polling error:', err)
+        // Don't stop polling on transient network errors
+      }
+    }
+
+    // Poll immediately, then every 3 seconds
+    poll()
+    pollIntervalRef.current = setInterval(poll, 3000)
+  }, [loadSuggestions])
+
+  // ── Generation trigger ───────────────────────────────────────────────────
+
   const generateSuggestions = async () => {
     try {
       setGenerating(true)
-      toast.info('Generating AI post suggestions...')
-      
+      setGenerationError(null)
+      setGenerationStatus('Starting generation...')
+
       const response = await fetch('/api/posts/generate-smart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,21 +195,39 @@ export function SimplePostsGenerator({
         })
       })
 
+      if (!response.ok) {
+        let errorMessage = 'Failed to start generation'
+        try {
+          const errorData = await response.json()
+          if (errorData?.error) errorMessage = errorData.error
+        } catch {}
+        throw new Error(errorMessage)
+      }
+
       const data = await response.json()
-      
-      if (data.success) {
-        toast.success(`Generated ${data.suggestions?.length || 0} post suggestions!`)
-        await loadSuggestions()
+
+      if (data.jobId) {
+        // Job created — start polling
+        activeJobIdRef.current = data.jobId
+        setGenerationStatus(data.status === 'running' ? 'Already generating...' : 'Generation started...')
+        toast.info('AI is creating your posts — this takes about a minute', { duration: 4000 })
+        startPolling(data.jobId)
       } else {
-        toast.error('Failed to generate suggestions')
+        // Shouldn't happen with the new flow, but handle gracefully
+        setGenerating(false)
+        setGenerationStatus('')
+        await loadSuggestions()
       }
     } catch (error) {
-      console.error('Error generating suggestions:', error)
-      toast.error('Failed to generate post suggestions')
-    } finally {
+      console.error('Error triggering generation:', error)
       setGenerating(false)
+      setGenerationStatus('')
+      setGenerationError(error instanceof Error ? error.message : 'Failed to generate posts')
+      toast.error('Failed to start post generation. Please try again.')
     }
   }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   const copyToClipboard = async (text: string, suggestionId: string) => {
     try {
@@ -128,7 +245,6 @@ export function SimplePostsGenerator({
     // TODO: Implement image generation
   }
 
-  // Helper to safely get data from suggestion
   const getSuggestionData = (suggestion: SimplifiedPostSuggestion) => {
     const type = suggestion.type || suggestion.content_type || 'post'
     const title = suggestion.title || suggestion.metadata?.title || `${type} suggestion`
@@ -137,11 +253,7 @@ export function SimplePostsGenerator({
                      suggestion.metadata?.eligible_platforms || 
                      (suggestion.eligibility ? Object.keys(suggestion.eligibility) : []) ||
                      []
-    
-    // Get copy content from either field
     const copyData = suggestion.platform_copy || suggestion.copy_variants || {}
-    
-    // Get image prompts
     const imagePrompts = suggestion.images?.map(img => ({
       id: img.id || Math.random().toString(),
       prompt: img.prompt || 'No prompt available',
@@ -151,6 +263,8 @@ export function SimplePostsGenerator({
     return { type, title, description, platforms, copyData, imagePrompts }
   }
 
+  // ── Loading state ────────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -158,6 +272,8 @@ export function SimplePostsGenerator({
       </div>
     )
   }
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -168,7 +284,7 @@ export function SimplePostsGenerator({
           <p className="text-sm text-muted-foreground">
             {suggestions.length > 0 
               ? `${suggestions.length} suggestions available`
-              : 'No suggestions yet - generate some!'}
+              : 'No suggestions yet — generate some!'}
           </p>
         </div>
         <Button
@@ -184,26 +300,70 @@ export function SimplePostsGenerator({
           ) : (
             <>
               <Sparkles className="h-4 w-4" />
-              Generate Posts
+              {suggestions.length > 0 ? 'Regenerate' : 'Generate Posts'}
             </>
           )}
         </Button>
       </div>
 
-      {suggestions.length === 0 ? (
+      {/* Generation progress indicator */}
+      {generating && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="relative">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="absolute inset-0 animate-ping opacity-20">
+                <Sparkles className="h-8 w-8 text-primary" />
+              </div>
+            </div>
+            <div>
+              <p className="font-medium text-sm">Creating AI-powered posts</p>
+              <p className="text-xs text-muted-foreground">{generationStatus || 'Working...'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error state with retry */}
+      {generationError && !generating && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+              <div>
+                <p className="font-medium text-sm text-destructive">Generation failed</p>
+                <p className="text-xs text-muted-foreground">{generationError}</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setGenerationError(null)
+                generateSuggestions()
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {suggestions.length === 0 && !generating ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Sparkles className="h-12 w-12 text-muted-foreground mb-4" />
             <h4 className="text-lg font-medium mb-2">No Post Suggestions Yet</h4>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              Click "Generate Posts" to create AI-powered social media content based on your video analysis
+              Click &quot;Generate Posts&quot; to create AI-powered social media content based on your video analysis
             </p>
             <Button onClick={generateSuggestions} disabled={generating}>
-              {generating ? 'Generating...' : 'Generate Your First Posts'}
+              Generate Your First Posts
             </Button>
           </CardContent>
         </Card>
-      ) : (
+      ) : suggestions.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Suggestions List */}
           <div className="space-y-3">
@@ -306,7 +466,7 @@ export function SimplePostsGenerator({
                           ) : (
                             <div className="p-4 bg-muted rounded-lg text-center">
                               <p className="text-sm text-muted-foreground">
-                                No image prompts available. Click "Generate Images" to create visual content.
+                                No image prompts available. Click &quot;Generate Images&quot; to create visual content.
                               </p>
                             </div>
                           )}

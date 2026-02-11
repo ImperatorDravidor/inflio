@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
+import { ProjectService } from '@/lib/services'
 
 interface ProcessingTask {
   type: string
@@ -42,10 +43,10 @@ export function useTaskPolling(
   const fetchProject = useCallback(async () => {
     if (!projectId) return null
     try {
-      const response = await fetch(`/api/projects/${projectId}`)
-      if (!response.ok) return null
-      const data = await response.json()
-      return data.project || data
+      // Use ProjectService directly instead of the API route
+      // to avoid potential issues with joins on non-existent tables
+      const project = await ProjectService.getProject(projectId)
+      return project
     } catch {
       return null
     }

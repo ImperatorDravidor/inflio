@@ -175,11 +175,12 @@ export async function GET(request: NextRequest) {
             }
           })
 
-          // Store clips in database
+          // Store clips in database (with null safety on folders)
           console.log('[Process Clips GET] Storing', transformedClips.length, 'clips in database')
+          const existingFolders = project.folders || { clips: [], blog: [], social: [], images: [] }
           await updateProjectServer(projectId, {
             folders: {
-              ...project.folders,
+              ...existingFolders,
               clips: transformedClips
             }
           })

@@ -200,20 +200,37 @@ export default function ProfilePage() {
     }
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('type', 'personal-photo')
-      
-      const response = await fetch('/api/upload', {
+      // Step 1: Get a signed upload URL
+      const signedUrlResponse = await fetch('/api/storage/signed-url', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'image',
+          files: [{ fileName: file.name, fileType: file.type, fileSize: file.size }],
+        }),
       })
 
-      if (!response.ok) {
+      if (!signedUrlResponse.ok) {
+        throw new Error('Failed to prepare upload')
+      }
+
+      const { uploads } = await signedUrlResponse.json()
+      const uploadInfo = uploads[0]
+
+      // Step 2: Upload directly to Supabase (bypasses Vercel body limit)
+      const uploadResponse = await fetch(uploadInfo.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+
+      if (!uploadResponse.ok) {
         throw new Error('Failed to upload avatar')
       }
 
-      const { url } = await response.json()
+      // Step 3: Construct the public URL
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const url = `${supabaseUrl}/storage/v1/object/public/videos/${uploadInfo.storagePath}`
       
       // Update user profile with new avatar URL
       await user?.setProfileImage({ file: url })
