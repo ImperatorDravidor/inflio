@@ -116,7 +116,7 @@ export class NanoBananaService {
    * CRITICAL: All prompts emphasize HYPERREALISM and EXACT preservation
    * of the person's actual appearance from reference photos
    */
-  private getPortraitScenarios(personName: string): Array<{
+  getPortraitScenarios(personName: string): Array<{
     type: PortraitType
     category: 'general' | 'use_case'
     title: string

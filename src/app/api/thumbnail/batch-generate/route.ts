@@ -85,9 +85,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Queue generation jobs with Inngest
+    // Send to Inngest — each thumbnail is its own durable step
     await inngest.send({
-      name: 'thumbnail.batch.generate',
+      name: 'thumbnail/batch.generate',
       data: {
         batchId,
         projectId,
@@ -95,9 +95,6 @@ export async function POST(req: NextRequest) {
         jobs: batchJobs
       }
     })
-
-    // Start processing immediately (non-blocking)
-    processBatchInBackground(batchId, projectId, userId, batchJobs)
 
     return NextResponse.json({
       success: true,
@@ -187,90 +184,5 @@ export async function GET(req: NextRequest) {
       { error: 'Failed to get batch status' },
       { status: 500 }
     )
-  }
-}
-
-// Background processing function
-async function processBatchInBackground(
-  batchId: string,
-  projectId: string,
-  userId: string,
-  jobs: any[]
-) {
-  const generationIds: string[] = []
-  let completedCount = 0
-  let failedCount = 0
-
-  // Update batch status to processing
-  await supabaseAdmin
-    .from('thumbnail_batch_jobs')
-    .update({
-      status: 'processing',
-      started_at: new Date().toISOString()
-    })
-    .eq('id', batchId)
-
-  // Process each job
-  for (const job of jobs) {
-    try {
-      // Call the main generation endpoint
-      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/thumbnail/generate-enhanced`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.INTERNAL_API_KEY}` // Internal API key for service-to-service
-        },
-        body: JSON.stringify({
-          projectId,
-          prompt: job.prompt,
-          settings: job.settings
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        generationIds.push(data.id)
-        completedCount++
-      } else {
-        failedCount++
-      }
-
-      // Update progress
-      await supabaseAdmin
-        .from('thumbnail_batch_jobs')
-        .update({
-          completed_count: completedCount,
-          failed_count: failedCount,
-          generation_ids: generationIds
-        })
-        .eq('id', batchId)
-
-    } catch (error) {
-      console.error('Job processing error:', error)
-      failedCount++
-    }
-
-    // Add delay between generations to avoid rate limits
-    await new Promise(resolve => setTimeout(resolve, 2000))
-  }
-
-  // Update final status
-  await supabaseAdmin
-    .from('thumbnail_batch_jobs')
-    .update({
-      status: failedCount === jobs.length ? 'failed' : 'completed',
-      completed_at: new Date().toISOString(),
-      generation_ids: generationIds
-    })
-    .eq('id', batchId)
-
-  // Update user usage
-  if (completedCount > 0) {
-    await supabaseAdmin
-      .rpc('increment_usage', {
-        user_id: userId,
-        field: 'thumbnails_generated',
-        amount: completedCount
-      })
   }
 }

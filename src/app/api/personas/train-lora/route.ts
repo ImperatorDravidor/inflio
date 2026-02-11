@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { FALService } from '@/lib/services/fal-ai-service'
+import { inngest } from '@/inngest/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       personaId,
-      imagesDataUrl, // ZIP file URL with training images
+      imagesDataUrl,
       triggerPhrase,
       learningRate = 0.00009,
       steps = 2500,
@@ -71,15 +71,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Start training asynchronously
-    trainLoRAAsync(job.id, {
-      imagesDataUrl,
-      triggerPhrase: triggerPhrase || `photo of ${persona.name}`,
-      learningRate,
-      steps,
-      multiresolutionTraining,
-      subjectCrop,
-      createMasks
+    // Send to Inngest — training runs as durable background steps (10-30 min safe)
+    await inngest.send({
+      name: 'persona/train.lora',
+      data: {
+        jobId: job.id,
+        personaId,
+        userId,
+        imagesDataUrl,
+        triggerPhrase: triggerPhrase || `photo of ${persona.name}`,
+        learningRate,
+        steps,
+        multiresolutionTraining,
+        subjectCrop,
+        createMasks
+      }
     })
 
     return NextResponse.json({
@@ -93,122 +99,6 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to start LoRA training' },
       { status: 500 }
     )
-  }
-}
-
-// Async training function
-async function trainLoRAAsync(
-  jobId: string,
-  params: {
-    imagesDataUrl: string
-    triggerPhrase: string
-    learningRate: number
-    steps: number
-    multiresolutionTraining: boolean
-    subjectCrop: boolean
-    createMasks: boolean
-  }
-) {
-  try {
-    // Check if FAL is configured
-    if (!FALService.isConfigured()) {
-      throw new Error('FAL API key not configured')
-    }
-
-    // Start training
-    const result = await FALService.trainLoRA({
-      imagesDataUrl: params.imagesDataUrl,
-      triggerPhrase: params.triggerPhrase,
-      learningRate: params.learningRate,
-      steps: params.steps,
-      multiresolutionTraining: params.multiresolutionTraining,
-      subjectCrop: params.subjectCrop,
-      createMasks: params.createMasks
-    })
-
-    // Update job with results
-    await supabaseAdmin
-      .from('lora_training_jobs')
-      .update({
-        status: 'completed',
-        lora_model_url: result.diffusersLoraFile.url,
-        lora_config_url: result.configFile.url,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', jobId)
-
-    // Fetch job to get persona_id and user_id
-    const { data: jobRow } = await supabaseAdmin
-      .from('lora_training_jobs')
-      .select('persona_id, user_id')
-      .eq('id', jobId)
-      .single()
-
-    if (jobRow?.persona_id) {
-      // Persist LoRA details onto persona and mark as trained
-      await supabaseAdmin
-        .from('personas')
-        .update({
-          status: 'trained',
-          lora_model_url: result.diffusersLoraFile.url,
-          lora_config_url: result.configFile.url,
-          lora_trigger_phrase: params.triggerPhrase,
-          lora_training_status: 'completed',
-          lora_trained_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          training_job_id: jobId
-        })
-        .eq('id', jobRow.persona_id)
-
-      // Ensure default_persona_id is set if missing
-      if (jobRow.user_id) {
-        const { data: profile } = await supabaseAdmin
-          .from('user_profiles')
-          .select('default_persona_id')
-          .eq('clerk_user_id', jobRow.user_id)
-          .single()
-
-        if (!profile?.default_persona_id) {
-          await supabaseAdmin
-            .from('user_profiles')
-            .update({ default_persona_id: jobRow.persona_id })
-            .eq('clerk_user_id', jobRow.user_id)
-        }
-      }
-    }
-
-    console.log(`LoRA training completed for job ${jobId}`)
-  } catch (error) {
-    console.error(`LoRA training failed for job ${jobId}:`, error)
-
-    // Update job as failed
-    await supabaseAdmin
-      .from('lora_training_jobs')
-      .update({
-        status: 'failed',
-        error_message: error instanceof Error ? error.message : 'Unknown error',
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', jobId)
-
-    // Also reflect failure on persona status if possible
-    const { data: jobRow } = await supabaseAdmin
-      .from('lora_training_jobs')
-      .select('persona_id')
-      .eq('id', jobId)
-      .single()
-
-    if (jobRow?.persona_id) {
-      await supabaseAdmin
-        .from('personas')
-        .update({
-          status: 'failed',
-          lora_training_status: 'failed',
-          updated_at: new Date().toISOString(),
-          training_job_id: jobId
-        })
-        .eq('id', jobRow.persona_id)
-    }
   }
 }
 
