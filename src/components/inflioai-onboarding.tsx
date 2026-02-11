@@ -948,9 +948,21 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                                     size="sm"
                                     variant="destructive"
                                     className="text-xs"
-                                    onClick={(e) => {
+                                    onClick={async (e) => {
                                       e.stopPropagation()
-                                      router.push('/personas')
+                                      try {
+                                        const resp = await fetch('/api/personas/retry', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({})
+                                        })
+                                        if (resp.ok) {
+                                          setPersonaStatus('analyzing')
+                                          setPortraitsGenerated(0)
+                                        }
+                                      } catch (err) {
+                                        console.error('Retry failed:', err)
+                                      }
                                     }}
                                   >
                                     Retry
