@@ -27,7 +27,7 @@ const UPLOAD_CONFIGS: Record<string, { bucket: string; pathPrefix: string; maxSi
   'persona-photo': {
     bucket: 'videos',
     pathPrefix: 'persona-photos',
-    maxSizeMB: 10,
+    maxSizeMB: 50,
     allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
   },
   'thumbnail': {

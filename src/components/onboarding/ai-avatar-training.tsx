@@ -405,9 +405,9 @@ export function AIAvatarTraining({
         continue
       }
       
-      // Check file size (10MB limit)
-      if (file.size > 10 * 1024 * 1024) {
-        rejectedFiles.push({ name: file.name, reason: `Too large (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)` })
+      // Check file size (50MB limit)
+      if (file.size > 50 * 1024 * 1024) {
+        rejectedFiles.push({ name: file.name, reason: `Too large (${(file.size / 1024 / 1024).toFixed(1)}MB > 50MB)` })
         continue
       }
       
