@@ -85,8 +85,7 @@ export async function POST(request: NextRequest) {
       // Don't fail - continue with persona creation
     }
 
-    // Send Inngest event to generate portraits in the background
-    // Each portrait runs as its own step — no timeout issues even for 10+ minutes
+    // Send event to Inngest — durable background job, each portrait = own step
     await inngest.send({
       name: 'persona/generate.portraits',
       data: {
