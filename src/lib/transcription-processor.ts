@@ -518,9 +518,14 @@ export async function processTranscription(params: {
           }
 
           // Call the generate-smart API internally
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'http://localhost:3000'
+          let baseUrl: string
+          if (process.env.NEXT_PUBLIC_APP_URL) {
+            baseUrl = process.env.NEXT_PUBLIC_APP_URL
+          } else if (process.env.VERCEL_URL) {
+            baseUrl = `https://${process.env.VERCEL_URL}`
+          } else {
+            baseUrl = 'http://localhost:3000'
+          }
 
           const response = await fetch(`${baseUrl}/api/posts/generate-smart`, {
             method: 'POST',

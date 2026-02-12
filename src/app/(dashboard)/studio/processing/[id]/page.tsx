@@ -55,7 +55,9 @@ export default function ProcessingPage() {
   const [loading, setLoading] = useState(true)
   const [processingStarted, setProcessingStarted] = useState(false)
   const [startTime, setStartTime] = useState<Date | null>(null)
+  const [elapsedDisplay, setElapsedDisplay] = useState<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const redirectingRef = useRef(false)
   const lastProgressRef = useRef<{ transcription: number; clips: number }>({ transcription: 0, clips: 0 })
 
@@ -220,12 +222,42 @@ export default function ProcessingPage() {
     pollingIntervalRef.current = setInterval(pollProject, 3000)
   }, [projectId, router])
 
+  // Live timer that updates every second
+  useEffect(() => {
+    if (!startTime) return
+
+    const updateTimer = () => {
+      const elapsed = Date.now() - startTime.getTime()
+      // Don't show "0m 0s" — wait until at least 3 seconds have passed
+      if (elapsed < 3000) {
+        setElapsedDisplay(null)
+        return
+      }
+      const minutes = Math.floor(elapsed / 60000)
+      const seconds = Math.floor((elapsed % 60000) / 1000)
+      setElapsedDisplay(`${minutes}m ${seconds}s`)
+    }
+
+    updateTimer()
+    timerIntervalRef.current = setInterval(updateTimer, 1000)
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+    }
+  }, [startTime])
+
   useEffect(() => {
     loadProject()
     
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
+      }
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
       }
     }
   }, [loadProject])
@@ -255,6 +287,8 @@ export default function ProcessingPage() {
     if (task.status === 'completed') return 'success'
     if (task.status === 'failed') return 'error'
     if (task.status === 'processing') return 'processing'
+    // If processing was kicked off but DB hasn't updated yet, show "queued"
+    if (task.status === 'pending' && processingStarted) return 'queued'
     return 'pending'
   }
 
@@ -266,8 +300,20 @@ export default function ProcessingPage() {
         return <IconX className="h-4 w-4" />
       case 'processing':
         return <IconLoader2 className="h-4 w-4 animate-spin" />
+      case 'queued':
+        return <IconLoader2 className="h-4 w-4 animate-spin" />
       default:
         return <IconClock className="h-4 w-4" />
+    }
+  }
+
+  const getTaskBadgeLabel = (status: string) => {
+    switch (status) {
+      case 'success': return 'completed'
+      case 'error': return 'failed'
+      case 'processing': return 'processing'
+      case 'queued': return 'starting'
+      default: return 'pending'
     }
   }
 
@@ -287,17 +333,8 @@ export default function ProcessingPage() {
   const stats = ProjectService.getProjectStats(project)
   const activeTask = project.tasks.find(t => t.status === 'processing')
 
-  const getElapsedTime = () => {
-    if (!startTime) return null
-    
-    const now = new Date()
-    const elapsed = now.getTime() - startTime.getTime()
-    
-    const minutes = Math.floor(elapsed / 60000)
-    const seconds = Math.floor((elapsed % 60000) / 1000)
-    
-    return `${minutes}m ${seconds}s`
-  }
+  // Whether processing has been kicked off but we haven't got a real status update yet
+  const isInitializing = processingStarted && project.tasks.every(t => t.status === 'pending')
 
   // Check if transcription is complete (main gate for redirect)
   const transcriptionTask = project.tasks.find(t => t.type === 'transcription')
@@ -349,7 +386,9 @@ export default function ProcessingPage() {
               {startTime && (
                 <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
                   <IconClock className="h-4 w-4" />
-                  <span className="font-medium">Processing for {getElapsedTime()}</span>
+                  <span className="font-medium">
+                    {elapsedDisplay ? `Processing for ${elapsedDisplay}` : 'Starting up...'}
+                  </span>
                 </div>
               )}
             </>
@@ -372,7 +411,10 @@ export default function ProcessingPage() {
                 <div>
                   <CardTitle>Overall Progress</CardTitle>
                   <CardDescription>
-                    {stats.completedTasks} of {stats.totalTasks} tasks completed
+                    {isInitializing
+                      ? 'Starting AI processing pipeline...'
+                      : `${stats.completedTasks} of ${stats.totalTasks} tasks completed`
+                    }
                   </CardDescription>
                 </div>
                 <div className="text-right">
@@ -408,18 +450,18 @@ export default function ProcessingPage() {
               <Card 
                 key={task.id} 
                 className={`overflow-hidden transition-all duration-300 ${
-                  task.status === 'processing' ? 'shadow-lg scale-[1.02]' : ''
+                  (status === 'processing' || status === 'queued') ? 'shadow-lg scale-[1.02]' : ''
                 }`}
               >
                 <div className={`h-1 bg-gradient-to-r ${detail.color} ${
-                  task.status === 'processing' ? 'animate-pulse' : ''
+                  (status === 'processing' || status === 'queued') ? 'animate-pulse' : ''
                 }`} />
                 <CardContent className="p-6">
                   <div className="flex items-center gap-6">
                     {/* Icon */}
                     <div className={`relative p-4 rounded-xl bg-gradient-to-br ${detail.color} text-white shadow-lg`}>
                       <Icon className="h-8 w-8" />
-                      {task.status === 'processing' && (
+                      {(status === 'processing' || status === 'queued') && (
                         <div className="absolute inset-0 rounded-xl bg-white/20 animate-pulse" />
                       )}
                     </div>
@@ -433,7 +475,7 @@ export default function ProcessingPage() {
                           className="gap-1"
                         >
                           {getTaskIcon(status)}
-                          {task.status}
+                          {getTaskBadgeLabel(status)}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{detail.description}</p>
@@ -441,6 +483,26 @@ export default function ProcessingPage() {
                         <IconClock className="h-3 w-3" />
                         <span>Estimated: {detail.estimatedTime.min}-{detail.estimatedTime.max} minutes</span>
                       </div>
+                      {/* Indeterminate progress for queued tasks */}
+                      {status === 'queued' && (
+                        <div className="space-y-2 mt-2">
+                          <div className="relative h-2 rounded-full overflow-hidden bg-muted">
+                            <div className="absolute inset-0 h-full w-full">
+                              <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-primary/40 to-transparent animate-shimmer rounded-full" />
+                            </div>
+                          </div>
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <motion.div
+                                animate={{ opacity: [0.5, 1, 0.5] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                                className="w-1.5 h-1.5 bg-amber-500 rounded-full"
+                              />
+                              Initializing...
+                            </span>
+                          </div>
+                        </div>
+                      )}
                       {task.status === 'processing' && (
                         <div className="space-y-2 mt-2">
                           <div className="relative">
