@@ -21,6 +21,14 @@ npm start
 npm run test:oauth
 ```
 
+## Inngest (Production)
+
+Persona portrait generation, post suggestions, Klap processing, etc. use **Inngest** for durable background jobs. For production:
+
+1. **Install [Inngest Vercel integration](https://app.inngest.com/settings/integrations/vercel/connect)** — auto-sets keys and syncs on deploy.
+2. If using Deployment Protection, configure bypass (see `docs/INNGEST_PRODUCTION_SETUP.md`).
+3. Manual sync after deploy: `curl -X PUT https://inflio.ai/api/inngest --fail-with-body`
+
 ## High-Level Architecture
 
 Inflio is an AI-powered video content platform built with:
