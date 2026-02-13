@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { updateTaskProgressServer } from '@/lib/server-project-utils'
 import { AdvancedPostsService } from '@/lib/ai-posts-advanced'
 import { fetchBrandAndPersonaContext, fetchDefaultPersonaId, extractTranscriptText } from '@/lib/ai-context'
+import { inngest } from '@/inngest/client'
 
 // Mock content analysis
 const mockContentAnalysis = {
@@ -473,10 +474,11 @@ export async function processTranscription(params: {
       }
     }
 
-    // --- Step 4: Auto-generate AI Posts via generate-smart API ---
-    // Uses the full AdvancedPostsService with GPT-5.2, brand identity, and persona context
+    // --- Step 4: Auto-generate AI Posts via Inngest (direct, no HTTP) ---
+    // Creates a job record and dispatches to Inngest worker directly,
+    // avoiding fragile self-referential HTTP calls.
     if (contentAnalysis && !analysisError) {
-      console.log('[TranscriptionProcessor] Triggering automatic AI post generation via generate-smart...')
+      console.log('[TranscriptionProcessor] Triggering automatic AI post generation via Inngest...')
       try {
         // Check if there are already posts generated for this project
         const { data: existingPosts, error: checkError } = await supabaseAdmin
@@ -486,7 +488,7 @@ export async function processTranscription(params: {
           .limit(1)
 
         if (!checkError && (!existingPosts || existingPosts.length === 0)) {
-          // Get project details for the API call
+          // Get project details
           const { data: projectData } = await supabaseAdmin
             .from('projects')
             .select('title, user_id')
@@ -517,44 +519,62 @@ export async function processTranscription(params: {
             transcriptText = (transcription as any).text || ''
           }
 
-          // Call the generate-smart API internally
-          let baseUrl: string
-          if (process.env.NEXT_PUBLIC_APP_URL) {
-            baseUrl = process.env.NEXT_PUBLIC_APP_URL
-          } else if (process.env.VERCEL_URL) {
-            baseUrl = `https://${process.env.VERCEL_URL}`
-          } else {
-            baseUrl = 'http://localhost:3000'
-          }
+          // Check for existing running job (prevent duplicates)
+          const { data: existingJob } = await supabaseAdmin
+            .from('post_generation_jobs')
+            .select('id, status')
+            .eq('project_id', projectId)
+            .in('status', ['pending', 'running'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
 
-          const response = await fetch(`${baseUrl}/api/posts/generate-smart`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
-            },
-            body: JSON.stringify({
-              projectId,
-              projectTitle,
-              contentAnalysis,
-              transcript: transcriptText,
-              settings: {
-                contentTypes: ['carousel', 'quote', 'single', 'thread', 'reel'],
-                platforms: ['instagram', 'twitter', 'linkedin'],
-                tone: 'professional',
-                contentGoal: 'engagement',
-                usePersona: !!selectedPersonaId,
-                selectedPersonaId,
-              },
-            }),
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            console.log(`[TranscriptionProcessor] Successfully generated ${data.count || 0} AI posts via generate-smart`)
+          if (existingJob) {
+            console.log('[TranscriptionProcessor] Post generation job already in progress:', existingJob.id)
           } else {
-            const errorText = await response.text()
-            console.error('[TranscriptionProcessor] generate-smart API returned error:', response.status, errorText)
+            // Create job record directly
+            const jobId = uuidv4()
+            const settings = {
+              contentTypes: ['carousel', 'quote', 'single', 'thread', 'reel'],
+              platforms: ['instagram', 'twitter', 'linkedin'],
+              tone: 'professional',
+              contentGoal: 'engagement',
+              usePersona: !!selectedPersonaId,
+              selectedPersonaId,
+            }
+
+            const { error: jobError } = await supabaseAdmin
+              .from('post_generation_jobs')
+              .insert({
+                id: jobId,
+                project_id: projectId,
+                user_id: userId,
+                job_type: 'batch_suggestions',
+                status: 'pending',
+                input_params: {
+                  projectId,
+                  projectTitle,
+                  contentAnalysis,
+                  transcript: transcriptText?.substring(0, 8000),
+                  settings,
+                  userId,
+                },
+                total_items: 5,
+                completed_items: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+
+            if (jobError) {
+              console.error('[TranscriptionProcessor] Failed to create post generation job:', jobError)
+            } else {
+              // Dispatch to Inngest worker directly
+              await inngest.send({
+                name: 'posts/generate.worker',
+                data: { jobId, userId }
+              })
+              console.log(`[TranscriptionProcessor] Post generation job ${jobId} created and dispatched to Inngest`)
+            }
           }
         } else {
           console.log('[TranscriptionProcessor] Posts already exist for this project, skipping auto-generation')
