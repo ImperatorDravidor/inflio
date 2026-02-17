@@ -12,9 +12,9 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().startsWith('sk-', 'Invalid OpenAI API key format').optional(),
   
-  // Klap
-  KLAP_API_KEY: z.string().min(1, 'Klap API key required for video processing').optional(),
-  KLAP_API_URL: z.string().url('Invalid Klap API URL').optional().default('https://api.klap.app/v2'),
+  // Submagic (AI video captions and effects)
+  SUBMAGIC_API_KEY: z.string().min(1, 'Submagic API key required for video processing').optional(),
+  SUBMAGIC_API_URL: z.string().url('Invalid Submagic API URL').optional().default('https://api.submagic.co'),
   
   // Social Media OAuth (all optional but validated if present)
   INSTAGRAM_CLIENT_ID: z.string().optional(),
@@ -92,7 +92,7 @@ export function validateEnv(): Env {
       metadata: {
         nodeEnv: env.NODE_ENV,
         hasOpenAI: !!env.OPENAI_API_KEY,
-        hasKlap: !!env.KLAP_API_KEY,
+        hasSubmagic: !!env.SUBMAGIC_API_KEY,
         hasSocialOAuth: !!(env.FACEBOOK_APP_ID || env.TWITTER_CLIENT_ID || env.LINKEDIN_CLIENT_ID),
       }
     })
@@ -161,12 +161,14 @@ export function getEnv<K extends keyof Env>(key: K): Env[K] {
 /**
  * Check if a feature is enabled based on environment
  */
-export function isFeatureEnabled(feature: 'klap' | 'openai' | 'socialOAuth'): boolean {
+export function isFeatureEnabled(feature: 'submagic' | 'klap' | 'openai' | 'socialOAuth'): boolean {
   const env = validateEnv()
   
   switch (feature) {
-    case 'klap':
-      return !!env.KLAP_API_KEY && env.SKIP_KLAP_PROCESSING !== 'true'
+    case 'submagic':
+      return !!env.SUBMAGIC_API_KEY && env.SKIP_SUBMAGIC_PROCESSING !== 'true'
+    case 'klap': // Legacy support
+      return !!env.SUBMAGIC_API_KEY && env.SKIP_SUBMAGIC_PROCESSING !== 'true'
     case 'openai':
       return !!env.OPENAI_API_KEY
     case 'socialOAuth':
@@ -235,7 +237,7 @@ export function logEnvSummary(): void {
         supabase: !!env.NEXT_PUBLIC_SUPABASE_URL,
         clerk: !!env.CLERK_SECRET_KEY,
         openai: !!env.OPENAI_API_KEY,
-        klap: !!env.KLAP_API_KEY,
+        submagic: !!env.SUBMAGIC_API_KEY,
         sentry: !!env.SENTRY_DSN,
       },
       socialPlatforms: {

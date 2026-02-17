@@ -11,6 +11,7 @@ import {
   type Platform,
   type ContentType 
 } from '@/lib/platform-config'
+import { PostsToStagingService } from '@/lib/services/posts-to-staging-service'
 import {
   Card,
   CardContent,
@@ -351,6 +352,7 @@ export function EnhancedPostsGenerator({
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState<string[]>([])
+  const [isCreatingPosts, setIsCreatingPosts] = useState(false)
   const [selectedPersonaForGeneration, setSelectedPersonaForGeneration] = useState<string | null>(personaId || activePersona?.id || null)
   const [generationSettings, setGenerationSettings] = useState({
     creativity: 0.7,
@@ -420,6 +422,97 @@ export function EnhancedPostsGenerator({
       // Only clear if user manually generates new ones
     }
   }, [suggestions.length])
+
+  // Selection functions
+  const toggleSelectSuggestion = (id: string) => {
+    setSelectedBatch(prev => 
+      prev.includes(id) 
+        ? prev.filter(sid => sid !== id)
+        : [...prev, id]
+    )
+  }
+
+  const selectAllSuggestions = () => {
+    const readySuggestions = suggestions.filter(s => 
+      PostsToStagingService.isPostReadyForStaging(s)
+    )
+    setSelectedBatch(readySuggestions.map(s => s.id))
+  }
+
+  const deselectAll = () => {
+    setSelectedBatch([])
+  }
+
+  // Generate posts from selected suggestions
+  const handleGeneratePostsFromSuggestions = async () => {
+    if (selectedBatch.length === 0) {
+      toast.error('Please select at least one suggestion')
+      return
+    }
+
+    setIsCreatingPosts(true)
+    setOverlayMessage(`Creating ${selectedBatch.length} post${selectedBatch.length > 1 ? 's' : ''} from suggestions...`)
+    setOverlaySubtext('This will take a moment. Each post will be ready to publish.')
+    setShowProgressOverlay(true)
+
+    try {
+      const selectedSuggestions = suggestions.filter(s => selectedBatch.includes(s.id))
+      
+      // Send each selected suggestion to staging
+      const results = await PostsToStagingService.sendBatchToStaging(
+        selectedSuggestions,
+        projectId,
+        selectedSuggestions[0]?.user_id || ''
+      )
+
+      if (results.success > 0) {
+        toast.success(`✨ Created ${results.success} post${results.success > 1 ? 's' : ''}! Check your staging area.`)
+        
+        // Celebration
+        const duration = 2000
+        const animationEnd = Date.now() + duration
+        const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+
+        const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
+
+        const interval = window.setInterval(() => {
+          const timeLeft = animationEnd - Date.now()
+          if (timeLeft <= 0) {
+            return clearInterval(interval)
+          }
+
+          const particleCount = 50 * (timeLeft / duration)
+          confetti({
+            ...defaults,
+            particleCount,
+            origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+            colors: ['#8B5CF6', '#EC4899', '#10B981']
+          })
+          confetti({
+            ...defaults,
+            particleCount,
+            origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
+            colors: ['#8B5CF6', '#EC4899', '#10B981']
+          })
+        }, 250)
+
+        // Clear selection
+        setSelectedBatch([])
+      }
+
+      if (results.failed > 0) {
+        toast.error(`Failed to create ${results.failed} post${results.failed > 1 ? 's' : ''}`)
+        console.error('Failed posts:', results.errors)
+      }
+
+    } catch (error: any) {
+      console.error('Error creating posts:', error)
+      toast.error('Failed to create posts. Please try again.')
+    } finally {
+      setIsCreatingPosts(false)
+      setShowProgressOverlay(false)
+    }
+  }
 
   const loadSuggestions = async () => {
     setIsLoadingSuggestions(true)
@@ -806,9 +899,14 @@ export function EnhancedPostsGenerator({
     }
     const isSelected = selectedBatch.includes(suggestion.id)
     
+    // Check if post is ready for staging/publishing
+    const isReadyForPublishing = PostsToStagingService.isPostReadyForStaging(suggestion)
+    const missingElements = PostsToStagingService.getMissingElements(suggestion)
+    
     // Calculate overall platform readiness
     // Handle both old and new data structures
     const eligiblePlatforms = suggestion.eligible_platforms || 
+                              suggestion.platforms ||
                               suggestion.metadata?.eligible_platforms || 
                               (suggestion.eligibility ? Object.keys(suggestion.eligibility) : []) ||
                               []
@@ -831,11 +929,34 @@ export function EnhancedPostsGenerator({
         transition={{ duration: 0.2 }}
       >
         <Card className={cn(
-          "overflow-hidden hover:shadow-xl transition-all cursor-pointer group",
-          isSelected && "ring-2 ring-primary",
+          "overflow-hidden hover:shadow-xl transition-all group relative",
+          isSelected && "ring-2 ring-primary bg-primary/5",
           suggestion.status === 'approved' && "border-green-500/30 bg-green-50/5",
-          allPlatformsReady && "border-green-500/20"
+          isReadyForPublishing && "border-green-500/30",
+          !isReadyForPublishing && "opacity-60"
         )}>
+          {/* Selection Checkbox - Top Left */}
+          <div className="absolute top-3 left-3 z-10">
+            <div 
+              className={cn(
+                "w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer",
+                isSelected 
+                  ? "bg-primary border-primary" 
+                  : "bg-background/80 border-muted-foreground/30 hover:border-primary",
+                !isReadyForPublishing && "opacity-50 cursor-not-allowed"
+              )}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isReadyForPublishing) {
+                  toggleSelectSuggestion(suggestion.id)
+                } else {
+                  toast.error('This suggestion needs to be completed before you can create a post')
+                }
+              }}
+            >
+              {isSelected && <Check className="h-4 w-4 text-white" />}
+            </div>
+          </div>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
@@ -893,17 +1014,53 @@ export function EnhancedPostsGenerator({
               </DropdownMenu>
             </div>
 
-            {/* Status badges */}
-            <div className="flex items-center gap-2 mt-3">
-              <Badge variant={
-                suggestion.status === 'ready' ? 'default' :
-                suggestion.status === 'approved' ? 'secondary' :
-                suggestion.status === 'generating' ? 'outline' :
-                'destructive'
-              } className="text-xs">
-                {suggestion.status === 'approved' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                {suggestion.status}
-              </Badge>
+            {/* Platform Logos - Prominent Display */}
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              {/* Show platform logos first - most important for UX */}
+              <div className="flex items-center gap-1.5 mr-auto">
+                {(suggestion.platforms || eligiblePlatforms).map((platformId: string) => {
+                  const platform = PLATFORMS[platformId]
+                  if (!platform) return null
+                  
+                  const Icon = platform.icon
+                  const readiness = suggestion.platform_readiness?.[platformId]
+                  const isReady = readiness?.is_ready ?? true
+                  
+                  return (
+                    <TooltipProvider key={platformId}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className={cn(
+                            "relative p-1.5 rounded-md transition-all cursor-pointer hover:scale-110",
+                            isReady
+                              ? `bg-gradient-to-br ${platform.gradientColor} shadow-sm` 
+                              : "bg-muted/50 border border-dashed"
+                          )}>
+                            <Icon className={cn(
+                              "h-4 w-4",
+                              isReady ? "text-white" : "text-muted-foreground"
+                            )} />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p className="font-medium text-xs">{platform.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {isReady ? '✓ Optimized & Ready' : 'Not configured'}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )
+                })}
+              </div>
+
+              {/* Quality Score Badge */}
+              {suggestion.metadata?.quality_score && (
+                <Badge className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500">
+                  <Star className="h-3 w-3 mr-1" />
+                  {suggestion.metadata.quality_score.toFixed(1)}
+                </Badge>
+              )}
               
               {(suggestion.persona_used || suggestion.metadata?.persona_used) && (
                 <Badge variant="outline" className="text-xs">
@@ -919,10 +1076,22 @@ export function EnhancedPostsGenerator({
                 </Badge>
               )}
               
-              {(suggestion.viral_potential || suggestion.metadata?.viral_potential) === 'high' && (
-                <Badge className="text-xs bg-gradient-to-r from-purple-500 to-pink-500">
-                  <Zap className="h-3 w-3 mr-1" />
-                  Viral
+              {suggestion.status === 'approved' && (
+                <Badge variant="secondary" className="text-xs">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Approved
+                </Badge>
+              )}
+              
+              {isReadyForPublishing ? (
+                <Badge className="text-xs bg-gradient-to-r from-green-500 to-emerald-500 animate-pulse">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Ready for Publishing
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  {missingElements.length} items needed
                 </Badge>
               )}
             </div>
@@ -987,77 +1156,35 @@ export function EnhancedPostsGenerator({
               )}
             </div>
 
-            {/* Platform readiness - AI Posts are for Instagram, Twitter, LinkedIn, Facebook */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Platform Status</Label>
-              <div className="flex gap-1.5">
-                {['instagram', 'twitter', 'linkedin', 'facebook'].map(platformId => {
-                  const platform = PLATFORMS[platformId]
-                  if (!platform) return null
-                  
-                  const Icon = platform.icon
-                  const eligiblePlatforms = suggestion.eligible_platforms || 
-                                           suggestion.metadata?.eligible_platforms || 
-                                           (suggestion.eligibility ? Object.keys(suggestion.eligibility) : []) ||
-                                           []
-                  const isEligible = eligiblePlatforms.includes(platformId)
-                  const readiness = suggestion.platform_readiness?.[platformId]
-                  const isReady = readiness?.is_ready ?? isEligible
-                  const hasIssues = readiness?.missing_elements && readiness.missing_elements.length > 0
-                  
-                  if (!isEligible) return null
-                  
-                  return (
-                    <TooltipProvider key={platformId}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className={cn(
-                            "relative p-1.5 rounded-md transition-all",
-                            isReady && !hasIssues
-                              ? `bg-gradient-to-br ${platform.gradientColor} shadow-sm` 
-                              : hasIssues
-                              ? "bg-yellow-500/20 border border-yellow-500/30"
-                              : "bg-muted opacity-30"
-                          )}>
-                            <Icon className={cn(
-                              "h-3.5 w-3.5",
-                              isReady && !hasIssues ? "text-white" : 
-                              hasIssues ? "text-yellow-600 dark:text-yellow-400" :
-                              "text-muted-foreground"
-                            )} />
-                            {hasIssues && (
-                              <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-                            )}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <div className="space-y-1">
-                            <p className="font-medium text-xs">
-                              {platform.name}: {isReady ? (hasIssues ? 'Needs Optimization' : 'Ready') : 'Not Configured'}
-                            </p>
-                            {readiness?.missing_elements && readiness.missing_elements.length > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                <p className="font-medium">Missing:</p>
-                                <ul className="list-disc list-inside">
-                                  {readiness.missing_elements.slice(0, 3).map((element, idx) => (
-                                    <li key={idx}>{element}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {readiness?.optimization_tips && readiness.optimization_tips.length > 0 && (
-                              <p className="text-xs text-muted-foreground italic">
-                                Tip: {readiness.optimization_tips[0]}
-                              </p>
-                            )}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )
-                })}
+            {/* Quality Insights */}
+            {suggestion.metadata?.quality_score && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Quality Score</Label>
+                  <div className="flex items-center gap-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={cn(
+                          "h-3 w-3",
+                          i < Math.round(suggestion.metadata.quality_score / 2)
+                            ? "text-yellow-500 fill-yellow-500"
+                            : "text-gray-300"
+                        )}
+                      />
+                    ))}
+                    <span className="text-xs font-medium ml-1">
+                      {suggestion.metadata.quality_score.toFixed(1)}/10
+                    </span>
+                  </div>
+                </div>
+                {suggestion.metadata?.quality_reasoning && (
+                  <p className="text-xs text-muted-foreground italic line-clamp-2">
+                    {suggestion.metadata.quality_reasoning}
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Engagement metrics preview */}
             {(suggestion.engagement_prediction || suggestion.metadata?.engagement_prediction) && (
@@ -1376,17 +1503,83 @@ export function EnhancedPostsGenerator({
           ))}
         </div>
       ) : processedSuggestions.length > 0 ? (
-        <div className={cn(
-          viewMode === 'grid' 
-            ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-            : "space-y-4"
-        )}>
-          <AnimatePresence mode="popLayout">
-            {processedSuggestions.map(suggestion => (
-              <SuggestionCard key={suggestion.id} suggestion={suggestion} />
-            ))}
-          </AnimatePresence>
-        </div>
+        <>
+          {/* Selection Controls & Generate Button */}
+          <div className="flex items-center justify-between mb-6 p-4 bg-muted/30 rounded-lg border">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div 
+                  className={cn(
+                    "w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all",
+                    selectedBatch.length === processedSuggestions.filter(s => PostsToStagingService.isPostReadyForStaging(s)).length && selectedBatch.length > 0
+                      ? "bg-primary border-primary"
+                      : "border-muted-foreground/30 hover:border-primary"
+                  )}
+                  onClick={() => {
+                    if (selectedBatch.length > 0) {
+                      deselectAll()
+                    } else {
+                      selectAllSuggestions()
+                    }
+                  }}
+                >
+                  {selectedBatch.length > 0 && <Check className="h-3 w-3 text-white" />}
+                </div>
+                <span className="text-sm font-medium">
+                  {selectedBatch.length > 0 
+                    ? `${selectedBatch.length} selected`
+                    : 'Select suggestions'}
+                </span>
+              </div>
+              
+              {selectedBatch.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={deselectAll}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedBatch.length > 0 && (
+                <Button
+                  size="lg"
+                  onClick={handleGeneratePostsFromSuggestions}
+                  disabled={isCreatingPosts}
+                  className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                >
+                  {isCreatingPosts ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating Posts...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate {selectedBatch.length} Post{selectedBatch.length > 1 ? 's' : ''}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className={cn(
+            viewMode === 'grid' 
+              ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              : "space-y-4"
+          )}>
+            <AnimatePresence mode="popLayout">
+              {processedSuggestions.map(suggestion => (
+                <SuggestionCard key={suggestion.id} suggestion={suggestion} />
+              ))}
+            </AnimatePresence>
+          </div>
+        </>
       ) : (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">

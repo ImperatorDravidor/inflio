@@ -28,6 +28,7 @@ import { AnimatedBackground } from "@/components/animated-background"
 import { WorkflowLoading } from "@/components/workflow-loading"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { WorkflowHeader } from "@/components/workflow-header"
 
 const taskDetails = {
   transcription: {
@@ -163,8 +164,14 @@ export default function ProcessingPage() {
     
     const pollProject = async () => {
       try {
+        console.log('[ProcessingPage] Polling project:', projectId)
         const updatedProject = await ProjectService.getProject(projectId)
-        if (!updatedProject) return
+        if (!updatedProject) {
+          console.log('[ProcessingPage] No project returned from API')
+          return
+        }
+        
+        console.log('[ProcessingPage] Got project, status:', updatedProject.status, 'tasks:', updatedProject.tasks.map(t => ({ type: t.type, status: t.status, progress: t.progress })))
         
         // Ensure progress never goes backwards
         const updatedTasks = updatedProject.tasks.map(task => {
@@ -193,8 +200,11 @@ export default function ProcessingPage() {
         const transcriptionTask = updatedTasks.find(t => t.type === 'transcription')
         const isTranscriptionComplete = transcriptionTask?.status === 'completed'
         
+        console.log('[ProcessingPage] Transcription task:', transcriptionTask, 'isComplete:', isTranscriptionComplete, 'redirecting:', redirectingRef.current)
+        
         // Redirect when transcription is done
         if (isTranscriptionComplete && !redirectingRef.current) {
+          console.log('[ProcessingPage] ✓ Transcription complete! Redirecting...')
           redirectingRef.current = true
           clearInterval(pollingIntervalRef.current!)
           pollingIntervalRef.current = null
@@ -208,6 +218,7 @@ export default function ProcessingPage() {
             toast.success("Processing complete! Loading AI posts...")
           }
           
+          console.log('[ProcessingPage] Redirecting to /projects/' + projectId + '?tab=posts')
           setTimeout(() => {
             router.push(`/projects/${projectId}?tab=posts`)
           }, 1500)
@@ -304,10 +315,14 @@ export default function ProcessingPage() {
   const isProcessingComplete = project.status === 'draft' || project.status === 'ready' || overallProgress === 100
 
   return (
-    <div className="relative">
-      <AnimatedBackground variant="subtle" />
+    <>
+      {/* Global Workflow Header - stays on Upload step during processing */}
+      <WorkflowHeader currentStep={0} projectId={projectId} />
       
-      <div className="relative mx-auto max-w-6xl animate-in">
+      <div className="relative">
+        <AnimatedBackground variant="subtle" />
+        
+        <div className="relative mx-auto max-w-6xl animate-in pt-6">
         {/* Header */}
         <div className="text-center mb-10">
           {isProcessingComplete ? (
@@ -571,7 +586,8 @@ export default function ProcessingPage() {
             Back to Projects
           </Button>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 } 

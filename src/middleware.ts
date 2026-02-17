@@ -70,31 +70,44 @@ export default clerkMiddleware(async (auth, req) => {
   // If we have a userId, check onboarding status
   if (userId) {
     // If the user is logged in, check if their onboarding is complete
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('onboarding_completed')
-      .eq('clerk_user_id', userId)
-      .single();
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('onboarding_completed')
+        .eq('clerk_user_id', userId)
+        .single();
 
-    // Development bypass: skip onboarding enforcement in development mode
-    const isDevelopment = process.env.NODE_ENV === 'development'
-    const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
-    
-    // If they have not completed onboarding and are not on the onboarding page, redirect them
-    // Unless in development mode or explicitly skipping
-    if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
-      return NextResponse.redirect(onboardingUrl);
-    }
+      // Log errors but don't block navigation
+      if (error && error.code !== 'PGRST116') {
+        console.error('[Middleware] Supabase profile check failed:', error.message)
+      }
 
-    // If onboarding is complete and they try to access the onboarding page
-    // In development mode, always allow access to onboarding for testing
-    if (profile && profile.onboarding_completed && isOnboardingRoute(req) && !isDevelopment) {
-      return NextResponse.redirect(new URL('/dashboard', req.url));
+      // Development bypass: skip onboarding enforcement in development mode
+      const isDevelopment = process.env.NODE_ENV === 'development'
+      const skipOnboarding = req.nextUrl.searchParams.get('skip_onboarding') === 'true'
+      
+      // If they have not completed onboarding and are not on the onboarding page, redirect them
+      // Unless in development mode or explicitly skipping
+      if (profile && !profile.onboarding_completed && !isOnboardingRoute(req) && !isDevelopment && !skipOnboarding) {
+        return NextResponse.redirect(onboardingUrl);
+      }
+
+      // If onboarding is complete and they try to access the onboarding page
+      // In development mode, always allow access to onboarding for testing
+      if (profile && profile.onboarding_completed && isOnboardingRoute(req) && !isDevelopment) {
+        return NextResponse.redirect(new URL('/dashboard', req.url));
+      }
+    } catch (middlewareError) {
+      console.error('[Middleware] Error checking onboarding status:', middlewareError)
+      // Don't block navigation on middleware errors in development
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[Middleware] Allowing navigation despite error (development mode)')
+      }
     }
   }
 

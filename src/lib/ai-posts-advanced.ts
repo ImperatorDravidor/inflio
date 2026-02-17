@@ -80,55 +80,84 @@ export class AdvancedPostsService {
     
     const openai = getOpenAI()
     
-    // Extract key insights from content analysis
-    const keyTopics = contentAnalysis?.topics?.slice(0, 5).join(', ') || 'general content'
-    const keywords = contentAnalysis?.keywords?.slice(0, 10).join(', ') || ''
+    // Extract comprehensive insights from content analysis (NO TRUNCATION)
+    const keyTopics = contentAnalysis?.topics?.join(', ') || 'general content'
+    const keywords = contentAnalysis?.keywords?.join(', ') || ''
     const sentiment = contentAnalysis?.sentiment || 'neutral'
-    const summary = contentAnalysis?.summary || transcript.substring(0, 500)
-    const keyMoments = contentAnalysis?.keyMoments?.slice(0, 5) || []
+    const summary = contentAnalysis?.summary || ''
+    const keyMoments = contentAnalysis?.keyMoments || []
     const viralHooks = contentAnalysis?.contentSuggestions?.socialMediaHooks || []
+    const mainPoints = contentAnalysis?.mainPoints || []
+    const actionableInsights = contentAnalysis?.actionableInsights || []
     
-    const systemPrompt = `You are an expert content strategist who creates high-quality, engaging social media content.
+    const systemPrompt = `You are an elite content strategist and viral social media expert with deep expertise in psychology, storytelling, and platform algorithms.
 
-Your goal: Transform video content into compelling social media posts that are:
-- Immediately valuable to the audience
-- Platform-optimized for maximum reach
-- Visually striking and memorable
-- Easy to create and post
+Your mission: Analyze this video content THOROUGHLY and create exceptional social media posts that:
+- Stop the scroll immediately with pattern-interrupting hooks
+- Deliver genuine value that changes how people think or act
+- Are meticulously optimized for each platform's algorithm
+- Feature clear visual concepts that amplify the message
+- Drive measurable engagement and audience growth
 
-Focus on quality over quantity. Each suggestion should be genuinely useful and ready to implement.
+Quality Standards:
+- Every word must earn its place - no fluff
+- Hook must create curiosity gap or emotional response in 3 seconds
+- Body must teach, inspire, or challenge conventional thinking
+- CTA must be specific and compelling
+- Visual must be thumb-stopping and on-brand
 
-${settings.brandVoice ? `Brand Voice: ${settings.brandVoice}` : ''}
-${settings.usePersona && settings.personaDetails ? `Brand Persona: ${settings.personaDetails.context}` : ''}`
+${settings.brandVoice ? `Brand Voice: ${settings.brandVoice}` : 'Professional yet approachable, authentic, value-driven'}
+${settings.usePersona && settings.personaDetails ? `\nBrand Persona: ${settings.personaDetails.context}` : ''}
 
-    const userPrompt = `Analyze this content and create 10 diverse, high-quality social media post suggestions.
+Remember: Generic posts get ignored. Create content that people feel compelled to engage with.`
+
+    const userPrompt = `DEEP CONTENT ANALYSIS - Read everything carefully:
 
 VIDEO TITLE: "${projectTitle}"
 
-KEY TOPICS: ${keyTopics}
-KEYWORDS: ${keywords}
-TONE: ${sentiment}
-SUMMARY: ${summary}
+FULL TRANSCRIPT (use all of this):
+"${transcript}"
 
-${keyMoments.length > 0 ? `KEY MOMENTS:\n${keyMoments.map((m: any) => `- [${m.timestamp}s] ${m.description}`).join('\n')}` : ''}
-${viralHooks.length > 0 ? `VIRAL HOOKS:\n${viralHooks.join('\n')}` : ''}
+COMPREHENSIVE ANALYSIS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Topics Covered: ${keyTopics}
+Key Keywords: ${keywords}
+Emotional Tone: ${sentiment}
+Summary: ${summary}
 
-TRANSCRIPT EXCERPT:
-"${transcript.substring(0, 1500)}"
+${mainPoints.length > 0 ? `\nMain Points:\n${mainPoints.map((p: any, i: number) => `${i + 1}. ${p}`).join('\n')}` : ''}
+
+${keyMoments.length > 0 ? `\nKey Moments (with timestamps):\n${keyMoments.map((m: any) => `• [${m.timestamp}] ${m.description}`).join('\n')}` : ''}
+
+${viralHooks.length > 0 ? `\nIdentified Viral Hooks:\n${viralHooks.map((h: string) => `• ${h}`).join('\n')}` : ''}
+
+${actionableInsights.length > 0 ? `\nActionable Insights:\n${actionableInsights.map((i: string) => `• ${i}`).join('\n')}` : ''}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TARGET PLATFORMS: ${settings.platforms.join(', ')}
 
-Create 10 unique post suggestions covering different styles:
-1. Educational carousel (step-by-step value)
-2. Inspirational quote card (shareable wisdom)
-3. Behind-the-scenes story (authentic connection)
-4. Data/Statistics post (credibility builder)
-5. Controversial opinion (conversation starter)
-6. How-to tutorial (actionable value)
-7. Personal story thread (emotional connection)
-8. Quick tip reel (instant value)
-9. Community question/poll (engagement driver)
-10. Transformation showcase (results-focused)
+TASK: Create 8 EXCEPTIONAL post suggestions (quality over quantity). Each must be:
+- Deeply rooted in the actual content above
+- Strategically different in style and purpose
+- Immediately actionable and ready to post
+- Featuring a complete visual concept
+
+Cover these strategic post types:
+1. 🎯 Hook Carousel: Multi-slide story that builds curiosity and delivers a payoff (5-7 slides)
+2. 💡 Insight Quote: One powerful takeaway from the video as a shareable visual quote
+3. 🎬 Behind-the-Scenes: Authentic moment or process revealed (builds connection)
+4. 📊 Data Showcase: Surprising statistic or metric presented visually (credibility)
+5. 🔥 Hot Take: Controversial opinion or challenge to conventional thinking (engagement)
+6. 📝 Thread Story: Multi-tweet narrative that unfolds the key insight (Twitter/X)
+7. ⚡ Quick Win: Single actionable tip they can implement today (immediate value)
+8. 🎪 Pattern Interrupt: Unexpected angle or format that stops the scroll
+
+For each post, you MUST think through:
+- What specific moment/insight from the video does this leverage?
+- Why would someone stop scrolling for THIS?
+- What emotion does this trigger? (curiosity, FOMO, inspiration, shock)
+- What action do we want them to take?
+- How does the visual amplify the message?
 
 For each post, provide this exact structure:
 {
@@ -186,13 +215,13 @@ Make each suggestion:
 Return as a JSON object with a "posts" array containing all 10 suggestions.`
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8, // Balanced creativity and consistency
-      max_tokens: 4000,
+      temperature: 0.8, // Creative and engaging while maintaining quality
+      max_tokens: 6000, // More room for thorough, quality responses
       response_format: { type: 'json_object' }
     })
 

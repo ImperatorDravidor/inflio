@@ -92,6 +92,7 @@ import { ErrorBoundary } from "@/components/error-boundary"
 
 
 import { EnhancedTranscriptEditor } from "@/components/enhanced-transcript-editor"
+import { WorkflowHeader } from "@/components/workflow-header"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -166,6 +167,7 @@ function ProjectDetailPageContent() {
   // Access control check
   const isOwner = project?.user_id === user?.id
   const hasAccess = !project?.user_id || isOwner // Allow access if no user_id (legacy) or is owner
+  
   const [activeTab, setActiveTab] = useState<string>(() => {
     // Check for tab query parameter
     const tabParam = searchParams.get('tab')
@@ -1004,6 +1006,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
     <div className="relative min-h-screen">
       <AnimatedBackground variant="subtle" />
       
+      {/* Global Workflow Header */}
+      <WorkflowHeader currentStep={1} projectId={projectId} />
+      
       {/* Processing Overlay - Only show if actually processing */}
       {isProcessing && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
@@ -1222,20 +1227,27 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 )}
                 
                 {/* Main CTA */}
-                <Button 
-                  size="lg"
-                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
-                  onClick={() => setShowContentSelectionDialog(true)}
-                  disabled={!hasSubtitles && stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
-                >
-                  <IconRocket className="h-5 w-5 mr-2" />
-                  Publish Content
-                  {(stats.totalClips + stats.totalBlogs + totalImages > 0) && (
-                    <Badge variant="secondary" className="ml-2 bg-white/20 text-white border-0">
-                      {stats.totalClips + stats.totalBlogs + totalImages}
-                    </Badge>
-                  )}
-                </Button>
+                  <Button 
+                    size="lg"
+                    className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
+                    onClick={() => {
+                      // Navigate to staging workflow
+                      if (hasSubtitles || stats.totalClips > 0 || stats.totalBlogs > 0 || totalImages > 0) {
+                        router.push(`/projects/${projectId}/stage?step=2`)
+                      } else {
+                        toast.error('Please generate some content first')
+                      }
+                    }}
+                    disabled={!hasSubtitles && stats.totalClips === 0 && stats.totalBlogs === 0 && totalImages === 0}
+                  >
+                    <IconRocket className="h-5 w-5 mr-2" />
+                    Continue to Staging
+                    {(stats.totalClips + stats.totalBlogs + totalImages > 0) && (
+                      <Badge variant="secondary" className="ml-2 bg-white/20 text-white border-0">
+                        {stats.totalClips + stats.totalBlogs + totalImages}
+                      </Badge>
+                    )}
+                  </Button>
                 
                 {/* Processing View Link - Show if clips are still processing */}
                 {(() => {

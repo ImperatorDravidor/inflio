@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ProjectService } from "@/lib/services";
 import { validateProjectOwnership } from "@/lib/auth-utils";
-import { inngest } from "@/inngest/client";
+import { inngest, INNGEST_ENABLED } from "@/inngest/client";
 
 // Extended timeout for transcription processing
 export const maxDuration = 300; // 5 minutes for transcription
@@ -25,18 +25,21 @@ export async function POST(
       return errorResponse || NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Update project status
+    // Update project status and initialize task progress
     await ProjectService.updateProject(projectId, { status: 'processing' });
 
     // Start both processes in parallel
     const promises = [];
-    
+
     // Process transcription if needed
     const hasTranscriptionTask = project.tasks.some(
       (task: any) => task.type === 'transcription' && (task.status === 'pending' || task.status === 'processing')
     );
-    
+
     if (hasTranscriptionTask) {
+      // Initialize progress immediately so UI shows activity
+      await ProjectService.updateTaskProgress(projectId, 'transcription', 1, 'processing');
+
       promises.push(
         (async () => {
           try {
@@ -71,25 +74,48 @@ export async function POST(
       promises.push(
         (async () => {
           try {
-            console.log('[Process Route] Queueing Klap job with Inngest...')
-            
+            if (!INNGEST_ENABLED) {
+              console.warn('[Process Route] Inngest not configured - skipping Submagic processing')
+              console.warn('[Process Route] To enable Submagic processing:')
+              console.warn('[Process Route] 1. Run: npx inngest-cli@latest dev')
+              console.warn('[Process Route] 2. Or set INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY in .env.local')
+
+              // Mark as skipped instead of failing
+              await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'pending');
+              await ProjectService.updateProject(projectId, {
+                processing_notes: 'Video processing skipped: Inngest not configured. See console for setup instructions.'
+              });
+
+              return { type: 'clips', success: false, skipped: true, reason: 'Inngest not configured' };
+            }
+
+            console.log('[Process Route] Queueing Submagic job with Inngest...')
+
             // Send event to Inngest
             await inngest.send({
-              name: 'klap/video.process',
+              name: 'submagic/video.process',
               data: {
                 projectId,
                 videoUrl: project.video_url,
+                title: project.title,
                 userId
               }
             });
-            
-            console.log('[Process Route] Klap job queued successfully')
-            
+
+            console.log('[Process Route] Submagic job queued successfully')
+
             // Update task progress to show it's queued
             await ProjectService.updateTaskProgress(projectId, 'clips', 5, 'processing');
             return { type: 'clips', success: true };
           } catch (error) {
-            console.error('[Process Route] Failed to queue Klap processing:', error);
+            console.error('[Process Route] Failed to queue Submagic processing:', error);
+
+            // Better error messaging
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            await ProjectService.updateProject(projectId, {
+              processing_notes: `Video processing failed: ${errorMessage}`
+            });
+
             return { type: 'clips', success: false, error };
           }
         })()

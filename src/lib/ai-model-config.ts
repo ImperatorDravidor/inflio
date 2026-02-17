@@ -4,21 +4,23 @@
  */
 
 export const AI_MODELS = {
-  // Primary model - GPT-5
-  PRIMARY: 'gpt-5',
+  // Primary model - GPT-4o (latest and best available model as of Oct 2024)
+  // Note: gpt-5 uses different API endpoint (/v1/responses) - see gpt5-service.ts
+  PRIMARY: 'gpt-4o',
   
   // Fallback models in order of preference
   FALLBACKS: [
+    'gpt-4-turbo',
     'gpt-4-turbo-preview',
-    'gpt-4-1106-preview',
     'gpt-4',
-    'gpt-3.5-turbo-1106'
+    'gpt-3.5-turbo'
   ]
 }
 
 /**
  * Get the configured AI model with fallback support
- * Always tries GPT-5 first as per requirements
+ * Uses GPT-4o as primary (latest Chat Completions model)
+ * For gpt-5 Responses API, use GPT5Service class instead
  */
 export function getAIModel(): string {
   // Check if there's an override in environment
@@ -27,7 +29,7 @@ export function getAIModel(): string {
     return process.env.OPENAI_MODEL_OVERRIDE
   }
   
-  // Default to GPT-5 as required
+  // Default to GPT-4o (latest, fastest, best Chat Completions model)
   return AI_MODELS.PRIMARY
 }
 
@@ -45,7 +47,7 @@ export async function executeWithModelFallback(
   },
   context: string = 'AI Operation'
 ): Promise<any> {
-  // Start with GPT-5
+  // Start with primary model (gpt-4o)
   const modelsToTry = [AI_MODELS.PRIMARY, ...AI_MODELS.FALLBACKS]
   let lastError: any = null
   

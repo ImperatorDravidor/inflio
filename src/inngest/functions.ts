@@ -1,232 +1,198 @@
 import { inngest } from './client'
-import { KlapAPIService } from '@/lib/klap-api'
+import { SubmagicAPIService } from '@/lib/submagic-api'
 import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
- * Process Klap video clips with proper async handling
+ * Process video with Submagic (AI captions and effects)
+ * Submagic uses webhooks so this function just creates the project
+ * and the webhook handler will process the completion
  */
-export const processKlapVideo = inngest.createFunction(
+export const processSubmagicVideo = inngest.createFunction(
   {
-    id: 'process-klap-video',
-    name: 'Process Klap Video',
+    id: 'process-submagic-video',
+    name: 'Process Submagic Video',
     throttle: {
       limit: 5,
       period: '1m',
       key: 'event.data.userId'
     }
   },
-  { event: 'klap/video.process' },
+  { event: 'submagic/video.process' },
   async ({ event, step }) => {
-    const { projectId, videoUrl, userId } = event.data
+    const { projectId, videoUrl, userId, title } = event.data
 
-    // Step 1: Create Klap task
-    const task = await step.run('create-klap-task', async () => {
-      console.log('[Inngest] Creating Klap task for project:', projectId)
-      const klapTask = await KlapAPIService.createVideoTask(videoUrl)
+    // Step 1: Create Submagic project with webhook
+    const project = await step.run('create-submagic-project', async () => {
+      console.log('[Inngest] Creating Submagic project for:', projectId)
       
-      // Update project with task ID
+      // Build webhook URL
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+      const webhookUrl = baseUrl 
+        ? `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/api/webhooks/submagic`
+        : undefined
+
+      if (!webhookUrl) {
+        console.warn('[Inngest] No webhook URL configured - will need to poll for completion')
+      }
+
+      const submagicProject = await SubmagicAPIService.createProject({
+        title: title || 'Video Project',
+        language: 'en',
+        videoUrl,
+        templateName: 'Hormozi 2', // Popular template for social media
+        webhookUrl,
+        magicZooms: true, // Enable auto zoom effects
+        removeSilencePace: 'fast', // Remove silence for better pacing
+      })
+      
+      // Update project with Submagic project ID
       await ProjectService.updateProject(projectId, {
-        klap_project_id: klapTask.id
+        submagic_project_id: submagicProject.id
       })
       
       // Update task progress
-      await ProjectService.updateTaskProgress(projectId, 'clips', 10, 'processing')
+      await ProjectService.updateTaskProgress(projectId, 'clips', 15, 'processing')
       
-      return klapTask
+      console.log('[Inngest] Submagic project created:', submagicProject.id)
+      return submagicProject
     })
 
-    // Step 2: Poll for completion (Inngest handles the waiting)
-    const result = await step.run('wait-for-klap-completion', async () => {
-      console.log('[Inngest] Polling Klap task:', task.id)
+    // Step 2: Wait for Submagic to complete transcription, then export
+    // Submagic first transcribes, then we need to export to get the final video
+    const exportResult = await step.run('wait-and-export', async () => {
+      console.log('[Inngest] Waiting for transcription and exporting...')
       
-      // Poll with exponential backoff
+      // Poll until transcribed (usually takes 2-5 minutes)
       let attempts = 0
-      const maxAttempts = 180 // 30 minutes max
+      const maxAttempts = 60 // 10 minutes max
       
       while (attempts < maxAttempts) {
         try {
-          const response = await fetch(`https://api.klap.app/v2/tasks/${task.id}`, {
-            headers: {
-              'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-              'Content-Type': 'application/json',
-            }
-          })
+          const status = await SubmagicAPIService.getProject(project.id)
           
-          if (!response.ok) {
-            throw new Error(`Klap API error: ${response.status}`)
+          if (status.status === 'failed') {
+            throw new Error(`Submagic processing failed: ${status.failureReason || 'Unknown error'}`)
           }
           
-          const status = await response.json()
-          
-          if (status.status === 'failed' || status.status === 'error') {
-            throw new Error(`Klap processing failed: ${status.error || 'Unknown error'}`)
+          // Check if transcription is complete
+          if (status.transcriptionStatus === 'COMPLETED' && status.status !== 'exporting') {
+            console.log('[Inngest] Transcription complete! Starting export...')
+            
+            // Export the project
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+            const webhookUrl = baseUrl 
+              ? `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/api/webhooks/submagic`
+              : undefined
+
+            await SubmagicAPIService.exportProject(project.id, {
+              fps: 30,
+              width: 1080,
+              height: 1920,
+              webhookUrl
+            })
+            
+            console.log('[Inngest] Export started!')
+            return { exported: true }
           }
           
-          if (status.status === 'ready' && status.output_id) {
-            console.log('[Inngest] Klap task completed! Output ID:', status.output_id)
-            return status
-          }
-          
-          // Update progress smoothly
-          const progress = Math.min(10 + Math.floor((attempts / maxAttempts) * 80), 90)
+          // Update progress
+          const progress = Math.min(15 + Math.floor((attempts / maxAttempts) * 70), 85)
           await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
           
-          // Wait before next attempt (10 seconds)
-          await step.sleep('poll-wait', '10s')
+          // Wait before next check
+          await step.sleep('transcription-wait', '10s')
           attempts++
         } catch (error) {
-          console.error('[Inngest] Error polling Klap:', error)
-          if (attempts >= 3) throw error // Fail after 3 consecutive errors
+          console.error('[Inngest] Error waiting for transcription:', error)
+          if (attempts >= 3) throw error
           attempts++
           await step.sleep('error-wait', '30s')
         }
       }
       
-      throw new Error('Klap processing timeout after 30 minutes')
+      throw new Error('Submagic transcription timeout after 10 minutes')
     })
 
-    // Step 3: Process and store clips
-    await step.run('process-and-store-clips', async () => {
-      console.log('[Inngest] Processing clips from folder:', result.output_id)
+    // Step 3: Wait for export completion
+    // The webhook will handle the final completion and store the clip
+    // But we'll update progress here to show activity
+    await step.run('wait-for-export', async () => {
+      console.log('[Inngest] Waiting for export to complete...')
       
-      // Get clips from Klap
-      const klapClips = await KlapAPIService.getClipsFromFolder(result.output_id)
-      const processedClips = []
+      let attempts = 0
+      const maxAttempts = 120 // 20 minutes max for export
       
-      for (let i = 0; i < klapClips.length; i++) {
-        const klapClip = klapClips[i]
-        const klapId = typeof klapClip === 'string' ? klapClip : klapClip.id
-        
-        if (!klapId) continue
-        
+      while (attempts < maxAttempts) {
         try {
-          // Get clip details
-          const details = await KlapAPIService.getClipDetails(result.output_id, klapId).catch(() => ({}))
+          const status = await SubmagicAPIService.getProject(project.id)
           
-          // Export clip to get URL
-          const exported = await KlapAPIService.exportMultipleClips(result.output_id, [klapId])
-          if (!exported[0]?.url) {
-            console.error(`Failed to export clip ${klapId}`)
-            continue
+          if (status.status === 'completed' && status.downloadUrl) {
+            console.log('[Inngest] Export complete!')
+            // Webhook will handle storing the clip
+            return { completed: true }
           }
           
-          // Download and store if not skipping
-          let videoUrl = exported[0].url
-          if (!process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true') {
-            try {
-              const response = await fetch(exported[0].url)
-              const buffer = await response.arrayBuffer()
-              
-              const fileName = `clip_${i}_${klapId}.mp4`
-              const filePath = `${projectId}/clips/${fileName}`
-              
-              const { error: uploadError } = await supabaseAdmin.storage
-                .from('videos')
-                .upload(filePath, buffer, {
-                  contentType: 'video/mp4',
-                  upsert: true
-                })
-              
-              if (!uploadError) {
-                const { data: urlData } = supabaseAdmin.storage
-                  .from('videos')
-                  .getPublicUrl(filePath)
-                videoUrl = urlData.publicUrl
-                console.log(`[Inngest] Clip stored at: ${videoUrl}`)
-              }
-            } catch (error) {
-              console.error(`[Inngest] Failed to download/store clip ${i}:`, error)
-            }
+          if (status.status === 'failed') {
+            throw new Error(`Export failed: ${status.failureReason || 'Unknown error'}`)
           }
           
-          // Create clip object with all metadata
-          const clip = {
-            id: `${projectId}_clip_${i}`,
-            title: details.title || details.name || `Clip ${i + 1}`,
-            description: details.virality_score_explanation || details.description || '',
-            startTime: details.start_time || 0,
-            endTime: details.end_time || 0,
-            duration: details.duration || 30,
-            thumbnail: details.thumbnail || `https://klap.app/player/${klapId}/thumbnail`,
-            tags: details.tags || [],
-            score: typeof details.virality_score === 'number' ? details.virality_score / 100 : 0.5,
-            type: 'highlight' as const,
-            klapProjectId: klapId,
-            klapFolderId: result.output_id,
-            exportUrl: videoUrl,
-            exported: true,
-            storedInSupabase: !process.env.SKIP_KLAP_VIDEO_REUPLOAD || process.env.SKIP_KLAP_VIDEO_REUPLOAD !== 'true',
-            createdAt: new Date().toISOString(),
-            // Additional metadata from Klap
-            viralityExplanation: details.virality_score_explanation || details.description || '',
-            transcript: details.transcript || details.subtitle || details.text || '',
-            rawKlapData: details, // Store raw response for debugging
-            publicationCaptions: details.publication_captions || details.captions || undefined
-          }
+          // Update progress
+          const progress = Math.min(85 + Math.floor((attempts / maxAttempts) * 10), 95)
+          await ProjectService.updateTaskProgress(projectId, 'clips', progress, 'processing')
           
-          processedClips.push(clip)
+          await step.sleep('export-wait', '10s')
+          attempts++
         } catch (error) {
-          console.error(`[Inngest] Failed to process clip ${klapId}:`, error)
+          console.error('[Inngest] Error waiting for export:', error)
+          if (attempts >= 3) throw error
+          attempts++
+          await step.sleep('error-wait', '30s')
         }
       }
       
-      // Update project with clips
-      await ProjectService.updateProject(projectId, {
-        folders: {
-          clips: processedClips,
-          images: [],
-          social: [],
-          blog: []
-        }
-      })
-      
-      // Mark task as complete
-      await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-      
-      console.log(`[Inngest] Successfully processed ${processedClips.length} clips for project ${projectId}`)
-      
-      return { clipCount: processedClips.length }
+      throw new Error('Submagic export timeout after 20 minutes')
     })
 
-    // Step 4: Send notification (optional)
+    // Step 4: Send notification
     await step.run('send-notification', async () => {
+      console.log(`[Inngest] Video processing complete for user ${userId}, project ${projectId}`)
       // TODO: Implement email/push notification
-      console.log(`[Inngest] Clips ready for user ${userId}, project ${projectId}`)
     })
+
+    return {
+      success: true,
+      projectId,
+      submagicProjectId: project.id
+    }
   }
 )
 
 
 /**
- * Check Klap processing status (for manual polling)
+ * Check Submagic processing status (for manual polling)
  */
-export const checkKlapStatus = inngest.createFunction(
+export const checkSubmagicStatus = inngest.createFunction(
   {
-    id: 'check-klap-status',
-    name: 'Check Klap Status',
+    id: 'check-submagic-status',
+    name: 'Check Submagic Status',
   },
-  { event: 'klap/status.check' },
+  { event: 'submagic/status.check' },
   async ({ event, step }) => {
     const { projectId } = event.data
     
     const project = await ProjectService.getProject(projectId)
-    if (!project?.klap_project_id) {
+    if (!project?.submagic_project_id) {
       return { status: 'not_started' }
     }
     
     try {
-      const response = await fetch(`https://api.klap.app/v2/tasks/${project.klap_project_id}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.KLAP_API_KEY}`,
-        }
-      })
-      
-      const status = await response.json()
-      return { 
-        status: status.status,
-        ready: status.status === 'ready',
-        outputId: status.output_id 
+      const statusInfo = await SubmagicAPIService.getProjectStatus(project.submagic_project_id)
+      return {
+        status: statusInfo.status,
+        progress: statusInfo.progress,
+        message: statusInfo.message,
+        ready: statusInfo.status === 'completed'
       }
     } catch (error: any) {
       return { status: 'error', error: error?.message || 'Unknown error' }

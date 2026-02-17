@@ -14,7 +14,7 @@ export {
 } from '../supabase-video-storage'
 
 // AI services
-export { KlapAPIService } from '../klap-api'
+export { SubmagicAPIService } from '../submagic-api'
 export { TranscriptionService } from '../transcription-service'
 
 // Utility services

@@ -20,6 +20,7 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
+import { WorkflowHeader } from "@/components/workflow-header"
 
 export default function UploadPage() {
   const router = useRouter()
@@ -308,9 +309,13 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl animate-in">
-      {/* Header Section */}
-      <div className="text-center mb-10">
+    <>
+      {/* Global Workflow Header */}
+      <WorkflowHeader currentStep={0} />
+      
+      <div className="mx-auto max-w-5xl animate-in pt-6">
+        {/* Header Section */}
+        <div className="text-center mb-10">
         <h1 className="text-4xl font-bold mb-3">
           Upload Your <span className="gradient-text">Video</span>
         </h1>
@@ -610,7 +615,8 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 } 

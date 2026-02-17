@@ -1,5 +1,6 @@
 import { ProjectService } from '@/lib/services'
 import { AIContentService } from '@/lib/ai-content-service'
+import { AdvancedPostsService } from '@/lib/ai-posts-advanced'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { TranscriptionData } from '@/lib/project-types'
@@ -415,9 +416,9 @@ export async function processTranscription(params: {
     await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
     console.log('[TranscriptionProcessor] Task marked as completed')
 
-    // --- Step 4: Auto-generate AI Posts if content analysis is available ---
-    if (contentAnalysis && !analysisError) {
-      console.log('[TranscriptionProcessor] Triggering automatic AI post generation...')
+    // --- Step 4: Auto-generate AI Posts using Advanced Service ---
+    if (contentAnalysis && !analysisError && transcription.text) {
+      console.log('[TranscriptionProcessor] Triggering advanced AI post generation...')
       try {
         // Check if there are already posts generated for this project
         const { data: existingPosts, error: checkError } = await supabaseAdmin
@@ -425,10 +426,10 @@ export async function processTranscription(params: {
           .select('id')
           .eq('project_id', projectId)
           .limit(1)
-        
+
         if (!checkError && (!existingPosts || existingPosts.length === 0)) {
-          console.log('[TranscriptionProcessor] No existing posts found, generating AI posts directly...')
-          
+          console.log('[TranscriptionProcessor] No existing posts found, generating advanced AI posts...')
+
           // Get user_id for the project if not provided
           let userId = params.userId
           if (!userId) {
@@ -440,88 +441,140 @@ export async function processTranscription(params: {
             userId = projectWithUser?.user_id
           }
 
-          // Generate post suggestions directly from content analysis
-          const postSuggestionsToCreate = []
-          
-          // Default post types to generate
-          const defaultPostTypes = ['carousel', 'quote', 'single']
+          // Fetch user's persona if they have one
+          let personaContext = undefined
+          let brandVoice = 'Professional yet approachable, authentic, value-driven'
+
+          if (userId) {
+            const { data: userProfile } = await supabaseAdmin
+              .from('user_profiles')
+              .select('brand_voice')
+              .eq('clerk_user_id', userId)
+              .single()
+
+            if (userProfile?.brand_voice) {
+              brandVoice = userProfile.brand_voice
+            }
+
+            // Try to get default persona
+            const { data: defaultPersona } = await supabaseAdmin
+              .from('personas')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('is_default', true)
+              .single()
+
+            if (defaultPersona) {
+              personaContext = {
+                name: defaultPersona.name,
+                context: `Brand: ${defaultPersona.name}\nVoice: ${defaultPersona.brand_voice || brandVoice}\nDescription: ${defaultPersona.description || ''}`
+              }
+              console.log('[TranscriptionProcessor] Using default persona:', defaultPersona.name)
+            }
+          }
+
+          // Default platforms
           const defaultPlatforms = ['instagram', 'twitter', 'linkedin']
-          
-          // Use postSuggestions from AI analysis if available
-          const postSuggestions = (contentAnalysis as any).postSuggestions
-          if (postSuggestions && postSuggestions.length > 0) {
-            console.log(`[TranscriptionProcessor] Found ${postSuggestions.length} post suggestions from AI analysis`)
-            
-            for (const suggestion of postSuggestions) {
-              const suggestionId = uuidv4()
-              
-              // Build platform copy
-              const platformCopy: Record<string, any> = {}
-              for (const platform of suggestion.platforms) {
-                platformCopy[platform] = {
-                  caption: suggestion.mainContent,
-                  hashtags: suggestion.hashtags,
-                  cta: 'Follow for more insights!',
-                  title: suggestion.title,
-                  description: suggestion.description
-                }
+
+          // Generate advanced post suggestions
+          console.log('[TranscriptionProcessor] Calling AdvancedPostsService...')
+          const advancedPosts = await AdvancedPostsService.generateAdvancedPosts(
+            transcription.text,
+            params.title || 'Video Content',
+            contentAnalysis,
+            {
+              platforms: defaultPlatforms,
+              usePersona: !!personaContext,
+              personaDetails: personaContext,
+              brandVoice: brandVoice
+            }
+          )
+
+          console.log(`[TranscriptionProcessor] Generated ${advancedPosts.length} advanced post suggestions`)
+
+          // Transform advanced posts into database-ready format
+          const postSuggestionsToCreate = []
+
+          for (const post of advancedPosts) {
+            const suggestionId = uuidv4()
+
+            // Create copy variants for each platform
+            const copyVariants: Record<string, any> = {}
+            for (const platform of post.platforms.primary) {
+              copyVariants[platform] = {
+                caption: post.content.body,
+                hashtags: post.content.hashtags,
+                cta: post.content.cta,
+                title: post.content.title,
+                description: post.content.preview
               }
-              
-              // Build eligibility
-              const eligibility: Record<string, any> = {}
-              for (const platform of suggestion.platforms) {
-                eligibility[platform] = {
-                  is_ready: true,
-                  missing_elements: [],
-                  optimization_tips: []
-                }
-              }
-              
-              postSuggestionsToCreate.push({
-                id: suggestionId,
-                project_id: projectId,
-                user_id: userId,
-                type: suggestion.type,
-                images: [{
-                  id: uuidv4(),
-                  type: 'hero',
-                  prompt: suggestion.visualPrompt,
-                  text_overlay: suggestion.hook,
-                  dimensions: '1080x1080',
-                  position: 0
-                }],
-                platform_copy: platformCopy,
-                eligibility: eligibility,
-                status: 'suggested',
-                metadata: {
-                  title: suggestion.title,
-                  description: suggestion.description,
-                  hook: suggestion.hook,
-                  engagement_score: suggestion.engagementScore,
-                  ai_generated: true,
-                  generation_source: 'transcription_analysis'
-                },
-                created_at: new Date().toISOString(),
-                created_by: 'ai_system'
+            }
+
+            // Create images array from visual specifications
+            const images = []
+            if (post.visual.aiPrompt) {
+              images.push({
+                id: uuidv4(),
+                type: 'hero',
+                prompt: post.visual.aiPrompt,
+                text_overlay: post.visual.textOverlay || '',
+                dimensions: post.visual.dimensions,
+                position: 0
               })
             }
-          } else {
-            // No fallback generation - only use high-quality AI suggestions
-            console.log('[TranscriptionProcessor] No post suggestions available from AI analysis')
+
+            // Store the suggestion
+            postSuggestionsToCreate.push({
+              id: suggestionId,
+              project_id: projectId,
+              user_id: userId,
+              content_type: post.contentType.format,
+              title: post.content.title,
+              description: post.contentType.description,
+              platforms: post.platforms.primary,
+              copy_variants: copyVariants,
+              images: images,
+              visual_style: {
+                style: post.visual.style,
+                colors: post.visual.primaryColors,
+                description: post.visual.description
+              },
+              engagement_data: {
+                predicted_reach: post.insights.estimatedReach,
+                target_audience: post.insights.targetAudience,
+                best_time: post.insights.bestTime,
+                why_it_works: post.insights.whyItWorks,
+                engagement_tip: post.insights.engagementTip
+              },
+              metadata: {
+                uses_persona: post.actions.needsPersona,
+                ready_to_post: post.actions.readyToPost,
+                can_edit: post.actions.canEditText,
+                can_generate_image: post.actions.canGenerateImage,
+                content_length: post.content.wordCount,
+                hook: post.content.hook,
+                preview: post.content.preview,
+                ai_generated: true,
+                generation_source: 'advanced_auto_generation'
+              },
+              status: 'suggested',
+              created_at: new Date().toISOString(),
+              created_by: 'ai_system'
+            })
           }
-          
+
           // Save all post suggestions to database
           if (postSuggestionsToCreate.length > 0) {
-            console.log(`[TranscriptionProcessor] Inserting ${postSuggestionsToCreate.length} post suggestions`)
-            
+            console.log(`[TranscriptionProcessor] Inserting ${postSuggestionsToCreate.length} advanced post suggestions`)
+
             const { error: insertError } = await supabaseAdmin
               .from('post_suggestions')
               .insert(postSuggestionsToCreate)
-            
+
             if (insertError) {
               console.error('[TranscriptionProcessor] Error inserting post suggestions:', insertError)
             } else {
-              console.log(`[TranscriptionProcessor] Successfully created ${postSuggestionsToCreate.length} post suggestions`)
+              console.log(`[TranscriptionProcessor] Successfully created ${postSuggestionsToCreate.length} advanced post suggestions`)
             }
           }
         } else {
@@ -529,7 +582,7 @@ export async function processTranscription(params: {
         }
       } catch (postGenError) {
         // Don't fail the transcription if post generation fails
-        console.error('[TranscriptionProcessor] Error generating AI posts (non-fatal):', postGenError)
+        console.error('[TranscriptionProcessor] Error generating advanced AI posts (non-fatal):', postGenError)
       }
     }
 

@@ -38,20 +38,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Check server-side usage limits
-    const canProcess = await ServerUsageService.canProcessVideo(userId)
-    if (!canProcess) {
+    try {
+      console.log('[Create Project] Checking usage limits for user:', userId)
       const usage = await ServerUsageService.getUsage(userId)
-      return NextResponse.json(
-        { 
-          error: `You've reached your monthly limit of ${usage.usage_limit} videos. Please upgrade your plan to continue.`,
-          usage: {
-            used: usage.used,
-            limit: usage.usage_limit,
-            plan: usage.plan
-          }
-        },
-        { status: 403 }
-      )
+      console.log('[Create Project] Got usage:', usage)
+      
+      // Ensure usage has required fields
+      if (!usage || usage.limit === undefined || usage.used === undefined) {
+        console.error('[Create Project] Invalid usage object:', usage)
+        // Allow upload if usage data is malformed
+        console.warn('[Create Project] Allowing upload due to malformed usage data')
+      } else {
+        const canProcess = usage.limit === -1 || usage.used < usage.limit
+        console.log('[Create Project] Can process?', canProcess, `(${usage.used}/${usage.limit})`)
+        
+        if (!canProcess) {
+          console.log('[Create Project] Usage limit reached, returning 403')
+          return NextResponse.json(
+            {
+              error: `You've reached your monthly limit of ${usage.limit} videos. Please upgrade your plan to continue.`,
+              usage: {
+                used: usage.used,
+                limit: usage.limit,
+                plan: usage.plan
+              }
+            },
+            { status: 403 }
+          )
+        }
+      }
+    } catch (usageError) {
+      console.error('[Create Project] Error checking usage limits:', usageError)
+      // If usage check fails, allow the upload but log the error
+      // Don't block users due to database issues
+      console.warn('[Create Project] Allowing upload despite usage check failure for user:', userId)
     }
 
     // Create the project

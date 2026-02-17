@@ -205,7 +205,7 @@ src/
 - `POST /api/social/publish` - Publish content
 - `GET /api/social/analytics/[platform]` - Get analytics
 
-[Full API Documentation →](docs/api/introduction.md)
+For detailed API documentation, check the `src/app/api/` directory.
 
 ## 🎨 Features Deep Dive
 
@@ -278,7 +278,7 @@ Benefits:
 - [ ] Configure CDN for videos
 - [ ] Review security settings
 
-[Deployment Guide →](docs/deployment/guide.md)
+[Deployment Guide →](docs/DEPLOYMENT_READY.md)
 
 ## 🤝 Contributing
 
@@ -297,14 +297,27 @@ We welcome contributions! Please follow these steps:
 - Add tests for new features
 - Update documentation
 
-[Development Guide →](docs/development/code-style.md)
-
 ## 📈 Performance
 
 - **Video Processing**: 5-10 minutes for 30-minute videos
 - **Concurrent Users**: Handles 1000+ active users
 - **Storage**: Optimized for large video files
 - **API Response**: <200ms average
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
+
+- **[Implementation Guides](docs/implementation/)** - Technical implementation flows and specs
+- **[Feature Docs](docs/features/)** - Detailed feature documentation
+- **[Bug Fixes](docs/fixes/)** - Resolved issues and improvements
+- **[Product Specs](docs/product/)** - Product requirements and specifications
+- **[AI Models](docs/)** - AI service integration documentation
+
+**Quick Links:**
+- [Complete Documentation Index →](docs/README.md)
+- [AI Posts Workflow →](docs/implementation/AI_POSTS_CORRECT_FLOW.md)
+- [Deployment Guide →](docs/DEPLOYMENT_READY.md)
 
 ## 🐛 Troubleshooting
 
@@ -324,7 +337,7 @@ We welcome contributions! Please follow these steps:
 - Check callback URLs match exactly
 - Ensure platform app is approved
 
-[Full Troubleshooting Guide →](docs/README.md)
+For more solutions, see the [Bug Fixes documentation →](docs/fixes/)
 
 ## 📞 Support
 
@@ -349,5 +362,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
   Made with ❤️ by the Inflio Team
   
-  [Website](https://inflio.com) • [Documentation](docs/README.md) • [API Reference](docs/api/introduction.md)
+  [Website](https://inflio.com) • [Documentation](docs/README.md)
 </div>
