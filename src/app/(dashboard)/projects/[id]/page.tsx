@@ -65,6 +65,7 @@ import {
   IconHash,
   IconUsers,
   IconDotsVertical,
+  IconPalette,
 } from "@tabler/icons-react"
 import { CheckCircle2 } from "lucide-react"
 import { ProjectService } from "@/lib/services"
@@ -135,6 +136,7 @@ import { SocialGraphicsDisplay } from "@/components/social-graphics-display"
 import { ProjectPageSkeleton } from "@/components/loading-skeleton"
 import { UnifiedContentGenerator } from "@/components/unified-content-generator"
 import { SimplifiedGraphicsTab } from "@/components/simplified-graphics-tab"
+import { useTaskPolling } from "@/hooks/use-task-polling"
 
 
 const platformIcons = {
@@ -231,6 +233,32 @@ function ProjectDetailPageContent() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | undefined>(undefined)
   const [loadingPersona, setLoadingPersona] = useState(false)
 
+  // Brand settings from project
+  const [projectBrandSettings, setProjectBrandSettings] = useState<{
+    name?: string
+    voice?: string
+    primaryColor?: string
+  } | null>(null)
+
+  // Task polling — auto-refresh project when clips or other tasks complete
+  const { tasks: polledTasks, hasIncompleteTasks } = useTaskPolling(
+    projectId,
+    project?.tasks,
+    { enabled: !!project && !loading }
+  )
+
+  // When polling detects task completion, reload the full project
+  useEffect(() => {
+    if (polledTasks && project?.tasks) {
+      const prevCompleted = project.tasks.filter(t => t.status === 'completed').length
+      const nowCompleted = polledTasks.filter(t => t.status === 'completed').length
+      if (nowCompleted > prevCompleted) {
+        // A task just finished — reload project to get new data (e.g. clips)
+        loadProject()
+      }
+    }
+  }, [polledTasks]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Project loading is handled by useProject hook
   
   // Generate default thumbnail from video if no thumbnail exists
@@ -270,30 +298,58 @@ function ProjectDetailPageContent() {
     }
   }, [project])
   
-  // Load persona from project or local storage
+  // Load persona and brand settings from project
   useEffect(() => {
-    async function loadPersona() {
+    async function loadPersonaAndBrand() {
       if (project && !selectedPersona) {
         setLoadingPersona(true)
         try {
-          // First check project metadata
-          const selectedId = (project as any).selected_persona_id || (project.metadata as any)?.currentPersona?.id
+          // Check multiple locations for persona ID (legacy and new)
+          const metadata = project.metadata as any
+          const selectedId = (project as any).selected_persona_id ||
+            metadata?.currentPersona?.id ||
+            metadata?.enhancedGeneration?.personaId
+
           if (selectedId) {
-            const personas = JSON.parse(localStorage.getItem('personas') || '[]')
-            const persona = personas.find((p: any) => p.id === selectedId)
-            if (persona) {
-              setSelectedPersona(persona)
-              setSelectedPersonaId(persona.id)
+            // Try to fetch persona from API first
+            try {
+              const response = await fetch('/api/personas')
+              if (response.ok) {
+                const data = await response.json()
+                const persona = data.personas?.find((p: any) => p.id === selectedId)
+                if (persona) {
+                  setSelectedPersona(persona)
+                  setSelectedPersonaId(persona.id)
+                }
+              }
+            } catch {
+              // Fall back to localStorage
+              const personas = JSON.parse(localStorage.getItem('personas') || '[]')
+              const persona = personas.find((p: any) => p.id === selectedId)
+              if (persona) {
+                setSelectedPersona(persona)
+                setSelectedPersonaId(persona.id)
+              }
             }
           }
+
+          // Load brand settings from project metadata
+          const brandSettings = metadata?.enhancedGeneration?.brandSettings
+          if (brandSettings) {
+            setProjectBrandSettings({
+              name: brandSettings.name,
+              voice: brandSettings.voice,
+              primaryColor: brandSettings.colors?.primary
+            })
+          }
         } catch (error) {
-          console.error('Failed to load persona:', error)
+          console.error('Failed to load persona/brand:', error)
         } finally {
           setLoadingPersona(false)
         }
       }
     }
-    loadPersona()
+    loadPersonaAndBrand()
   }, [project])
   
 
@@ -1140,8 +1196,8 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                 </div>
                   </div>
                   
-                  {/* Persona Selector */}
-                  <div className="flex items-center gap-3">
+                  {/* Persona & Brand Settings */}
+                  <div className="flex items-center gap-3 flex-wrap">
                     <PersonaSelector
                       userId={user?.id || ''}
                       projectId={projectId}
@@ -1157,6 +1213,18 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                       <Badge variant="secondary" className="gap-1">
                         <IconUser className="h-3 w-3" />
                         AI will use {selectedPersona.name}'s photos
+                      </Badge>
+                    )}
+                    {projectBrandSettings?.name && (
+                      <Badge variant="outline" className="gap-1">
+                        <IconPalette className="h-3 w-3" />
+                        Brand: {projectBrandSettings.name}
+                        {projectBrandSettings.primaryColor && (
+                          <span
+                            className="w-3 h-3 rounded-full ml-1"
+                            style={{ backgroundColor: projectBrandSettings.primaryColor }}
+                          />
+                        )}
                       </Badge>
                     )}
                   </div>
@@ -1972,7 +2040,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                       <div className="absolute top-2 right-2">
                                         <div className="bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1">
                                           <IconSparkles className="h-3 w-3" />
-                                          {Math.round((clip.score || 0) * 100)}
+                                          {Math.round(clip.score || 0)}
                                         </div>
                                       </div>
                                       
@@ -2209,24 +2277,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                               </p>
                             </div>
                             <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleExportAllClips}
-                                disabled={isExportingClips}
-                              >
-                                {isExportingClips ? (
-                                  <>
-                                    <IconLoader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Exporting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <IconDownload className="h-4 w-4 mr-2" />
-                                    Download All
-                                  </>
-                                )}
-                              </Button>
                             </div>
                           </div>
                           
@@ -2235,9 +2285,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             {[...project.folders.clips]
                               .sort((a, b) => (b.score || 0) - (a.score || 0))
                               .map((clip: ClipData, index: number) => {
-                                // More detailed scoring tiers
+                                // More detailed scoring tiers (score is already 0-100 scale)
                                 const getScoreTier = (score: number) => {
-                                  const scorePercent = score * 100
+                                  const scorePercent = score // Score is already 0-100
                                 if (scorePercent >= 95) return { label: "🚀 Guaranteed Viral", color: "from-purple-600 to-pink-600", textColor: "text-purple-600", borderColor: "border-purple-500/50", bgColor: "bg-purple-50 dark:bg-purple-950/20" }
                                 if (scorePercent >= 90) return { label: "🔥 Viral Potential", color: "from-red-500 to-pink-500", textColor: "text-red-600", borderColor: "border-red-500/50", bgColor: "bg-red-50 dark:bg-red-950/20" }
                                 if (scorePercent >= 85) return { label: "💎 Exceptional", color: "from-orange-500 to-red-500", textColor: "text-orange-600", borderColor: "border-orange-500/50", bgColor: "bg-orange-50 dark:bg-orange-950/20" }
@@ -2266,7 +2316,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   )}>
                                     <div className="flex flex-col md:flex-row">
                                       {/* Video Preview - Left Side */}
-                                      <div className="relative md:w-64 aspect-[9/16] md:aspect-auto bg-black cursor-pointer group"
+                                      <div className="relative w-full md:w-80 aspect-[9/16] bg-black rounded-lg overflow-hidden border-2 border-gray-700/50 cursor-pointer group flex-shrink-0"
                                 onClick={() => {
                                   setSelectedClip(clip)
                                   setShowVideoModal(true)
@@ -2344,7 +2394,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           {tier.label}
                                         </Badge>
                                             <span className={cn("text-2xl font-bold", tier.textColor)}>
-                                              {Math.round((clip.score || 0) * 100)}/100
+                                              {Math.round(clip.score || 0)}/100
                                             </span>
                                       </div>
                                     </div>
@@ -2394,9 +2444,9 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           <div className="flex justify-between items-center text-sm">
                                         <span className="text-muted-foreground">Virality Score</span>
                                             <span className="font-medium">
-                                              {clip.score >= 0.8 ? "Excellent" :
-                                               clip.score >= 0.7 ? "Good" :
-                                               clip.score >= 0.6 ? "Fair" :
+                                              {clip.score >= 80 ? "Excellent" :
+                                               clip.score >= 70 ? "Good" :
+                                               clip.score >= 60 ? "Fair" :
                                                "Needs Improvement"}
                                         </span>
                                       </div>
@@ -2407,7 +2457,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                             "bg-gradient-to-r", tier.color
                                           )}
                                           initial={{ width: 0 }}
-                                          animate={{ width: `${(clip.score || 0) * 100}%` }}
+                                          animate={{ width: `${clip.score || 0}%` }}
                                           transition={{ duration: 1, delay: index * 0.1 }}
                                         />
                                       </div>
@@ -2442,35 +2492,10 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                               setSelectedClip(clip)
                                               setShowVideoModal(true)
                                             }}
+                                            className="w-full"
                                           >
                                             <IconPlayerPlay className="h-4 w-4 mr-2" />
                                             Play
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={async () => {
-                                              if (clip.exportUrl) {
-                                                const a = document.createElement('a')
-                                                a.href = clip.exportUrl
-                                                a.download = `clip-${index + 1}.mp4`
-                                                a.click()
-                                              }
-                                            }}
-                                          >
-                                            <IconDownload className="h-4 w-4 mr-2" />
-                                            Download
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => copyToClipboard(clip.title || 'Untitled Clip', clip.id)}
-                                          >
-                                            {copiedId === clip.id ? (
-                                              <IconCheck className="h-4 w-4 text-green-600" />
-                                            ) : (
-                                              <IconCopy className="h-4 w-4" />
-                                            )}
                                           </Button>
                                         </div>
                                       </div>
@@ -3248,42 +3273,42 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                             <div className="flex items-baseline gap-2">
                               <span className={cn(
                                 "text-3xl font-bold",
-                                (selectedClip.score || 0) >= 0.9 ? "text-red-600" :
-                                (selectedClip.score || 0) >= 0.7 ? "text-orange-600" :
-                                (selectedClip.score || 0) >= 0.5 ? "text-yellow-600" :
+                                (selectedClip.score || 0) >= 90 ? "text-red-600" :
+                                (selectedClip.score || 0) >= 70 ? "text-orange-600" :
+                                (selectedClip.score || 0) >= 50 ? "text-yellow-600" :
                                 "text-gray-600"
-                              )}>{Math.round((selectedClip.score || 0) * 100)}</span>
+                              )}>{Math.round(selectedClip.score || 0)}</span>
                               <span className="text-lg text-muted-foreground">/100</span>
                             </div>
                           </div>
                         </div>
                         <Badge className={cn(
                           "text-sm px-4 py-1.5 font-semibold shadow-md",
-                          (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white border-0" :
-                          (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white border-0" :
-                          (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black border-0" :
+                          (selectedClip.score || 0) >= 90 ? "bg-gradient-to-r from-red-500 to-pink-500 text-white border-0" :
+                          (selectedClip.score || 0) >= 70 ? "bg-gradient-to-r from-orange-500 to-yellow-500 text-white border-0" :
+                          (selectedClip.score || 0) >= 50 ? "bg-gradient-to-r from-yellow-500 to-green-500 text-black border-0" :
                           "bg-gradient-to-r from-gray-500 to-gray-600 text-white border-0"
                         )}>
-                          {(selectedClip.score || 0) >= 0.9 ? "🔥 Viral Potential" :
-                           (selectedClip.score || 0) >= 0.7 ? "⚡ High Engagement" :
-                           (selectedClip.score || 0) >= 0.5 ? "✨ Good Content" :
+                          {(selectedClip.score || 0) >= 90 ? "🔥 Viral Potential" :
+                           (selectedClip.score || 0) >= 70 ? "⚡ High Engagement" :
+                           (selectedClip.score || 0) >= 50 ? "✨ Good Content" :
                            "💡 Needs Improvement"}
                         </Badge>
                       </div>
-                      
+
                       {/* Score Bar */}
                       <div className="mb-4">
                         <div className="relative h-3 bg-black/10 rounded-full overflow-hidden">
                           <motion.div
                             className={cn(
                               "absolute left-0 top-0 h-full rounded-full shadow-lg",
-                              (selectedClip.score || 0) >= 0.9 ? "bg-gradient-to-r from-red-500 via-pink-500 to-red-400" :
-                              (selectedClip.score || 0) >= 0.7 ? "bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-400" :
-                              (selectedClip.score || 0) >= 0.5 ? "bg-gradient-to-r from-yellow-500 via-green-500 to-yellow-400" :
+                              (selectedClip.score || 0) >= 90 ? "bg-gradient-to-r from-red-500 via-pink-500 to-red-400" :
+                              (selectedClip.score || 0) >= 70 ? "bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-400" :
+                              (selectedClip.score || 0) >= 50 ? "bg-gradient-to-r from-yellow-500 via-green-500 to-yellow-400" :
                               "bg-gradient-to-r from-gray-500 to-gray-400"
                             )}
                             initial={{ width: 0 }}
-                            animate={{ width: `${(selectedClip.score || 0) * 100}%` }}
+                            animate={{ width: `${selectedClip.score || 0}%` }}
                             transition={{ duration: 1, ease: "easeOut" }}
                           />
                         </div>

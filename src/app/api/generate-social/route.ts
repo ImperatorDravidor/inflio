@@ -40,12 +40,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Update task progress
+    const projectTasks = (project.tasks as any[]) || [];
     const updateTaskProgress = async (progress: number, status: string) => {
-      const taskIndex = project.tasks.findIndex((t: { type: string }) => t.type === 'social');
+      const taskIndex = projectTasks.findIndex((t: { type: string }) => t.type === 'social');
       if (taskIndex === -1) return;
-      project.tasks[taskIndex].progress = progress;
-      project.tasks[taskIndex].status = status;
-      await supabaseAdmin.from('projects').update({ tasks: project.tasks }).eq('id', projectId);
+      projectTasks[taskIndex].progress = progress;
+      projectTasks[taskIndex].status = status;
+      await supabaseAdmin.from('projects').update({ tasks: projectTasks }).eq('id', projectId);
     };
 
     await updateTaskProgress(10, 'processing');
@@ -68,11 +69,12 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString()
     }))
 
-    // Add to project's social folder
-    const updatedSocialFolder = [...project.folders.social, ...newSocialPosts];
+    // Add to project's social folder (with null safety)
+    const folders = project.folders || { clips: [], blog: [], social: [], images: [] };
+    const updatedSocialFolder = [...(folders.social || []), ...newSocialPosts];
     const { error: updateError } = await supabaseAdmin
       .from('projects')
-      .update({ folders: { ...project.folders, social: updatedSocialFolder } })
+      .update({ folders: { ...folders, social: updatedSocialFolder }, updated_at: new Date().toISOString() })
       .eq('id', projectId);
 
     if (updateError) throw updateError;

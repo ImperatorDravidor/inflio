@@ -1,11 +1,12 @@
-import { ProjectService } from '@/lib/services'
 import { AIContentService } from '@/lib/ai-content-service'
-import { AdvancedPostsService } from '@/lib/ai-posts-advanced'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { AssemblyAI, TranscribeParams } from 'assemblyai'
 import { TranscriptionData } from '@/lib/project-types'
 import { withRetry } from '@/lib/retry-utils'
 import { v4 as uuidv4 } from 'uuid'
+import { updateTaskProgressServer } from '@/lib/server-project-utils'
+import { AdvancedPostsService } from '@/lib/ai-posts-advanced'
+import { fetchBrandAndPersonaContext, fetchDefaultPersonaId, extractTranscriptText } from '@/lib/ai-context'
 
 // Mock content analysis
 const mockContentAnalysis = {
@@ -175,8 +176,8 @@ export async function processTranscription(params: {
   })
 
   try {
-    // Update task status to processing right at the start
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 5, 'processing')
+    // Progress already set to 5% by process route - start at 15%
+    await updateTaskProgressServer(projectId, 'transcription', 15, 'processing')
 
     // Get project from database
     const { data: project, error: projectError } = await supabaseAdmin
@@ -186,7 +187,7 @@ export async function processTranscription(params: {
       .single()
 
     if (projectError || !project) {
-      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+      await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
       throw new Error('Project not found')
     }
 
@@ -197,9 +198,9 @@ export async function processTranscription(params: {
     // Generate mock transcription
     const mockTranscription = generateMockTranscription(videoUrl, language)
 
-    // Update progress to 15% before starting transcription
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 15, 'processing')
-    console.log('[TranscriptionProcessor] Updated progress to 15%, starting AssemblyAI transcription...')
+    // Update progress to 20% before starting AssemblyAI
+    await updateTaskProgressServer(projectId, 'transcription', 20, 'processing')
+    console.log('[TranscriptionProcessor] Updated progress to 20%, starting AssemblyAI transcription...')
 
     if (process.env.ASSEMBLYAI_API_KEY) {
       try {
@@ -262,8 +263,8 @@ export async function processTranscription(params: {
                 projectId,
                 nextRetryIn: Math.min(10000 * Math.pow(1.5, attempt - 1), 60000) / 1000 + ' seconds'
               })
-              // Update progress to show we're retrying
-              ProjectService.updateTaskProgress(projectId, 'transcription', 15 + (attempt * 5), 'processing').catch(console.error)
+              // Update progress to show we're retrying (20% base + 5% per retry)
+              updateTaskProgressServer(projectId, 'transcription', 20 + (attempt * 5), 'processing').catch(console.error)
             }
           }
         )
@@ -288,7 +289,7 @@ export async function processTranscription(params: {
         }
 
         // Update progress to 50% after successful transcription
-        await ProjectService.updateTaskProgress(projectId, 'transcription', 50, 'processing')
+        await updateTaskProgressServer(projectId, 'transcription', 50, 'processing')
         console.log('[TranscriptionProcessor] Updated progress to 50%')
 
         // Convert AssemblyAI format to our internal format
@@ -317,7 +318,7 @@ export async function processTranscription(params: {
           isMock = true
         } else {
           // Update task status to failed
-          await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+          await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
           // Throw the error to properly fail the task
           throw new Error(`Transcription failed: ${assemblyError instanceof Error ? assemblyError.message : 'Unknown error'}`)
         }
@@ -325,14 +326,14 @@ export async function processTranscription(params: {
     } else {
       console.error('[TranscriptionProcessor] AssemblyAI API key not configured')
       // Update task status to failed
-      await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+      await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
       throw new Error('Transcription service not configured. Please add ASSEMBLYAI_API_KEY to environment variables.')
     }
 
     // --- Step 2: AI Content Analysis ---
     
     // Update progress to 70% before content analysis
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 70, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 70, 'processing')
     console.log('[TranscriptionProcessor] Updated progress to 70%, starting AI content analysis...')
     
     let contentAnalysis = mockContentAnalysis
@@ -377,16 +378,22 @@ export async function processTranscription(params: {
     // --- Step 3: Update Project ---
     
     // Update progress to 85% before final save
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 85, 'processing')
+    await updateTaskProgressServer(projectId, 'transcription', 85, 'processing')
     console.log('[TranscriptionProcessor] Updated progress to 85%, saving to database...')
     
     try {
       console.log('[TranscriptionProcessor] Updating project with transcription and content analysis...')
-      await ProjectService.updateProject(projectId, {
-        transcription,
-        content_analysis: contentAnalysis,
-        updated_at: new Date().toISOString()
-      })
+      // Use admin client — this runs server-side in the processing pipeline
+      const { error: updateErr } = await supabaseAdmin
+        .from('projects')
+        .update({
+          transcription,
+          content_analysis: contentAnalysis,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId)
+      
+      if (updateErr) throw updateErr
       console.log('[TranscriptionProcessor] Project updated successfully')
     } catch (updateError) {
       console.error('[TranscriptionProcessor] Failed to update project with full data:', {
@@ -397,10 +404,15 @@ export async function processTranscription(params: {
       console.log('[TranscriptionProcessor] Attempting to save with transcription only...')
       // Try one more time with just transcription if content analysis was the issue
       try {
-        await ProjectService.updateProject(projectId, {
-          transcription,
-          updated_at: new Date().toISOString()
-        })
+        const { error: secondErr } = await supabaseAdmin
+          .from('projects')
+          .update({
+            transcription,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', projectId)
+        
+        if (secondErr) throw secondErr
         console.log('[TranscriptionProcessor] Project updated successfully with transcription only')
       } catch (secondError) {
         console.error('[TranscriptionProcessor] Failed to update project even with transcription only:', {
@@ -413,12 +425,58 @@ export async function processTranscription(params: {
     }
 
     console.log('[TranscriptionProcessor] Marking task as completed...')
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 100, 'completed')
+    await updateTaskProgressServer(projectId, 'transcription', 100, 'completed')
     console.log('[TranscriptionProcessor] Task marked as completed')
 
-    // --- Step 4: Auto-generate AI Posts using Advanced Service ---
-    if (contentAnalysis && !analysisError && transcription.text) {
-      console.log('[TranscriptionProcessor] Triggering advanced AI post generation...')
+    // --- Step 3.5: Generate Content Brief for cross-content coherence ---
+    if (contentAnalysis && !analysisError) {
+      try {
+        console.log('[TranscriptionProcessor] Generating content brief...')
+        const userId = params.userId || (await supabaseAdmin
+          .from('projects').select('user_id').eq('id', projectId).single()
+        ).data?.user_id
+
+        let briefBrand, briefPersona
+        if (userId) {
+          const defaultPersonaId = await fetchDefaultPersonaId(userId)
+          const ctx = await fetchBrandAndPersonaContext(userId, defaultPersonaId)
+          briefBrand = ctx.brand
+          briefPersona = ctx.persona
+        }
+
+        const transcriptText = typeof transcription === 'string'
+          ? transcription
+          : extractTranscriptText(transcription)
+
+        const brief = await AdvancedPostsService.generateContentBrief(
+          transcriptText,
+          {
+            topics: contentAnalysis.topics,
+            keywords: contentAnalysis.keywords,
+            keyPoints: (contentAnalysis as any).keyPoints || contentAnalysis.keyMoments?.map((m: any) => m.description),
+            sentiment: contentAnalysis.sentiment,
+            summary: contentAnalysis.summary,
+          },
+          briefBrand,
+          briefPersona
+        )
+
+        // Save content brief to project
+        await supabaseAdmin
+          .from('projects')
+          .update({ content_brief: brief })
+          .eq('id', projectId)
+
+        console.log('[TranscriptionProcessor] Content brief saved')
+      } catch (briefError) {
+        console.error('[TranscriptionProcessor] Content brief generation failed (non-fatal):', briefError)
+      }
+    }
+
+    // --- Step 4: Auto-generate AI Posts via generate-smart API ---
+    // Uses the full AdvancedPostsService with GPT-5.2, brand identity, and persona context
+    if (contentAnalysis && !analysisError) {
+      console.log('[TranscriptionProcessor] Triggering automatic AI post generation via generate-smart...')
       try {
         // Check if there are already posts generated for this project
         const { data: existingPosts, error: checkError } = await supabaseAdmin
@@ -428,161 +486,82 @@ export async function processTranscription(params: {
           .limit(1)
 
         if (!checkError && (!existingPosts || existingPosts.length === 0)) {
-          console.log('[TranscriptionProcessor] No existing posts found, generating advanced AI posts...')
+          // Get project details for the API call
+          const { data: projectData } = await supabaseAdmin
+            .from('projects')
+            .select('title, user_id')
+            .eq('id', projectId)
+            .single()
 
-          // Get user_id for the project if not provided
-          let userId = params.userId
-          if (!userId) {
-            const { data: projectWithUser } = await supabaseAdmin
-              .from('projects')
-              .select('user_id')
-              .eq('id', projectId)
-              .single()
-            userId = projectWithUser?.user_id
-          }
+          const userId = params.userId || projectData?.user_id
+          const projectTitle = projectData?.title || 'Untitled Project'
 
-          // Fetch user's persona if they have one
-          let personaContext = undefined
-          let brandVoice = 'Professional yet approachable, authentic, value-driven'
-
+          // Get user's default persona if available
+          let selectedPersonaId: string | undefined
           if (userId) {
-            const { data: userProfile } = await supabaseAdmin
+            const { data: profile } = await supabaseAdmin
               .from('user_profiles')
-              .select('brand_voice')
+              .select('default_persona_id')
               .eq('clerk_user_id', userId)
               .single()
-
-            if (userProfile?.brand_voice) {
-              brandVoice = userProfile.brand_voice
-            }
-
-            // Try to get default persona
-            const { data: defaultPersona } = await supabaseAdmin
-              .from('personas')
-              .select('*')
-              .eq('user_id', userId)
-              .eq('is_default', true)
-              .single()
-
-            if (defaultPersona) {
-              personaContext = {
-                name: defaultPersona.name,
-                context: `Brand: ${defaultPersona.name}\nVoice: ${defaultPersona.brand_voice || brandVoice}\nDescription: ${defaultPersona.description || ''}`
-              }
-              console.log('[TranscriptionProcessor] Using default persona:', defaultPersona.name)
+            if (profile?.default_persona_id) {
+              selectedPersonaId = profile.default_persona_id
             }
           }
 
-          // Default platforms
-          const defaultPlatforms = ['instagram', 'twitter', 'linkedin']
-
-          // Generate advanced post suggestions
-          console.log('[TranscriptionProcessor] Calling AdvancedPostsService...')
-          const advancedPosts = await AdvancedPostsService.generateAdvancedPosts(
-            transcription.text,
-            params.title || 'Video Content',
-            contentAnalysis,
-            {
-              platforms: defaultPlatforms,
-              usePersona: !!personaContext,
-              personaDetails: personaContext,
-              brandVoice: brandVoice
-            }
-          )
-
-          console.log(`[TranscriptionProcessor] Generated ${advancedPosts.length} advanced post suggestions`)
-
-          // Transform advanced posts into database-ready format
-          const postSuggestionsToCreate = []
-
-          for (const post of advancedPosts) {
-            const suggestionId = uuidv4()
-
-            // Create copy variants for each platform
-            const copyVariants: Record<string, any> = {}
-            for (const platform of post.platforms.primary) {
-              copyVariants[platform] = {
-                caption: post.content.body,
-                hashtags: post.content.hashtags,
-                cta: post.content.cta,
-                title: post.content.title,
-                description: post.content.preview
-              }
-            }
-
-            // Create images array from visual specifications
-            const images = []
-            if (post.visual.aiPrompt) {
-              images.push({
-                id: uuidv4(),
-                type: 'hero',
-                prompt: post.visual.aiPrompt,
-                text_overlay: post.visual.textOverlay || '',
-                dimensions: post.visual.dimensions,
-                position: 0
-              })
-            }
-
-            // Store the suggestion
-            postSuggestionsToCreate.push({
-              id: suggestionId,
-              project_id: projectId,
-              user_id: userId,
-              content_type: post.contentType.format,
-              title: post.content.title,
-              description: post.contentType.description,
-              platforms: post.platforms.primary,
-              copy_variants: copyVariants,
-              images: images,
-              visual_style: {
-                style: post.visual.style,
-                colors: post.visual.primaryColors,
-                description: post.visual.description
-              },
-              engagement_data: {
-                predicted_reach: post.insights.estimatedReach,
-                target_audience: post.insights.targetAudience,
-                best_time: post.insights.bestTime,
-                why_it_works: post.insights.whyItWorks,
-                engagement_tip: post.insights.engagementTip
-              },
-              metadata: {
-                uses_persona: post.actions.needsPersona,
-                ready_to_post: post.actions.readyToPost,
-                can_edit: post.actions.canEditText,
-                can_generate_image: post.actions.canGenerateImage,
-                content_length: post.content.wordCount,
-                hook: post.content.hook,
-                preview: post.content.preview,
-                ai_generated: true,
-                generation_source: 'advanced_auto_generation'
-              },
-              status: 'suggested',
-              created_at: new Date().toISOString(),
-              created_by: 'ai_system'
-            })
+          // Extract transcript text
+          let transcriptText = ''
+          if (typeof transcription === 'string') {
+            transcriptText = transcription
+          } else if (transcription && typeof transcription === 'object') {
+            transcriptText = (transcription as any).text || ''
           }
 
-          // Save all post suggestions to database
-          if (postSuggestionsToCreate.length > 0) {
-            console.log(`[TranscriptionProcessor] Inserting ${postSuggestionsToCreate.length} advanced post suggestions`)
+          // Call the generate-smart API internally
+          let baseUrl: string
+          if (process.env.NEXT_PUBLIC_APP_URL) {
+            baseUrl = process.env.NEXT_PUBLIC_APP_URL
+          } else if (process.env.VERCEL_URL) {
+            baseUrl = `https://${process.env.VERCEL_URL}`
+          } else {
+            baseUrl = 'http://localhost:3000'
+          }
 
-            const { error: insertError } = await supabaseAdmin
-              .from('post_suggestions')
-              .insert(postSuggestionsToCreate)
+          const response = await fetch(`${baseUrl}/api/posts/generate-smart`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
+            },
+            body: JSON.stringify({
+              projectId,
+              projectTitle,
+              contentAnalysis,
+              transcript: transcriptText,
+              settings: {
+                contentTypes: ['carousel', 'quote', 'single', 'thread', 'reel'],
+                platforms: ['instagram', 'twitter', 'linkedin'],
+                tone: 'professional',
+                contentGoal: 'engagement',
+                usePersona: !!selectedPersonaId,
+                selectedPersonaId,
+              },
+            }),
+          })
 
-            if (insertError) {
-              console.error('[TranscriptionProcessor] Error inserting post suggestions:', insertError)
-            } else {
-              console.log(`[TranscriptionProcessor] Successfully created ${postSuggestionsToCreate.length} advanced post suggestions`)
-            }
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[TranscriptionProcessor] Successfully generated ${data.count || 0} AI posts via generate-smart`)
+          } else {
+            const errorText = await response.text()
+            console.error('[TranscriptionProcessor] generate-smart API returned error:', response.status, errorText)
           }
         } else {
           console.log('[TranscriptionProcessor] Posts already exist for this project, skipping auto-generation')
         }
       } catch (postGenError) {
         // Don't fail the transcription if post generation fails
-        console.error('[TranscriptionProcessor] Error generating advanced AI posts (non-fatal):', postGenError)
+        console.error('[TranscriptionProcessor] Error generating AI posts (non-fatal):', postGenError)
       }
     }
 
@@ -597,7 +576,7 @@ export async function processTranscription(params: {
     }
   } catch (error) {
     console.error(`[TranscriptionProcessor] Critical error for project ${projectId}:`, error)
-    await ProjectService.updateTaskProgress(projectId, 'transcription', 0, 'failed')
+    await updateTaskProgressServer(projectId, 'transcription', 0, 'failed')
     throw error
   }
 } 

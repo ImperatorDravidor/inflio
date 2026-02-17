@@ -1,20 +1,24 @@
--- Migration: Add Submagic project ID column
--- Description: Adds submagic_project_id column to store Submagic API project IDs
--- Date: 2025-10-30
--- Replaces: klap_project_id (Klap → Submagic migration)
+-- Migration: Add Submagic Magic Clips and YouTube support to projects table
+-- This adds fields for tracking YouTube uploads and Submagic clip processing
 
--- Add submagic_project_id column to projects table
-ALTER TABLE projects
+-- Add Submagic project ID column
+ALTER TABLE projects 
 ADD COLUMN IF NOT EXISTS submagic_project_id TEXT;
 
--- Add index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_projects_submagic_project_id 
+-- Add YouTube tracking columns
+ALTER TABLE projects 
+ADD COLUMN IF NOT EXISTS youtube_video_id TEXT,
+ADD COLUMN IF NOT EXISTS youtube_video_url TEXT;
+
+-- Create indexes for faster lookups
+CREATE INDEX IF NOT EXISTS idx_projects_submagic_id 
 ON projects(submagic_project_id);
 
--- Add comment
-COMMENT ON COLUMN projects.submagic_project_id IS 'Submagic API project ID for video caption generation';
+CREATE INDEX IF NOT EXISTS idx_projects_youtube_id 
+ON projects(youtube_video_id);
 
-
-
-
+-- Add comments for documentation
+COMMENT ON COLUMN projects.submagic_project_id IS 'Submagic Magic Clips project ID for clip generation tracking';
+COMMENT ON COLUMN projects.youtube_video_id IS 'YouTube video ID for videos uploaded for clip generation';
+COMMENT ON COLUMN projects.youtube_video_url IS 'Full YouTube video URL for reference';
 

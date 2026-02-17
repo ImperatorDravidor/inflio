@@ -30,7 +30,7 @@ import {
   ShieldCheck, Lock, Unlock, Key, Database, Server,
   Cpu, HardDrive, Wifi, WifiOff, Signal, Battery,
   BatteryCharging, Volume2, VolumeX, Headphones, Speaker,
-  Smile, ArrowUpRight, TrendingUpIcon, Gem, Infinity,
+  Smile, ArrowUpRight, TrendingUpIcon, Gem, Infinity as InfinityIcon,
   Play, Pause, SkipForward, SkipBack, Repeat, Shuffle,
   Bell, BellOff, Send, Archive, Inbox, Flag,
   Bookmark, BookmarkCheck, Hash as HashIcon, AtSign,
@@ -108,6 +108,7 @@ import { toast } from 'sonner'
 interface PremiumOnboardingProps {
   userId: string
   onComplete?: () => void
+  initialStep?: number // Override saved progress and jump to this step
 }
 
 // Smooth step configuration with better flow
@@ -285,19 +286,21 @@ const INDUSTRY_TEMPLATES = {
   }
 }
 
-export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps) {
+export function PremiumOnboarding({ userId, onComplete, initialStep }: PremiumOnboardingProps) {
   const router = useRouter()
   const { theme } = useTheme()
-  const [currentStep, setCurrentStep] = useState(0)
+  const [currentStep, setCurrentStep] = useState(initialStep ?? 0)
   const [currentSection, setCurrentSection] = useState(0)
   const [formData, setFormData] = useState<any>({
     platforms: [],
     selectedTemplate: null
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [isInitialLoading, setIsInitialLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [showSkip, setShowSkip] = useState(false)
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set())
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   
   // Animation controls
   const controls = useAnimation()
@@ -319,6 +322,89 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
   const currentStepData = ONBOARDING_FLOW[currentStep]
   const totalSections = currentStepData.sections.length
   const overallProgress = ((currentStep + (currentSection / totalSections)) / totalSteps) * 100
+
+  // Load saved progress on mount
+  useEffect(() => {
+    const loadSavedProgress = async () => {
+      try {
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Loading timeout')), 10000)
+        )
+
+        const savedProgress = await Promise.race([
+          OnboardingClientService.loadProgress(userId),
+          timeoutPromise
+        ]) as any
+
+        // Restore form data if available (regardless of step)
+        if (savedProgress?.formData && Object.keys(savedProgress.formData).length > 0) {
+          setFormData((prev: any) => ({
+            ...prev,
+            ...savedProgress.formData
+          }))
+        }
+
+        // Mark completed steps
+        const completed = new Set<number>()
+        if (savedProgress && savedProgress.step > 0) {
+          for (let i = 0; i < savedProgress.step; i++) {
+            completed.add(i)
+          }
+        }
+        // Also check for specific completion flags
+        if (savedProgress?.formData?.brandAnalysisCompleted || savedProgress?.formData?.brandAnalysis) {
+          completed.add(2) // Brand step
+        }
+        if (savedProgress?.formData?.personaTrained || savedProgress?.formData?.personaId) {
+          completed.add(3) // Persona step
+        }
+        setCompletedSteps(completed)
+
+        // Determine the correct step to show
+        // If initialStep prop is provided, ALWAYS use that (direct navigation)
+        if (initialStep !== undefined) {
+          setCurrentStep(initialStep)
+          console.log('Using initialStep override:', initialStep)
+        } else if (savedProgress && savedProgress.step > 0) {
+          // Use saved progress step with auto-advancement logic
+          let targetStep = savedProgress.step
+
+          // If user is on brand step (2) but already has brand analysis, move to next step
+          if (savedProgress.step === 2 && savedProgress.formData?.brandAnalysis) {
+            targetStep = 3 // Move to persona step
+            completed.add(2)
+            setCompletedSteps(new Set(completed))
+          }
+
+          // If user is on persona step (3) but already has persona, move to launch
+          if (savedProgress.step === 3 && savedProgress.formData?.personaId) {
+            targetStep = 4 // Move to launch step
+            completed.add(3)
+            setCompletedSteps(new Set(completed))
+          }
+
+          setCurrentStep(targetStep)
+
+          console.log('Restored onboarding progress:', {
+            originalStep: savedProgress.step,
+            targetStep,
+            stepId: savedProgress.stepId,
+            hasFormData: Object.keys(savedProgress.formData || {}).length > 0,
+            hasBrandAnalysis: !!savedProgress.formData?.brandAnalysis,
+            brandAnalysisKeys: savedProgress.formData?.brandAnalysis ? Object.keys(savedProgress.formData.brandAnalysis) : [],
+            completedSteps: Array.from(completed)
+          })
+        }
+      } catch (error) {
+        console.error('Error loading saved progress:', error)
+      } finally {
+        setIsInitialLoading(false)
+      }
+    }
+
+    loadSavedProgress()
+  }, [userId, initialStep])
 
   // Auto-save with debounce
   useEffect(() => {
@@ -393,12 +479,35 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     if (currentSection < totalSections - 1) {
       setCurrentSection(currentSection + 1)
     } else if (currentStep < totalSteps - 1) {
+      // Mark current step as completed before moving to next
+      setCompletedSteps(prev => new Set(prev).add(currentStep))
       setCurrentStep(currentStep + 1)
       setCurrentSection(0)
     } else {
       handleComplete()
     }
   }
+  
+  // Mark a specific step as completed (for child components to call)
+  // This immediately saves progress to prevent data loss on refresh
+  const markStepCompleted = useCallback(async (stepIndex: number) => {
+    setCompletedSteps(prev => new Set(prev).add(stepIndex))
+
+    // Immediately save progress to prevent loss on refresh
+    // Don't wait for the debounced auto-save
+    try {
+      const stepData = ONBOARDING_FLOW[stepIndex]
+      await OnboardingClientService.saveProgress(
+        userId,
+        stepIndex + 1, // Save as next step since this one is completed
+        stepData?.id || 'unknown',
+        formData
+      )
+      console.log(`Step ${stepIndex} marked complete and saved immediately`)
+    } catch (error) {
+      console.error('Error saving step completion:', error)
+    }
+  }, [userId, formData])
 
   // Handle back navigation
   const handleBack = () => {
@@ -512,6 +621,50 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
     setTouchedFields(prev => new Set(prev).add(key))
   }
 
+  // Show loading state while restoring progress
+  if (isInitialLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background/95 to-muted/10">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-8"
+        >
+          {/* Logo with futuristic sync ring */}
+          <div className="relative mx-auto w-32 h-32 flex items-center justify-center">
+            {/* Outer rotating ring */}
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: 'conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.8) 10%, transparent 20%)',
+              }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            />
+            {/* Inner glow ring */}
+            <motion.div
+              className="absolute inset-2 rounded-full border border-white/20"
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            {/* Logo container */}
+            <div className="relative z-10 bg-background rounded-full p-4">
+              <InflioLogo size="md" variant="dark" />
+            </div>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Loading your progress...
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Restoring where you left off
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-muted/10">
@@ -577,6 +730,30 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                     <span>Saving...</span>
                   </motion.div>
                 )}
+                
+                {/* Progress dots in header */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  {ONBOARDING_FLOW.map((step, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "rounded-full transition-all flex items-center justify-center",
+                        i === currentStep 
+                          ? "w-6 h-1.5 bg-primary" 
+                          : completedSteps.has(i) 
+                            ? "w-4 h-4 bg-green-500" 
+                            : i < currentStep 
+                              ? "w-1.5 h-1.5 bg-primary/50" 
+                              : "w-1.5 h-1.5 bg-muted"
+                      )}
+                      title={step.title}
+                    >
+                      {completedSteps.has(i) && i !== currentStep && (
+                        <Check className="h-2.5 w-2.5 text-white" />
+                      )}
+                    </div>
+                  ))}
+                </div>
                 
                 <Badge variant="outline" className="text-xs">
                   Step {currentStep + 1} of {totalSteps}
@@ -644,7 +821,7 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                             description: "GPT-5 & Stable Diffusion"
                           },
                           {
-                            icon: Infinity,
+                            icon: InfinityIcon,
                             title: "Unlimited content",
                             description: "From one source"
                           }
@@ -790,14 +967,47 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                 {/* Enhanced Brand Identity Step */}
                 {currentStep === 2 && (
                   <BrandIdentityEnhanced
+                    key={formData.brandAnalysis ? 'has-brand' : 'no-brand'}
                     formData={formData}
                     updateFormData={updateFormData}
+                    onSaveProgress={async (data) => {
+                      // Immediately save progress with the provided data
+                      // This ensures brand analysis is saved before page refresh
+                      console.log('[BRAND SAVE] onSaveProgress called with data:', {
+                        hasBrandAnalysis: !!data.brandAnalysis,
+                        hasBrandIdentity: !!data.brandIdentity,
+                        dataKeys: Object.keys(data)
+                      })
+                      try {
+                        const mergedData = { ...formData, ...data }
+                        console.log('[BRAND SAVE] Merged data:', {
+                          hasBrandAnalysis: !!mergedData.brandAnalysis,
+                          hasBrandIdentity: !!mergedData.brandIdentity,
+                          mergedKeys: Object.keys(mergedData)
+                        })
+                        const result = await OnboardingClientService.saveProgress(
+                          userId,
+                          3, // Save as step 3 since brand (step 2) is complete
+                          'brand',
+                          mergedData
+                        )
+                        console.log('[BRAND SAVE] Save result:', result)
+                      } catch (error) {
+                        console.error('[BRAND SAVE] Error saving brand analysis:', error)
+                      }
+                    }}
                     onComplete={() => {
-                      // Auto-advance to next step
+                      // Mark step as completed and auto-advance
+                      markStepCompleted(2)
                       if (currentStep < totalSteps - 1) {
                         setCurrentStep(currentStep + 1)
                         setCurrentSection(0)
                       }
+                    }}
+                    onSkip={() => {
+                      updateFormData('brandAnalysisSkipped', true)
+                      setCurrentStep(3)
+                      setCurrentSection(0)
                     }}
                   />
                 )}
@@ -841,6 +1051,20 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
                     }}
                     formData={formData}
                     updateFormData={updateFormData}
+                    onSaveProgress={async (data) => {
+                      // Immediately save progress with the provided data
+                      try {
+                        await OnboardingClientService.saveProgress(
+                          userId,
+                          4, // Save as step 4 since persona (step 3) is complete
+                          'persona',
+                          { ...formData, ...data }
+                        )
+                        console.log('Persona progress saved immediately')
+                      } catch (error) {
+                        console.error('Error saving persona progress:', error)
+                      }
+                    }}
                     minPhotos={5}
                     recommendedPhotos={10}
                     maxPhotos={20}
@@ -928,55 +1152,44 @@ export function PremiumOnboarding({ userId, onComplete }: PremiumOnboardingProps
           </div>
         </div>
 
-        {/* Bottom navigation - transparent, no border */}
-        <div className="fixed bottom-0 left-0 right-0 bg-transparent">
-          <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              onClick={handleBack}
-              disabled={currentStep === 0 && currentSection === 0}
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            
-            <div className="flex items-center gap-2">
-              {ONBOARDING_FLOW.map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "w-2 h-2 rounded-full transition-all",
-                    i === currentStep ? "w-8 bg-primary" :
-                    i < currentStep ? "bg-primary/50" : "bg-muted"
-                  )}
-                />
-              ))}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {currentStep === 2 && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    updateFormData('brandAnalysisSkipped', true)
-                    setCurrentStep(3)
-                    setCurrentSection(0)
-                  }}
-                >
-                  Skip to AI Avatar
-                </Button>
-              )}
+        {/* Bottom navigation - hide entirely when brand profile is showing (it has its own navigation) */}
+        {!(currentStep === 2 && formData.brandAnalysis) && (
+          <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background/95 to-transparent pt-8 pb-6">
+            <div className="max-w-4xl mx-auto px-6 flex items-center justify-between">
               <Button
-                onClick={handleContinue}
-                disabled={!validateCurrentSection()}
-                className="min-w-[120px]"
+                variant="ghost"
+                onClick={handleBack}
+                disabled={currentStep === 0 && currentSection === 0}
               >
-                {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-                <ChevronRight className="h-4 w-4 ml-2" />
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Back
               </Button>
+              
+              <div className="flex items-center gap-2">
+                {currentStep === 2 && !formData.brandAnalysis && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      updateFormData('brandAnalysisSkipped', true)
+                      setCurrentStep(3)
+                      setCurrentSection(0)
+                    }}
+                  >
+                    Skip to AI Avatar
+                  </Button>
+                )}
+                <Button
+                  onClick={handleContinue}
+                  disabled={!validateCurrentSection()}
+                  className="min-w-[120px]"
+                >
+                  {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Skip dialog */}
         <Dialog open={showSkip} onOpenChange={setShowSkip}>

@@ -2,9 +2,49 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "mcp__supabase__list_organizations",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__execute_sql",
+      "Bash(node scripts/setup-youtube-oauth.js:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.vizard.ai)",
+      "Bash(cat:*)",
+      "Bash(node -e:*)",
+      "Bash(node scripts/fix-clips-structure.js:*)",
+      "Bash(tree:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(awk:*)",
+      "Bash(find:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__supabase__apply_migration",
+      "Bash(wc:*)",
+      "mcp__linear-server__list_teams",
+      "mcp__linear-server__list_projects",
+      "mcp__linear-server__list_issue_labels",
+      "mcp__linear-server__list_issue_statuses",
+      "mcp__linear-server__list_issues",
+      "mcp__linear-server__get_project",
+      "mcp__linear-server__create_issue_label",
+      "mcp__linear-server__update_project",
+      "mcp__linear-server__create_issue",
+      "Bash(git log:*)",
+      "Bash(npx tsc:*)",
+      "Bash(echo:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx eslint:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

@@ -216,18 +216,66 @@ export function PersonaPhotoCapture({
     setUploading(true)
     
     try {
-      // Create FormData for upload
-      const formData = new FormData()
-      photos.forEach(photo => {
-        formData.append('photos', photo.file)
+      // Step 1: Get signed upload URLs for all photos
+      const signedUrlResponse = await fetch('/api/storage/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'persona-photo',
+          files: photos.map(photo => ({
+            fileName: photo.file.name,
+            fileType: photo.file.type,
+            fileSize: photo.file.size,
+          })),
+        }),
       })
-      formData.append('personaName', personaName || 'Main Persona')
-      formData.append('description', personaDescription || 'AI persona for content generation')
-      
-      // Upload to API
+
+      if (!signedUrlResponse.ok) {
+        const err = await signedUrlResponse.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to prepare upload')
+      }
+
+      const { uploads } = await signedUrlResponse.json()
+
+      // Step 2: Upload each photo directly to Supabase (bypasses Vercel 4.5MB limit)
+      const photoRefs: Array<{ storagePath: string; fileName: string; fileType: string; fileSize: number }> = []
+
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i]
+        const uploadInfo = uploads[i]
+
+        const uploadResponse = await fetch(uploadInfo.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': photo.file.type || 'image/jpeg' },
+          body: photo.file,
+        })
+
+        if (!uploadResponse.ok) {
+          console.error(`Failed to upload photo ${photo.file.name}`)
+          continue
+        }
+
+        photoRefs.push({
+          storagePath: uploadInfo.storagePath,
+          fileName: photo.file.name,
+          fileType: photo.file.type,
+          fileSize: photo.file.size,
+        })
+      }
+
+      if (photoRefs.length === 0) {
+        throw new Error('No photos could be uploaded')
+      }
+
+      // Step 3: Tell the API to process the already-uploaded photos
       const response = await fetch('/api/onboarding/upload-photos', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photos: photoRefs,
+          personaName: personaName || 'Main Persona',
+          description: personaDescription || 'AI persona for content generation',
+        }),
       })
       
       if (!response.ok) {

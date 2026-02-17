@@ -95,7 +95,7 @@ export default function DocsPage() {
             Quick Start Guide
           </CardTitle>
           <CardDescription>
-            Get up and running with Inflio in under 5 minutes
+            Get up and running with Inflio quickly
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

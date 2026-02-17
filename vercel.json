@@ -1,16 +1,40 @@
 {
   "functions": {
+    "src/app/api/inngest/route.ts": {
+      "maxDuration": 300
+    },
     "src/app/api/upload/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/analyze-brand/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/onboarding/upload-photos/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/personas/create-from-urls/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/personas/create/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/personas/regenerate-portraits/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/personas/generate-samples/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/personas/generate-display-samples/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/posts/generate-assets/route.ts": {
+      "maxDuration": 120
     },
     "src/app/api/process/route.ts": {
       "maxDuration": 300
     },
     "src/app/api/process-klap/route.ts": {
       "maxDuration": 60
-    },
-    "src/app/api/worker/klap/route.ts": {
-      "maxDuration": 300
     },
     "src/app/api/process-transcription/route.ts": {
       "maxDuration": 300
@@ -20,6 +44,9 @@
     },
     "src/app/api/generate-thumbnail/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/generate-thumbnail/batch/route.ts": {
+      "maxDuration": 120
     },
     "src/app/api/generate-images/route.ts": {
       "maxDuration": 300
@@ -36,11 +63,23 @@
     "src/app/api/generate-summary/route.ts": {
       "maxDuration": 300
     },
+    "src/app/api/social/generate-intelligent/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/social/publish/route.ts": {
+      "maxDuration": 120
+    },
     "src/app/api/projects/[id]/process/route.ts": {
       "maxDuration": 300
     },
     "src/app/api/social/publish-scheduled/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/thumbnail/enhanced/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/content-assistant/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [

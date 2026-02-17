@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { ProjectService } from "./services";
+import { createSupabaseServerClient } from "./supabase/server";
 import { NextResponse } from "next/server";
 
 /**
@@ -23,9 +23,15 @@ export async function validateProjectOwnership(projectId: string): Promise<{
       };
     }
 
-    // Get project
-    const project = await ProjectService.getProject(projectId);
-    if (!project) {
+    // Get project using server client (bypasses RLS)
+    const supabase = createSupabaseServerClient();
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (error || !project) {
       return {
         isValid: false,
         errorResponse: NextResponse.json({ error: "Project not found" }, { status: 404 })

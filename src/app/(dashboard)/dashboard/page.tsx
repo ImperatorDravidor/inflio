@@ -320,28 +320,32 @@ export default function DashboardPage() {
         
         // Determine if user needs onboarding
         const needsFullOnboarding = !profile || (!profile.onboarding_completed && !profile.onboarding_skipped)
-        const hasIncompleteSetup = progress < 100 && !profile?.onboarding_reminder_dismissed
         const shouldShowLaunchpad = profile?.show_launchpad === true
         
-        // If user clicked "Continue Setup", show the launchpad
-        if (shouldShowLaunchpad) {
+        // Show 5-step setup flow if:
+        // 1. User hasn't completed premium onboarding yet, OR
+        // 2. User completed premium onboarding but hasn't finished all 5 setup steps (unless they completed or skipped)
+        const setupComplete = profile?.setup_completed || profile?.setup_skipped || progress >= 100
+        const setupNotComplete = !setupComplete
+        const shouldShowSetupFlow = needsFullOnboarding || (profile?.onboarding_completed && setupNotComplete) || shouldShowLaunchpad
+        
+        if (shouldShowSetupFlow) {
           setIsNewUser(true)
           setShowOnboardingReminder(false)
-          // Clear the flag
-          await supabase
-            .from('user_profiles')
-            .update({ show_launchpad: false })
-            .eq('clerk_user_id', userId)
-        } else {
-          setIsNewUser(needsFullOnboarding)
-          setShowOnboardingReminder(hasIncompleteSetup && !needsFullOnboarding)
-        }
-        
-        // If showing onboarding, return early
-        if (needsFullOnboarding || shouldShowLaunchpad) {
+          // Clear the launchpad flag if set
+          if (shouldShowLaunchpad) {
+            await supabase
+              .from('user_profiles')
+              .update({ show_launchpad: false })
+              .eq('clerk_user_id', userId)
+          }
           setLoading(false)
           return
         }
+        
+        // User has completed setup or skipped - show regular dashboard
+        setIsNewUser(false)
+        setShowOnboardingReminder(false)
         
         const allProjects = await ProjectService.getAllProjects(userId)
         setProjects(allProjects)

@@ -1,128 +1,158 @@
-import { NextResponse } from 'next/server'
-import { ProjectService } from '@/lib/services'
-import { logger } from '@/lib/logger'
-import type { ProjectWebhookPayload } from '@/types/submagic'
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { updateTaskProgressServer, updateProjectServer } from '@/lib/server-project-utils'
+
+export const maxDuration = 60
 
 /**
- * Webhook handler for Submagic project completion
- * Called when Submagic finishes processing a video
+ * POST /api/webhooks/submagic
+ * Webhook handler for Submagic Magic Clips completion
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    // Parse webhook payload
-    const payload = await request.json() as ProjectWebhookPayload
-
-    logger.info('[Submagic Webhook] Received webhook', {
-      action: 'submagic_webhook_received',
-      metadata: {
-        projectId: payload.projectId,
-        status: payload.status
-      }
+    const body = await request.json()
+    
+    console.log('[Submagic Webhook] Received webhook:', {
+      projectId: body.projectId,
+      status: body.status,
+      clipCount: body.magicClips?.length || 0
     })
 
-    // Find our project by Submagic project ID
-    const { data: projects, error } = await ProjectService.supabase
+    const { projectId, status, title, duration, completedAt, magicClips } = body
+
+    if (!projectId) {
+      return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
+    }
+
+    // Find our project by submagic_project_id
+    const { data: projects } = await supabaseAdmin
       .from('projects')
       .select('*')
-      .eq('submagic_project_id', payload.projectId)
-      .single()
+      .eq('submagic_project_id', projectId)
+      .limit(1)
 
-    if (error || !projects) {
-      logger.warn('[Submagic Webhook] Project not found', {
-        action: 'submagic_webhook_project_not_found',
-        metadata: { submagicProjectId: payload.projectId }
-      })
+    if (!projects || projects.length === 0) {
+      console.error('[Submagic Webhook] Project not found:', projectId)
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const projectId = projects.id
+    const project = projects[0]
 
-    // Handle based on status
-    if (payload.status === 'completed') {
-      console.log('[Submagic Webhook] Processing completed project')
+    if (status === 'failed') {
+      // Mark clips task as failed
+      await updateTaskProgressServer(project.id, 'clips', 0, 'failed')
       
-      // Update task progress
-      await ProjectService.updateTaskProgress(projectId, 'clips', 100, 'completed')
-
-      // Store the clip information
-      const clip = {
-        id: payload.projectId,
-        title: projects.title || 'Captioned Video',
-        url: payload.downloadUrl || '',
-        directUrl: payload.directUrl || '',
-        previewUrl: `https://app.submagic.co/view/${payload.projectId}`,
-        status: 'ready',
-        duration: 0, // Will be filled from metadata if available
-      }
-
-      // Store clip in database
-      const existingClips = projects.clips || []
-      const updatedClips = [...existingClips, clip]
-
-      await ProjectService.updateProject(projectId, {
-        clips: updatedClips,
-        status: 'completed',
-        processing_notes: 'Video captioning completed successfully'
+      return NextResponse.json({ 
+        success: true,
+        message: 'Clips processing failed'
       })
-
-      logger.info('[Submagic Webhook] Project completed successfully', {
-        action: 'submagic_webhook_completed',
-        metadata: {
-          projectId,
-          submagicProjectId: payload.projectId,
-          clipUrl: payload.downloadUrl
-        }
-      })
-
-      return NextResponse.json({
-        message: 'Webhook processed successfully',
-        projectId,
-        clipsGenerated: 1
-      })
-    } else if (payload.status === 'failed') {
-      console.error('[Submagic Webhook] Project failed')
-      
-      // Update task as failed
-      await ProjectService.updateTaskProgress(projectId, 'clips', 0, 'failed')
-      
-      await ProjectService.updateProject(projectId, {
-        status: 'failed',
-        processing_notes: 'Video captioning failed'
-      })
-
-      logger.error('[Submagic Webhook] Project failed', {
-        action: 'submagic_webhook_failed',
-        metadata: {
-          projectId,
-          submagicProjectId: payload.projectId
-        }
-      })
-
-      return NextResponse.json({
-        message: 'Project failed',
-        projectId
-      }, { status: 200 }) // Still return 200 to acknowledge receipt
     }
 
-    return NextResponse.json({ message: 'Webhook received' })
-  } catch (error) {
-    console.error('[Submagic Webhook] Error processing webhook:', error)
-    logger.error('[Submagic Webhook] Error processing webhook', {
-      action: 'submagic_webhook_error',
-      metadata: {
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }
-    })
+    if (status === 'completed' && magicClips && Array.isArray(magicClips)) {
+      console.log(`[Submagic Webhook] Processing ${magicClips.length} clips for project ${project.id}`)
+      
+      const processedClips = []
 
-    // Return 200 to prevent retries for malformed requests
+      for (let i = 0; i < magicClips.length; i++) {
+        const magicClip = magicClips[i]
+        
+        try {
+          // Optionally download and store in Supabase
+          let videoUrl = magicClip.directUrl || magicClip.downloadUrl
+          
+          if (!process.env.SKIP_VIDEO_REUPLOAD || process.env.SKIP_VIDEO_REUPLOAD !== 'true') {
+            try {
+              const response = await fetch(magicClip.downloadUrl)
+              const buffer = await response.arrayBuffer()
+              
+              const fileName = `clip_${i}_${magicClip.id}.mp4`
+              const filePath = `${project.id}/clips/${fileName}`
+              
+              const { error: uploadError } = await supabaseAdmin.storage
+                .from('videos')
+                .upload(filePath, buffer, {
+                  contentType: 'video/mp4',
+                  upsert: true
+                })
+              
+              if (!uploadError) {
+                const { data: urlData } = supabaseAdmin.storage
+                  .from('videos')
+                  .getPublicUrl(filePath)
+                videoUrl = urlData.publicUrl
+                console.log(`[Submagic Webhook] Clip stored at: ${videoUrl}`)
+              }
+            } catch (error) {
+              console.error(`[Submagic Webhook] Failed to download/store clip ${i}:`, error)
+              // Continue with Submagic URL if storage fails
+            }
+          }
+
+          // Create clip object with all metadata
+          const clip = {
+            id: `${project.id}_clip_${i}`,
+            title: magicClip.title || `Clip ${i + 1}`,
+            description: `Virality Score: ${magicClip.viralityScores?.total || 'N/A'}`,
+            startTime: 0, // Magic Clips don't provide this
+            endTime: magicClip.duration || 0,
+            duration: magicClip.duration || 0,
+            thumbnail: magicClip.previewUrl || videoUrl,
+            tags: [],
+            score: (magicClip.viralityScores?.total || 50) / 100, // Convert to 0-1 scale
+            type: 'highlight' as const,
+            submagicProjectId: projectId,
+            submagicClipId: magicClip.id,
+            exportUrl: videoUrl,
+            exported: true,
+            storedInSupabase: !process.env.SKIP_VIDEO_REUPLOAD || process.env.SKIP_VIDEO_REUPLOAD !== 'true',
+            createdAt: new Date().toISOString(),
+            // Virality scores from Submagic
+            viralityExplanation: `Total: ${magicClip.viralityScores?.total}, Hook: ${magicClip.viralityScores?.hook_strength}, Story: ${magicClip.viralityScores?.story_quality}`,
+            viralityScores: magicClip.viralityScores,
+            previewUrl: magicClip.previewUrl,
+            rawSubmagicData: magicClip,
+            publicationCaptions: undefined
+          }
+          
+          processedClips.push(clip)
+        } catch (error) {
+          console.error(`[Submagic Webhook] Failed to process clip ${magicClip.id}:`, error)
+        }
+      }
+
+      // Update project with clips
+      await updateProjectServer(project.id, {
+        folders: {
+          clips: processedClips,
+          images: [],
+          social: [],
+          blog: []
+        }
+      })
+      
+      // Mark task as complete
+      await updateTaskProgressServer(project.id, 'clips', 100, 'completed')
+      
+      console.log(`[Submagic Webhook] Successfully processed ${processedClips.length} clips for project ${project.id}`)
+      
+      return NextResponse.json({ 
+        success: true,
+        message: `Processed ${processedClips.length} clips`,
+        clipCount: processedClips.length
+      })
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Webhook received'
+    })
+  } catch (error) {
+    console.error('[Submagic Webhook] Error:', error)
     return NextResponse.json(
-      { error: 'Error processing webhook' },
-      { status: 200 }
+      { error: error instanceof Error ? error.message : 'Failed to process webhook' },
+      { status: 500 }
     )
   }
 }
-
-
-
 
 

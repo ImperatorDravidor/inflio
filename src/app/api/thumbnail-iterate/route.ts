@@ -65,18 +65,18 @@ export async function POST(req: NextRequest) {
     const filePath = `${projectId}/thumbnails/${fileName}`
     
     const { error: uploadError } = await supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .upload(filePath, imageBlob, {
         contentType: 'image/png',
         upsert: false
       })
-      
+
     if (uploadError) {
       throw uploadError
     }
-    
+
     const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .getPublicUrl(filePath)
 
     // Update project with new thumbnail

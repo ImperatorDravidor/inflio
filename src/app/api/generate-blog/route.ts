@@ -1,25 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { ProjectService } from '@/lib/project-service'
-import { UsageService } from '@/lib/usage-service'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getOpenAI } from '@/lib/openai'
+import { extractOutputText } from '@/lib/ai-posts-advanced'
+import { fetchBrandAndPersonaContext, extractTranscriptText } from '@/lib/ai-context'
+import type { BrandContext, PersonaContext } from '@/lib/ai-context'
 
-// Helper function to extract sections from markdown content
-function extractSections(markdownContent: string): Array<{ heading: string; content: string }> {
+export const maxDuration = 120
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractSections(markdown: string): Array<{ heading: string; content: string }> {
   const sections: Array<{ heading: string; content: string }> = []
-  const lines = markdownContent.split('\n')
-  
+  const lines = markdown.split('\n')
   let currentHeading = ''
   let currentContent: string[] = []
-  
+
   for (const line of lines) {
     if (line.startsWith('## ')) {
       if (currentHeading) {
-        sections.push({
-          heading: currentHeading,
-          content: currentContent.join('\n').trim()
-        })
+        sections.push({ heading: currentHeading, content: currentContent.join('\n').trim() })
       }
       currentHeading = line.replace('## ', '').trim()
       currentContent = []
@@ -27,31 +27,44 @@ function extractSections(markdownContent: string): Array<{ heading: string; cont
       currentContent.push(line)
     }
   }
-  
-  // Add the last section
   if (currentHeading) {
-    sections.push({
-      heading: currentHeading,
-      content: currentContent.join('\n').trim()
-    })
+    sections.push({ heading: currentHeading, content: currentContent.join('\n').trim() })
   }
-  
   return sections
 }
 
-// Helper function to calculate reading time
-function calculateReadingTime(content: string): number {
-  const wordsPerMinute = 200
-  const wordCount = content.split(/\s+/).length
-  return Math.ceil(wordCount / wordsPerMinute)
-}
-
-// Helper function to extract title from markdown
-function extractTitle(markdownContent: string): string {
-  const lines = markdownContent.split('\n')
-  const titleLine = lines.find(line => line.startsWith('# '))
+function extractTitle(markdown: string): string {
+  const titleLine = markdown.split('\n').find(l => l.startsWith('# '))
   return titleLine ? titleLine.replace('# ', '').trim() : 'Untitled'
 }
+
+function calculateReadingTime(content: string): number {
+  return Math.ceil(content.split(/\s+/).length / 200)
+}
+
+function buildBrandBlock(brand?: BrandContext): string {
+  if (!brand) return ''
+  const parts: string[] = []
+  if (brand.companyName) parts.push(`Company: ${brand.companyName}`)
+  if (brand.voice) parts.push(`Voice: ${brand.voice}`)
+  if (brand.personality?.length) parts.push(`Personality: ${brand.personality.join(', ')}`)
+  if (brand.mission) parts.push(`Mission: ${brand.mission}`)
+  if (brand.targetAudience?.description) parts.push(`Target audience: ${brand.targetAudience.description}`)
+  if (brand.contentGoals?.length) parts.push(`Goals: ${brand.contentGoals.join(', ')}`)
+  return parts.length > 0 ? `\nBRAND IDENTITY:\n${parts.join('\n')}` : ''
+}
+
+function buildPersonaBlock(persona?: PersonaContext | null): string {
+  if (!persona) return ''
+  const parts = [
+    `Write as: ${persona.name}`,
+    persona.description ? `About: ${persona.description}` : '',
+    persona.brandVoice ? `Voice: ${persona.brandVoice}` : '',
+  ].filter(Boolean)
+  return `\nPERSONA:\n${parts.join('\n')}`
+}
+
+// ─── Route ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -62,37 +75,24 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { projectId, enhancedContext, options } = body
-    
+
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
     }
-    
-    // Check usage
-    if (!UsageService.canProcessVideo()) {
-      return NextResponse.json(
-        { 
-          error: 'Usage limit exceeded',
-          message: 'You have exceeded your monthly usage limit. Please upgrade your plan or wait for the next billing cycle.'
-        },
-        { status: 403 }
-      )
-    }
 
-    // Get project data
-    const project = await ProjectService.getProject(projectId)
-    
-    if (!project) {
+    // ── Fetch project data ──────────────────────────────────────────────────
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('id, title, content_analysis, transcription, folders, content_brief, metadata')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single()
+
+    if (projectError || !project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-
-    
-    // Get content analysis
     const contentAnalysis = project.content_analysis
-    const unifiedPrompt = enhancedContext?.unifiedPrompt || ''
-    const includeVideoMoments = enhancedContext?.includeVideoMoments || false
-    const selectedMoments = enhancedContext?.selectedMoments || []
-
     if (!contentAnalysis) {
       return NextResponse.json(
         { error: 'Content analysis not available. Please analyze the video first.' },
@@ -100,221 +100,154 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const openai = getOpenAI()
-    
-    // Determine voice and style from options
+    // ── Fetch brand + persona ───────────────────────────────────────────────
+    const personaId = project.metadata?.enhancedGeneration?.personaId || null
+    const { brand, persona } = await fetchBrandAndPersonaContext(userId, personaId)
+
+    // ── Extract full transcript ─────────────────────────────────────────────
+    const fullTranscript = extractTranscriptText(project.transcription)
+    const transcriptBlock = fullTranscript.substring(0, 12000)
+
+    // ── Extract content brief if available ──────────────────────────────────
+    const contentBrief = project.content_brief || null
+
+    // ── Build options ───────────────────────────────────────────────────────
     const voice = options?.voice || 'first-person'
     const style = options?.style || 'professional'
     const guestName = options?.guestName || ''
-    
-    // Enhanced system prompt based on voice
-    const systemPrompt = voice === 'first-person' 
-      ? `You are writing AS the content creator themselves, sharing their expertise and insights in FIRST PERSON. Write as if YOU are the expert speaking directly to your audience.
+    const unifiedPrompt = enhancedContext?.unifiedPrompt || ''
+    const includeVideoMoments = enhancedContext?.includeVideoMoments || false
+    const selectedMoments = enhancedContext?.selectedMoments || []
 
-Your task is to transform video content into a compelling first-person blog post in MARKDOWN format.
+    // ── Build system instructions ───────────────────────────────────────────
+    const styleGuidance: Record<string, string> = {
+      professional: 'Maintain a professional yet personable tone.',
+      casual: 'Keep it conversational and friendly, like talking to a colleague.',
+      technical: 'Dive deep into technical details while remaining accessible.',
+      storytelling: 'Weave personal stories and narratives throughout.',
+    }
 
-Voice Guidelines:
-- Use "I", "my", "we" throughout - you ARE the content creator
-- Share personal insights, experiences, and expertise
-- Write as a thought leader sharing valuable knowledge
-- Be authentic, authoritative, and engaging
-- Speak directly to YOUR audience as if you're having a conversation
-${style === 'professional' ? '- Maintain a professional yet personable tone' : ''}
-${style === 'casual' ? '- Keep it conversational and friendly, like talking to a colleague' : ''}
-${style === 'technical' ? '- Dive deep into technical details while remaining accessible' : ''}
-${style === 'storytelling' ? '- Weave personal stories and narratives throughout' : ''}
+    const voiceInstruction = voice === 'first-person'
+      ? `Write AS the content creator in FIRST PERSON. Use "I", "my", "we". Be authentic, authoritative, engaging.
+WRONG: "The speaker discusses..." CORRECT: "I've discovered..." or "Let me share..."`
+      : `Write an interview-style blog post featuring a conversation with ${guestName || 'the guest expert'}.
+Structure as Q&A with clear Interviewer/Guest labels.`
 
-CRITICAL: Write as the actual person who created the video, not as someone describing what they said. For example:
-- WRONG: "The speaker discusses..." or "They explain..."
-- RIGHT: "I've discovered..." or "Let me share..."
+    const instructions = `You are an expert content writer transforming video content into a compelling blog post.
 
-Use proper markdown syntax:
-- # for main title (H1)
-- ## for section headings (H2)
-- ### for subsection headings (H3)
-- **bold** for emphasis
-- *italic* for subtle emphasis
-- Bullet points and numbered lists
-- > for blockquotes
-- Include timestamp references as [0:23] or [1:45]
+${voiceInstruction}
+${styleGuidance[style] || styleGuidance.professional}
+${buildBrandBlock(brand)}
+${buildPersonaBlock(persona)}
+${contentBrief ? `
+CONTENT BRIEF (ensure alignment with the strategic narrative):
+- Core narrative: ${contentBrief.coreNarrative || ''}
+- Key takeaways: ${contentBrief.keyTakeaways?.join(', ') || ''}
+- Target audience: ${contentBrief.targetAudience || ''}
+- Tone guidance: ${contentBrief.toneGuidance || ''}
+- CTA: ${contentBrief.cta || ''}` : ''}
+${unifiedPrompt ? `\nAdditional context: ${unifiedPrompt}` : ''}
 
-${unifiedPrompt ? `Additional Context: ${unifiedPrompt}` : ''}`
-      : `You are writing an interview-style blog post featuring a conversation with ${guestName || 'a guest expert'}.
+OUTPUT FORMAT: Return a single JSON object with these keys:
+- "content": Full blog post in markdown (use # for title, ## for sections, **bold**, *italic*, > blockquotes, timestamps as [MM:SS])
+- "seoTitle": SEO-optimized title (50-60 chars)
+- "seoDescription": Meta description (150-160 chars)
+- "slug": URL slug (lowercase, hyphens)
+- "tags": Array of 5-8 relevant tags`
 
-Your task is to transform video content into an engaging Q&A format blog post in MARKDOWN.
+    // ── Build user prompt ───────────────────────────────────────────────────
+    const keyMomentsText = contentAnalysis.keyMoments?.map((m: any, i: number) => {
+      const min = Math.floor((m.timestamp || 0) / 60)
+      const sec = String(Math.floor((m.timestamp || 0) % 60)).padStart(2, '0')
+      return `${i + 1}. [${min}:${sec}] ${m.description}`
+    }).join('\n') || '(none)'
 
-Interview Guidelines:
-- Structure as a conversation between interviewer and ${guestName || 'guest'}
-- Use clear Q: and A: formatting or bold names
-- Capture the authentic voice and personality of both speakers
-- Include natural conversational elements
-- Highlight key insights and takeaways from the guest
-${style === 'professional' ? '- Maintain a professional interview tone' : ''}
-${style === 'casual' ? '- Keep it conversational like a friendly chat' : ''}
-${style === 'technical' ? '- Focus on technical expertise and detailed explanations' : ''}
-${style === 'storytelling' ? '- Let the guest tell their story naturally' : ''}
-
-Format Example:
-**Interviewer:** [Question here]
-
-**${guestName || 'Guest'}:** [Answer here]
-
-Use proper markdown syntax with timestamp references [0:23] when relevant.
-
-${unifiedPrompt ? `Additional Context: ${unifiedPrompt}` : ''}`
-
-    // Build comprehensive prompt with all video context
-    const videoMomentsSection = includeVideoMoments && selectedMoments.length > 0
-      ? `\n\n**KEY VIDEO MOMENTS TO HIGHLIGHT:**\n${selectedMoments.map((m: any, i: number) => 
-          `${i+1}. [${Math.floor(m.timestamp/60)}:${(m.timestamp%60).toString().padStart(2, '0')}] ${m.description}`
-        ).join('\n')}`
+    const videoMomentsText = includeVideoMoments && selectedMoments.length > 0
+      ? `\n\nHIGHLIGHTED MOMENTS:\n${selectedMoments.map((m: any, i: number) => {
+          const min = Math.floor((m.timestamp || 0) / 60)
+          const sec = String(Math.floor((m.timestamp || 0) % 60)).padStart(2, '0')
+          return `${i + 1}. [${min}:${sec}] ${m.description}`
+        }).join('\n')}`
       : ''
 
-    const userPrompt = voice === 'first-person' 
-      ? `Transform this video content into a compelling FIRST-PERSON blog post where YOU are the expert sharing your knowledge:
+    const userPrompt = `Create a comprehensive blog post from this video content.
 
-**VIDEO TITLE:** ${project.title}
+VIDEO: "${project.title}"
+TOPICS: ${contentAnalysis.topics?.join(', ') || 'N/A'}
+KEYWORDS: ${contentAnalysis.keywords?.join(', ') || 'N/A'}
+SENTIMENT: ${contentAnalysis.sentiment || 'neutral'}
+SUMMARY: ${contentAnalysis.summary || ''}
 
-**YOUR EXPERTISE/SUMMARY:** ${contentAnalysis.summary}
+KEY MOMENTS:
+${keyMomentsText}
+${videoMomentsText}
 
-**TOPICS YOU COVER:** ${contentAnalysis.topics.join(', ')}
+FULL TRANSCRIPT:
+${transcriptBlock}
 
-**KEYWORDS TO NATURALLY INCLUDE:** ${contentAnalysis.keywords.join(', ')}
+Requirements:
+1. Create an engaging title positioning ${voice === 'first-person' ? 'the creator as expert' : `the interview with ${guestName || 'the guest'}`}
+2. Start with a compelling hook
+3. Use actual quotes and specific details from the transcript
+4. Include timestamp references [MM:SS] naturally
+5. Structure with clear ## sections
+6. End with a strong call-to-action${contentBrief?.cta ? ` aligned with: "${contentBrief.cta}"` : ''}
+7. Target 1200-2000 words
+8. Include SEO metadata in the JSON output`
 
-**YOUR TONE:** ${contentAnalysis.sentiment}
+    // ── Call GPT-5.2 ────────────────────────────────────────────────────────
+    const openai = getOpenAI()
 
-**KEY POINTS YOU MAKE:**
-${contentAnalysis.keyMoments.map((moment: any, index: number) => 
-  `${index + 1}. [${Math.floor(moment.timestamp/60)}:${(moment.timestamp%60).toString().padStart(2, '0')}] ${moment.description}`
-).join('\n')}
-
-${videoMomentsSection}
-
-Write YOUR blog post in FIRST PERSON:
-1. Create an engaging title that positions YOU as the expert
-2. Start with YOUR personal hook - why this matters to YOU and YOUR audience
-3. Share YOUR insights, experiences, and expertise throughout
-4. Use "I", "my", "we" - write as yourself, not about yourself
-5. Include YOUR practical tips and actionable advice
-6. Reference moments from YOUR video naturally [MM:SS]
-7. End with YOUR call-to-action - what do YOU want readers to do next?
-8. Maintain YOUR authentic voice (${contentAnalysis.sentiment})
-
-Remember: You ARE the content creator. Write as yourself sharing your expertise directly with your audience.`
-      : `Create an interview-style blog post from this conversation:
-
-**VIDEO TITLE:** ${project.title}
-
-**GUEST:** ${guestName || 'Guest Expert'}
-
-**CONVERSATION SUMMARY:** ${contentAnalysis.summary}
-
-**TOPICS DISCUSSED:** ${contentAnalysis.topics.join(', ')}
-
-**KEYWORDS:** ${contentAnalysis.keywords.join(', ')}
-
-**TONE:** ${contentAnalysis.sentiment}
-
-**KEY DISCUSSION POINTS:**
-${contentAnalysis.keyMoments.map((moment: any, index: number) => 
-  `${index + 1}. [${Math.floor(moment.timestamp/60)}:${(moment.timestamp%60).toString().padStart(2, '0')}] ${moment.description}`
-).join('\n')}
-
-${videoMomentsSection}
-
-Create an engaging Q&A format blog post:
-1. Compelling title highlighting the guest and main topic
-2. Brief introduction about the guest and why this conversation matters
-3. Structure as natural Q&A exchanges
-4. Include timestamps for key moments [MM:SS]
-5. Highlight the most valuable insights and takeaways
-6. End with key lessons and next steps
-7. Maintain conversational flow (${contentAnalysis.sentiment})
-
-Format each exchange clearly with bold names or Q:/A: structure.`
-    
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 3000
+    const response = await openai.responses.create({
+      model: 'gpt-5.2',
+      input: userPrompt,
+      instructions,
+      reasoning: { effort: 'medium' },
+      text: { format: { type: 'json_object' } },
+      max_output_tokens: 6000,
     })
 
-    const blogContent = completion.choices[0].message.content
+    const outputText = extractOutputText(response)
+    const result = JSON.parse(outputText)
 
+    const blogContent = result.content
     if (!blogContent) {
-      throw new Error('Failed to generate blog content')
+      throw new Error('No blog content in AI response')
     }
-    
-    // Extract title from the markdown content
+
     const title = extractTitle(blogContent)
-    
-    // Generate SEO metadata
-    const seoPrompt = `Based on this blog content, generate SEO metadata:
-    
-Blog Title: ${title}
-Main Topic: ${contentAnalysis.topics[0]}
-Keywords: ${contentAnalysis.keywords.join(', ')}
-Content Summary: ${contentAnalysis.summary}
-
-Provide:
-1. Meta title (50-60 characters, include main keyword)
-2. Meta description (150-160 characters, compelling and includes keywords)
-3. URL slug (lowercase, hyphens, no special characters)
-4. 5 relevant tags (single words or short phrases)
-
-Format as JSON with keys: metaTitle, metaDescription, slug, tags`
-
-    const seoCompletion = await openai.chat.completions.create({
-      model: 'gpt-4.1',
-      messages: [
-        { role: 'system', content: 'You are an SEO expert. Generate optimized metadata in JSON format.' },
-        { role: 'user', content: seoPrompt }
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    })
-
-    const seoData = JSON.parse(seoCompletion.choices[0].message.content || '{}')
-
-    // Calculate reading time
     const readingTime = calculateReadingTime(blogContent)
 
-    // Track usage
-    UsageService.incrementUsage()
-
-    // Create blog post object
+    // ── Build blog post object ──────────────────────────────────────────────
     const blogPost = {
       id: `blog_${Date.now()}`,
-      title: title,
+      title,
       content: blogContent,
-      excerpt: contentAnalysis.summary.substring(0, 200) + '...',
-      tags: seoData.tags || contentAnalysis.keywords.slice(0, 5),
-      seoTitle: seoData.metaTitle || title,
-      seoDescription: seoData.metaDescription || contentAnalysis.summary.substring(0, 160),
-      slug: seoData.slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      readingTime: readingTime,
+      excerpt: (contentAnalysis.summary || '').substring(0, 200) + '...',
+      tags: result.tags || contentAnalysis.keywords?.slice(0, 5) || [],
+      seoTitle: result.seoTitle || title,
+      seoDescription: result.seoDescription || (contentAnalysis.summary || '').substring(0, 160),
+      slug: result.slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+      readingTime,
       wordCount: blogContent.split(/\s+/).length,
       sections: extractSections(blogContent),
       createdAt: new Date().toISOString(),
       metadata: {
-        model: 'gpt-4.1',
+        model: 'gpt-5.2',
         videoId: projectId,
         includesVideoMoments: includeVideoMoments,
-        sentiment: contentAnalysis.sentiment
-      }
+        sentiment: contentAnalysis.sentiment,
+        personaUsed: !!persona,
+        brandApplied: !!brand,
+      },
     }
 
-    // Add blog to project's folders
+    // ── Save to project ─────────────────────────────────────────────────────
     const updatedFolders = {
       ...project.folders,
-      blog: [...(project.folders.blog || []), blogPost]
+      blog: [...(project.folders?.blog || []), blogPost],
     }
 
-    // Update project with new blog
     const { error: updateError } = await supabaseAdmin
       .from('projects')
       .update({ folders: updatedFolders })
@@ -326,22 +259,13 @@ Format as JSON with keys: metaTitle, metaDescription, slug, tags`
 
     return NextResponse.json({
       blog: blogPost,
-      message: 'Blog post generated successfully'
+      message: 'Blog post generated successfully',
     })
-
   } catch (error: any) {
     console.error('Error generating blog:', error)
-    
-    if (error.message?.includes('Usage limit exceeded')) {
-      return NextResponse.json(
-        { error: 'Usage limit exceeded', message: error.message },
-        { status: 403 }
-      )
-    }
-
     return NextResponse.json(
       { error: 'Failed to generate blog', details: error.message },
       { status: 500 }
     )
   }
-} 
+}

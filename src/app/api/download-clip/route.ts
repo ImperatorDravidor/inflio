@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { KlapAPIService } from '@/lib/klap-api'
-import { ProjectService } from '@/lib/services'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { auth } from '@clerk/nextjs/server'
 
@@ -21,14 +20,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    // Get project to verify clip exists
-    const project = await ProjectService.getProject(projectId)
-    if (!project) {
+    // Get project to verify clip exists (use admin client — server-side route)
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single()
+    
+    if (projectError || !project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
+    const folders = project.folders || { clips: [], blog: [], social: [] }
+
     // Find the clip in the project
-    const clip = project.folders.clips.find((c: any) => c.id === clipId || c.klapProjectId === clipId)
+    const clip = (folders.clips || []).find((c: any) => c.id === clipId || c.klapProjectId === clipId)
     if (!clip) {
       return NextResponse.json({ error: 'Clip not found in project' }, { status: 404 })
     }
@@ -88,19 +94,20 @@ export async function POST(request: NextRequest) {
         .getPublicUrl(clipFileName)
       
 
-      // Update the clip in the project
-      const updatedClips = project.folders.clips.map((c: any) => 
+      // Update the clip in the project (use admin client)
+      const updatedClips = (folders.clips || []).map((c: any) => 
         c.id === clipId 
           ? { ...c, exportUrl: publicUrl, storedInSupabase: true }
           : c
       )
 
-      await ProjectService.updateProject(projectId, {
-        folders: {
-          ...project.folders,
-          clips: updatedClips
-        }
-      })
+      await supabaseAdmin
+        .from('projects')
+        .update({
+          folders: { ...folders, clips: updatedClips },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId)
 
       return NextResponse.json({
         success: true,
@@ -142,9 +149,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
     }
 
-    // Get project
-    const project = await ProjectService.getProject(projectId)
-    if (!project) {
+    // Get project (use admin client)
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('folders')
+      .eq('id', projectId)
+      .single()
+    
+    if (projectError || !project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 

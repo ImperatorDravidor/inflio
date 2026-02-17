@@ -7,12 +7,21 @@ import {
   Upload, ArrowRight, Sparkles, Video, Zap, Play,
   ChevronRight, Lock, CheckCheck, Wand2, Rocket,
   FileVideo, Globe, DollarSign, TrendingUp, Clock,
-  Shield, Star, Mic, Camera, Brain, Lightbulb
+  Shield, Star, Mic, Camera, Brain, Lightbulb, X, SkipForward
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { IconBrandInstagram, IconBrandTiktok, IconBrandLinkedin, IconBrandYoutube, IconBrandX } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -42,6 +51,12 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
   const [currentMessage, setCurrentMessage] = useState('')
   const [fullMessage, setFullMessage] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [showSocialModal, setShowSocialModal] = useState(false)
+  const [hasBrandData, setHasBrandData] = useState(false)
+  const [personaStatus, setPersonaStatus] = useState<'none' | 'analyzing' | 'ready' | 'failed'>('none')
+  const [portraitsGenerated, setPortraitsGenerated] = useState(0)
+  const portraitsTotal = 10
+  const personaPollingRef = useRef<NodeJS.Timeout | null>(null)
   const typewriterInterval = useRef<NodeJS.Timeout | null>(null)
   const messageQueue = useRef<string>('')
   const isUpdatingMessage = useRef(false)
@@ -106,7 +121,7 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
     
     'review-brand': "Great! Now let's review your brand settings. Take a moment to ensure your colors, fonts, and guidelines are exactly how you want them. Every piece of content will follow these rules.",
     
-    'review-persona': "Your AI avatar is ready! Review the thumbnails and avatars I've generated. These will be used across all your content to maintain a consistent visual presence.",
+    'review-persona': "", // Dynamic — set by getPersonaMessage()
     
     connect: "Time to connect your social platforms! Link Instagram, TikTok, LinkedIn, YouTube - wherever your audience is. I'll optimize and publish content to each platform automatically.",
     
@@ -127,8 +142,17 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
       initializeOnboarding()
     }
     
+    // Also refresh when window gets focus (user returns from another page)
+    const handleFocus = () => {
+      if (mounted) {
+        loadUserProgress()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    
     return () => {
       mounted = false
+      window.removeEventListener('focus', handleFocus)
     }
   }, [])
 
@@ -144,48 +168,127 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
       if (profile) {
         const updatedSteps = [...steps]
         let currentStepIndex = 0
-        
+
         // Check if user completed the main onboarding flow
-        if (profile.onboarding_completed && profile.brand_identity && profile.persona_id) {
-          // User has completed the full onboarding (profile, brand, avatar)
+        const hasCompletedOnboarding = profile.onboarding_completed
+        const hasBrand = !!(profile.brand_identity || profile.brand_analysis)
+        const skippedBrand = profile.brand_analysis_skipped === true
+        const skippedPersona = profile.persona_skipped === true
+
+        // Check if user has any personas and their generation status (using API to bypass RLS)
+        let hasPersona = !!profile.persona_id
+        let currentPersonaStatus: 'none' | 'analyzing' | 'ready' | 'failed' = 'none'
+        let currentPortraitsCount = 0
+        
+        try {
+          const personaResponse = await fetch('/api/personas/check-persona')
+          if (personaResponse.ok) {
+            const personaData = await personaResponse.json()
+            const personas = personaData.personas || []
+            if (personas.length > 0) {
+              hasPersona = true
+              const mainPersona = personas[0] // Most recent persona
+              currentPersonaStatus = mainPersona.status === 'ready' ? 'ready'
+                : mainPersona.status === 'failed' ? 'failed'
+                : mainPersona.status === 'analyzing' ? 'analyzing'
+                : 'none'
+              // Count generated portraits (not user uploads)
+              currentPortraitsCount = (mainPersona.images || []).filter(
+                (img: { metadata?: { type?: string } }) => img.metadata?.type === 'reference_portrait'
+              ).length
+            }
+          }
+        } catch (err) {
+          console.error('[5-step] Error checking personas:', err)
+        }
+        
+        setPersonaStatus(currentPersonaStatus)
+        setPortraitsGenerated(currentPortraitsCount)
+
+        console.log('[5-step] Status check:', { hasCompletedOnboarding, hasBrand, hasPersona, skippedBrand, skippedPersona, currentPersonaStatus, currentPortraitsCount })
+
+        // Update state for button visibility
+        setHasBrandData(hasBrand)
+
+        if (hasCompletedOnboarding) {
+          // Step 1: Complete onboarding - DONE
           updatedSteps[0].status = 'completed'
           updatedSteps[0].completedAt = new Date(profile.updated_at)
-          
-          // Move to review brand step
-          updatedSteps[1].status = 'current'
           currentStepIndex = 1
-          
-          // Check if they've reviewed/confirmed their brand
-          if (profile.brand_reviewed) {
+
+          // Step 2: Review brand
+          // Only complete if brand EXISTS and reviewed, or was explicitly skipped
+          if (hasBrand) {
+            // Brand exists - check if reviewed
+            if (profile.brand_reviewed) {
+              updatedSteps[1].status = 'completed'
+              currentStepIndex = 2
+            } else {
+              updatedSteps[1].status = 'current'
+              // Keep original path - brand page will show the brand to review
+            }
+          } else if (skippedBrand) {
+            // No brand but explicitly skipped
             updatedSteps[1].status = 'completed'
-            updatedSteps[2].status = 'current'
+            updatedSteps[1].description = 'Skipped - create brand in settings'
             currentStepIndex = 2
+          } else {
+            // No brand and didn't skip - still current, brand page will show empty state
+            updatedSteps[1].status = 'current'
+            // Keep path as /brand - the brand page has its own empty state with create button
+          }
+
+          // Step 3: Review persona
+          // Only complete if persona EXISTS and reviewed, or was explicitly skipped
+          if (updatedSteps[1].status === 'completed') {
+            if (hasPersona) {
+              // Persona exists - check if reviewed
+              if (profile.persona_reviewed) {
+                updatedSteps[2].status = 'completed'
+                currentStepIndex = 3
+              } else {
+                updatedSteps[2].status = 'current'
+                // Keep original path - personas page will show the persona to review
+              }
+            } else if (skippedPersona) {
+              // No persona but explicitly skipped
+              updatedSteps[2].status = 'completed'
+              updatedSteps[2].description = 'Skipped - create avatar in settings'
+              currentStepIndex = 3
+            } else {
+              // No persona and didn't skip - still current, personas page will show empty state
+              updatedSteps[2].status = 'current'
+              // Keep path as /personas - the personas page has its own empty state with create button
+            }
           }
           
-          // Check if they've reviewed their persona
-          if (profile.persona_reviewed) {
-            updatedSteps[2].status = 'completed'
+          // Step 4: Connect socials
+          if (updatedSteps[2].status === 'completed') {
             updatedSteps[3].status = 'current'
             currentStepIndex = 3
+            
+            if (profile.socials_connected) {
+              updatedSteps[3].status = 'completed'
+              currentStepIndex = 4
+            }
           }
           
-          // Check if they've connected socials
-          if (profile.socials_connected) {
-            updatedSteps[3].status = 'completed'
+          // Step 5: Upload first video
+          if (updatedSteps[3].status === 'completed') {
             updatedSteps[4].status = 'current'
             currentStepIndex = 4
-          }
-          
-          // Check if they've uploaded their first video
-          const { data: projects } = await supabase
-            .from('projects')
-            .select('id')
-            .eq('user_id', profile.clerk_user_id)
-            .limit(1)
             
-          if (projects && projects.length > 0) {
-            updatedSteps[4].status = 'completed'
-            currentStepIndex = 5 // All done
+            // Check if they've uploaded their first video
+            const { data: projects } = await supabase
+              .from('projects')
+              .select('id')
+              .eq('user_id', profile.clerk_user_id)
+              .limit(1)
+              
+            if (projects && projects.length > 0) {
+              updatedSteps[4].status = 'completed'
+              currentStepIndex = 5 // All done
+            }
           }
         }
         
@@ -209,6 +312,23 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
         updateAIMessage('welcome')
       }, 100)
     }
+  }
+
+  const getPersonaMessage = (): string => {
+    if (personaStatus === 'none') {
+      return "Time to create your AI avatar! Upload a few photos and I'll generate 10 unique portraits you can use across all your content."
+    }
+    if (personaStatus === 'analyzing') {
+      if (portraitsGenerated === 0) {
+        return "I'm analyzing your photos and creating your AI avatar. This takes a few minutes — I'll generate 10 unique portraits for you. Feel free to continue with other steps while this runs in the background."
+      }
+      return `Your avatar is being generated... ${portraitsGenerated} of ${portraitsTotal} portraits are ready. You can continue with other steps while this finishes.`
+    }
+    if (personaStatus === 'failed') {
+      return "There was an issue generating your avatar. You can try again or skip this step for now."
+    }
+    // ready
+    return "Your AI avatar is ready! All 10 portraits have been generated. Review them and pick your favorites — these will be used across all your content."
   }
 
   const updateAIMessage = async (stepId: string) => {
@@ -240,7 +360,9 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
         })
       })
       
-      let message = aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome
+      let message = stepId === 'review-persona' 
+        ? getPersonaMessage() 
+        : (aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome)
       
       if (response.ok) {
         const data = await response.json()
@@ -284,7 +406,9 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
     } catch (error) {
       console.error('Error getting AI guidance:', error)
       // Use fallback message
-      const message = aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome
+      const message = stepId === 'review-persona' 
+        ? getPersonaMessage() 
+        : (aiMessages[stepId as keyof typeof aiMessages] || aiMessages.welcome)
       setFullMessage(message)
       setCurrentMessage(message)
       setIsThinking(false)
@@ -292,11 +416,88 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
     }
   }
   
+  // Poll persona generation progress while analyzing
+  useEffect(() => {
+    if (personaStatus !== 'analyzing') {
+      // Clear any existing polling
+      if (personaPollingRef.current) {
+        clearInterval(personaPollingRef.current)
+        personaPollingRef.current = null
+      }
+      return
+    }
+
+    const pollPersona = async () => {
+      try {
+        const response = await fetch('/api/personas/check-persona')
+        if (!response.ok) return
+        const data = await response.json()
+        const personas = data.personas || []
+        if (personas.length === 0) return
+
+        const mainPersona = personas[0]
+        const newStatus: 'none' | 'analyzing' | 'ready' | 'failed' = 
+          mainPersona.status === 'ready' ? 'ready'
+          : mainPersona.status === 'failed' ? 'failed'
+          : 'analyzing'
+        
+        const newCount = (mainPersona.images || []).filter(
+          (img: { metadata?: { type?: string } }) => img.metadata?.type === 'reference_portrait'
+        ).length
+        
+        setPortraitsGenerated(newCount)
+        
+        if (newStatus !== 'analyzing') {
+          // Generation finished — update status and refresh the AI message + step states
+          setPersonaStatus(newStatus)
+          if (personaPollingRef.current) {
+            clearInterval(personaPollingRef.current)
+            personaPollingRef.current = null
+          }
+          // Refresh the full progress to update step states and AI message
+          loadUserProgress()
+        }
+      } catch (err) {
+        console.error('[persona-poll] Error:', err)
+      }
+    }
+
+    // Poll every 5 seconds
+    personaPollingRef.current = setInterval(pollPersona, 5000)
+    // Run once immediately
+    pollPersona()
+
+    return () => {
+      if (personaPollingRef.current) {
+        clearInterval(personaPollingRef.current)
+        personaPollingRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaStatus])
+
+  // Refresh AI message when portrait count changes during generation
+  useEffect(() => {
+    if (personaStatus === 'analyzing' && portraitsGenerated > 0) {
+      // Update the AI copilot message to reflect new count
+      const currentStep = steps.find(s => s.status === 'current')
+      if (currentStep?.id === 'review-persona') {
+        const newMessage = getPersonaMessage()
+        setFullMessage(newMessage)
+        setCurrentMessage(newMessage)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portraitsGenerated])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (typewriterInterval.current) {
         clearInterval(typewriterInterval.current)
+      }
+      if (personaPollingRef.current) {
+        clearInterval(personaPollingRef.current)
       }
     }
   }, [])
@@ -305,7 +506,7 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
     if (step.status === 'upcoming') {
       const currentIndex = steps.findIndex(s => s.status === 'current')
       const clickedIndex = steps.findIndex(s => s.id === step.id)
-      
+
       if (clickedIndex > currentIndex) {
         // Don't trigger a new AI message, just update the current one
         const warningMessage = `Please complete "${steps[currentIndex].title}" first. Each step builds on the previous one.`
@@ -314,43 +515,79 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
         return
       }
     }
-    
-    // Mark review steps as completed when clicked
-    if (step.id === 'review-brand' && step.status === 'current') {
-      await fetch('/api/onboarding/mark-reviewed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: 'brand_reviewed' })
-      })
-    } else if (step.id === 'review-persona' && step.status === 'current') {
-      await fetch('/api/onboarding/mark-reviewed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: 'persona_reviewed' })
-      })
-    } else if (step.id === 'connect' && step.status === 'current') {
-      await fetch('/api/onboarding/mark-reviewed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: 'socials_connected' })
-      })
+
+    // For review steps, DON'T auto-mark as reviewed on click
+    // User must explicitly click "Mark as Done" after reviewing
+    // Just navigate to the page
+
+    // Show modal for social connect step (infrastructure not ready yet)
+    if (step.id === 'connect' && step.status === 'current') {
+      setShowSocialModal(true)
+      return
     }
-    
+
     router.push(step.path)
+  }
+
+  const handleSkipSocials = async () => {
+    // Mark socials as connected (skipped) and move to next step
+    await fetch('/api/onboarding/mark-reviewed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: 'socials_connected' })
+    })
+    
+    setShowSocialModal(false)
+    
+    // Update local state
+    const updatedSteps = [...steps]
+    const connectIndex = updatedSteps.findIndex(s => s.id === 'connect')
+    if (connectIndex !== -1) {
+      updatedSteps[connectIndex].status = 'completed'
+      updatedSteps[connectIndex].description = 'Skipped - connect later in settings'
+      if (connectIndex + 1 < updatedSteps.length) {
+        updatedSteps[connectIndex + 1].status = 'current'
+      }
+      setSteps(updatedSteps)
+      
+      // Update AI message for next step
+      updateAIMessage('upload')
+    }
   }
 
   const completedSteps = steps.filter(s => s.status === 'completed').length
   const progress = (completedSteps / steps.length) * 100
 
-  // Auto-redirect when everything is complete
+  // Auto-complete setup when everything is done
   useEffect(() => {
     if (completedSteps === steps.length) {
-      // Give user a moment to see the completion message
-      setTimeout(() => {
-        window.location.href = '/dashboard'
-      }, 3000)
+      // Mark setup as complete in the database so dashboard shows normal view
+      const markSetupComplete = async () => {
+        try {
+          const supabase = createSupabaseBrowserClient()
+          await supabase
+            .from('user_profiles')
+            .update({ 
+              setup_completed: true,
+              show_launchpad: false 
+            })
+            .eq('clerk_user_id', userId)
+          
+          // Give user a moment to see the completion message, then redirect
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        } catch (error) {
+          console.error('Error marking setup complete:', error)
+          // Still redirect even if update fails
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        }
+      }
+      markSetupComplete()
     }
-  }, [completedSteps, steps.length])
+  }, [completedSteps, steps.length, userId, router])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
@@ -510,11 +747,14 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                       <div className={cn(
                         "w-14 h-14 rounded-xl flex items-center justify-center mb-2",
                         step.status === 'completed' && "bg-green-500 text-white",
-                        step.status === 'current' && "bg-primary text-primary-foreground",
+                        step.status === 'current' && step.id === 'review-persona' && personaStatus === 'analyzing' && "bg-amber-500 text-white",
+                        step.status === 'current' && !(step.id === 'review-persona' && personaStatus === 'analyzing') && "bg-primary text-primary-foreground",
                         step.status === 'upcoming' && "bg-muted text-muted-foreground"
                       )}>
                         {step.status === 'completed' ? (
                           <CheckCircle2 className="h-7 w-7" />
+                        ) : step.status === 'current' && step.id === 'review-persona' && personaStatus === 'analyzing' ? (
+                          <div className="h-7 w-7 rounded-full border-2 border-white border-t-transparent animate-spin" />
                         ) : (
                           (() => {
                             const Icon = step.icon
@@ -525,10 +765,13 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                       <span className={cn(
                         "text-xs font-medium",
                         step.status === 'completed' && "text-green-600",
-                        step.status === 'current' && "text-primary",
+                        step.status === 'current' && step.id === 'review-persona' && personaStatus === 'analyzing' && "text-amber-600",
+                        step.status === 'current' && !(step.id === 'review-persona' && personaStatus === 'analyzing') && "text-primary",
                         step.status === 'upcoming' && "text-muted-foreground"
                       )}>
-                        {step.status === 'completed' ? 'Done' : `Step ${index + 1}`}
+                        {step.status === 'completed' ? 'Done' 
+                          : step.status === 'current' && step.id === 'review-persona' && personaStatus === 'analyzing' ? 'Generating'
+                          : `Step ${index + 1}`}
                       </span>
                     </div>
 
@@ -540,7 +783,12 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                             <h3 className="text-lg font-semibold">
                               {step.title}
                             </h3>
-                            {step.status === 'current' && (
+                            {step.status === 'current' && step.id === 'review-persona' && personaStatus === 'analyzing' ? (
+                              <Badge variant="outline" className="animate-pulse border-amber-500 text-amber-600">
+                                <Clock className="h-3 w-3 mr-1" />
+                                Generating {portraitsGenerated}/{portraitsTotal}
+                              </Badge>
+                            ) : step.status === 'current' && (
                               <Badge className="animate-pulse">
                                 <ArrowRight className="h-3 w-3 mr-1" />
                                 Current
@@ -565,20 +813,185 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
                         </div>
 
                         {/* Right Section - Action */}
-                        <div className="ml-6">
+                        <div className="ml-6 flex flex-col gap-2">
                           {step.status === 'completed' ? (
                             <div className="text-center">
                               <CheckCheck className="h-8 w-8 text-green-500 mx-auto mb-1" />
                               <span className="text-xs text-green-600">Complete</span>
                             </div>
                           ) : step.status === 'current' ? (
-                            <Button 
-                              size="default"
-                              className="group shadow-lg"
-                            >
-                              Start
-                              <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                            </Button>
+                            <>
+                              {/* Main action button — contextual for persona step */}
+                              {step.id === 'review-persona' && personaStatus === 'analyzing' ? (
+                                <Button 
+                                  size="default"
+                                  variant="outline"
+                                  className="group shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push('/personas')
+                                  }}
+                                >
+                                  View Progress
+                                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                </Button>
+                              ) : step.id === 'review-persona' && personaStatus === 'ready' ? (
+                                <Button 
+                                  size="default"
+                                  className="group shadow-lg"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push('/personas')
+                                  }}
+                                >
+                                  Review Avatars
+                                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                </Button>
+                              ) : step.id === 'review-persona' && personaStatus === 'failed' ? (
+                                null
+                              ) : (
+                                <Button 
+                                  size="default"
+                                  className="group shadow-lg"
+                                >
+                                  Start
+                                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                </Button>
+                              )}
+                              {/* Allow marking review steps as complete - only shown when data exists */}
+                              {step.id === 'review-brand' && hasBrandData && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-xs"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    try {
+                                      const response = await fetch('/api/onboarding/mark-reviewed', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ field: 'brand_reviewed' })
+                                      })
+                                      if (response.ok) {
+                                        // Refresh progress locally instead of full page reload
+                                        loadUserProgress()
+                                      }
+                                    } catch (err) {
+                                      console.error('Error:', err)
+                                    }
+                                  }}
+                                >
+                                  Mark as Done
+                                </Button>
+                              )}
+                              {step.id === 'review-persona' && personaStatus === 'analyzing' && (
+                                <div className="flex flex-col gap-2 items-center">
+                                  <div className="w-full space-y-1">
+                                    <div className="flex items-center gap-1.5 justify-center">
+                                      <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                                      <span className="text-xs font-medium text-amber-600">Generating...</span>
+                                    </div>
+                                    <Progress value={(portraitsGenerated / portraitsTotal) * 100} className="h-1.5 w-full" />
+                                    <span className="text-[10px] text-muted-foreground block text-center">{portraitsGenerated}/{portraitsTotal} portraits</span>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-xs"
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        const response = await fetch('/api/onboarding/mark-reviewed', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ field: 'persona_reviewed' })
+                                        })
+                                        if (response.ok) {
+                                          loadUserProgress()
+                                        }
+                                      } catch (err) {
+                                        console.error('Error:', err)
+                                      }
+                                    }}
+                                  >
+                                    Continue anyway
+                                  </Button>
+                                </div>
+                              )}
+                              {step.id === 'review-persona' && personaStatus === 'ready' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-xs"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    try {
+                                      const response = await fetch('/api/onboarding/mark-reviewed', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ field: 'persona_reviewed' })
+                                      })
+                                      if (response.ok) {
+                                        loadUserProgress()
+                                      }
+                                    } catch (err) {
+                                      console.error('Error:', err)
+                                    }
+                                  }}
+                                >
+                                  Mark as Done
+                                </Button>
+                              )}
+                              {step.id === 'review-persona' && personaStatus === 'failed' && (
+                                <div className="flex flex-col gap-1 items-center">
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    className="text-xs"
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        const resp = await fetch('/api/personas/retry', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({})
+                                        })
+                                        if (resp.ok) {
+                                          setPersonaStatus('analyzing')
+                                          setPortraitsGenerated(0)
+                                        }
+                                      } catch (err) {
+                                        console.error('Retry failed:', err)
+                                      }
+                                    }}
+                                  >
+                                    Retry
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-xs"
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        const response = await fetch('/api/onboarding/mark-reviewed', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ field: 'persona_reviewed' })
+                                        })
+                                        if (response.ok) {
+                                          loadUserProgress()
+                                        }
+                                      } catch (err) {
+                                        console.error('Error:', err)
+                                      }
+                                    }}
+                                  >
+                                    Skip
+                                  </Button>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <div className="text-center">
                               <Lock className="h-6 w-6 text-muted-foreground mx-auto mb-1" />
@@ -653,14 +1066,17 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
               onClick={async () => {
                 // Mark that user wants to skip for now
                 try {
-                  const { OnboardingClientService } = await import('@/lib/services/onboarding-client-service')
-                  await OnboardingClientService.skipOnboarding(userId)
+                  const supabase = createSupabaseBrowserClient()
+                  await supabase
+                    .from('user_profiles')
+                    .update({ setup_skipped: true })
+                    .eq('clerk_user_id', userId)
                 } catch (error) {
                   console.error('Error saving skip state:', error)
                 }
                 
-                // Reload to show regular dashboard
-                window.location.href = '/dashboard'
+                // Use router for smooth navigation
+                router.push('/dashboard')
               }}
               className="text-muted-foreground"
             >
@@ -670,6 +1086,65 @@ export function InflioAIOnboarding({ userId, userName, userEmail }: InflioAIOnbo
           </div>
         )}
       </div>
+
+      {/* Social Connect Modal */}
+      <Dialog open={showSocialModal} onOpenChange={setShowSocialModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              Connect Your Social Accounts
+            </DialogTitle>
+            <DialogDescription>
+              Link your social platforms to publish content directly from InflioAI.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-6 space-y-4">
+            {/* Coming Soon Message */}
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
+              <Sparkles className="h-8 w-8 text-primary mx-auto mb-2" />
+              <h4 className="font-semibold mb-1">Social Integrations Coming Soon!</h4>
+              <p className="text-sm text-muted-foreground">
+                We're building direct integrations with all major platforms. Skip for now and we'll notify you when it's ready.
+              </p>
+            </div>
+            
+            {/* Platform Icons Preview */}
+            <div className="flex justify-center gap-4 py-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white">
+                <IconBrandInstagram className="h-6 w-6" />
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-black flex items-center justify-center text-white">
+                <IconBrandTiktok className="h-6 w-6" />
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-[#0A66C2] flex items-center justify-center text-white">
+                <IconBrandLinkedin className="h-6 w-6" />
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-red-600 flex items-center justify-center text-white">
+                <IconBrandYoutube className="h-6 w-6" />
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-black flex items-center justify-center text-white">
+                <IconBrandX className="h-6 w-6" />
+              </div>
+            </div>
+            
+            <p className="text-xs text-center text-muted-foreground">
+              You can connect your accounts later in Settings → Connections
+            </p>
+          </div>
+          
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowSocialModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSkipSocials}>
+              <SkipForward className="h-4 w-4 mr-2" />
+              Skip for Now & Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

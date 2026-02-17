@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from "@clerk/nextjs/server"
 import { fal } from "@fal-ai/client"
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getOpenAI } from '@/lib/openai'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createFluxThumbnailService } from '@/lib/services/thumbnail-service'
@@ -19,8 +18,6 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const supabase = createSupabaseBrowserClient()
 
     const body = await req.json()
     const { 
@@ -280,7 +277,7 @@ export async function POST(req: NextRequest) {
     
     // Upload to Supabase storage
     const { error: uploadError } = await supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .upload(filePath, imageBlob, {
         contentType: 'image/png',
         upsert: false
@@ -293,7 +290,7 @@ export async function POST(req: NextRequest) {
     
     // Get public URL
     const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('images')
+      .from('ai-generated-images')
       .getPublicUrl(filePath)
 
     // Save to thumbnail history

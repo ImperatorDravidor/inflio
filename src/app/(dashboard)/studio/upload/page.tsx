@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight } from "@tabler/icons-react"
+import { IconUpload, IconVideo, IconX, IconSparkles, IconFile, IconClock, IconCheck, IconFileUpload, IconArrowRight, IconUser, IconPalette, IconChevronDown, IconLoader2 } from "@tabler/icons-react"
 import { ProjectService } from "@/lib/services"
 import { extractVideoMetadata, formatDuration, formatFileSize } from "@/lib/video-utils-simple"
 import { generateVideoThumbnail } from "@/lib/video-thumbnail-fix"
@@ -20,7 +21,29 @@ import { WorkflowSelection, WorkflowOptions } from "@/components/workflow-select
 import Image from "next/image"
 import { APP_CONFIG } from "@/lib/constants"
 import { handleError } from "@/lib/error-handler"
-import { WorkflowHeader } from "@/components/workflow-header"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+
+// Types for persona and brand selection
+interface PersonaOption {
+  id: string
+  name: string
+  avatar_url?: string
+  description?: string
+  status?: 'analyzing' | 'training' | 'processing' | 'ready' | 'failed'
+  photoCount?: number
+  portraitsGenerated?: number
+}
+
+interface BrandSettings {
+  name?: string
+  voice?: string
+  colors?: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+  targetAudience?: string
+}
 
 export default function UploadPage() {
   const router = useRouter()
@@ -48,6 +71,87 @@ export default function UploadPage() {
   })
   const [submittingWorkflow, setSubmittingWorkflow] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState("")
+
+  // Persona and brand selection state
+  const [personas, setPersonas] = useState<PersonaOption[]>([])
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
+  const [brandSettings, setBrandSettings] = useState<BrandSettings | null>(null)
+  const [loadingPersonas, setLoadingPersonas] = useState(true)
+  const [showPersonaDropdown, setShowPersonaDropdown] = useState(false)
+
+  // Fetch personas and brand settings on mount
+  useEffect(() => {
+    const fetchPersonasAndBrand = async () => {
+      setLoadingPersonas(true)
+      try {
+        // Fetch personas
+        const personasRes = await fetch('/api/personas')
+        if (personasRes.ok) {
+          const data = await personasRes.json()
+          setPersonas(data.personas || [])
+          // Auto-select first ready persona if available
+          const readyPersonas = (data.personas || []).filter((p: PersonaOption & { status?: string }) => p.status === 'ready')
+          if (readyPersonas.length > 0) {
+            setSelectedPersonaId(readyPersonas[0].id)
+          }
+        }
+
+        // Fetch user profile for brand settings
+        const profileRes = await fetch('/api/user/profile')
+        if (profileRes.ok) {
+          const { profile } = await profileRes.json()
+          if (profile) {
+            // Extract brand from brand_identity or brand_analysis
+            const brand = profile.brand_identity || profile.brand_analysis
+
+            // Build brand settings from the correct structure
+            const extractedBrand: BrandSettings = {
+              name: profile.company_name,
+            }
+
+            if (brand) {
+              // Extract voice from brand.voice.tone array
+              if (brand.voice?.tone && Array.isArray(brand.voice.tone)) {
+                extractedBrand.voice = brand.voice.tone.join(', ')
+              }
+
+              // Extract colors from brand.colors structure
+              if (brand.colors) {
+                extractedBrand.colors = {
+                  primary: brand.colors.primary?.hex?.[0] || '',
+                  secondary: brand.colors.secondary?.hex?.[0] || '',
+                  accent: brand.colors.accent?.hex?.[0] || ''
+                }
+              }
+
+              // Extract target audience from brand.targetAudience
+              if (brand.targetAudience) {
+                const audienceParts: string[] = []
+                if (brand.targetAudience.demographics?.age) {
+                  audienceParts.push(`Age: ${brand.targetAudience.demographics.age}`)
+                }
+                if (brand.targetAudience.psychographics?.length > 0) {
+                  audienceParts.push(brand.targetAudience.psychographics.slice(0, 3).join(', '))
+                }
+                if (brand.targetAudience.needs?.length > 0) {
+                  audienceParts.push(brand.targetAudience.needs.slice(0, 2).join(', '))
+                }
+                extractedBrand.targetAudience = audienceParts.join(' | ')
+              }
+            }
+
+            setBrandSettings(extractedBrand)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch personas/brand:', error)
+      } finally {
+        setLoadingPersonas(false)
+      }
+    }
+
+    fetchPersonasAndBrand()
+  }, [])
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -156,6 +260,13 @@ export default function UploadPage() {
       blog: false,
       social: false
     })
+    // Reset persona selection to first ready persona
+    const readyPersonas = personas.filter((p: PersonaOption & { status?: string }) => (p as PersonaOption & { status?: string }).status === 'ready')
+    if (readyPersonas.length > 0) {
+      setSelectedPersonaId(readyPersonas[0].id)
+    } else {
+      setSelectedPersonaId(null)
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -164,6 +275,8 @@ export default function UploadPage() {
       URL.revokeObjectURL(videoPreview)
     }
   }
+
+  const selectedPersona = personas.find(p => p.id === selectedPersonaId)
 
   const handleContinueToWorkflows = () => {
     if (!projectTitle.trim()) {
@@ -184,6 +297,31 @@ export default function UploadPage() {
     setSubmissionStatus("Uploading video to cloud storage...");
     setUploadProgress(0);
     const toastId = toast.loading("Uploading video to cloud storage...");
+
+    // Set upload timeout based on file size (5 min base + 1 min per 100MB)
+    const fileSizeMB = file.size / (1024 * 1024);
+    const timeoutMs = Math.max(5 * 60 * 1000, (5 + Math.ceil(fileSizeMB / 100)) * 60 * 1000);
+    let uploadTimedOut = false;
+
+    // Simulated progress interval (since Supabase doesn't provide upload progress)
+    // Progress goes from 0-80% during upload, then jumps to 100% on completion
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 80) return prev; // Cap at 80% until actual completion
+        // Slower progress for larger files
+        const increment = Math.max(0.5, 5 - (fileSizeMB / 200));
+        return Math.min(80, prev + increment);
+      });
+    }, 500);
+
+    // Create a timeout promise for upload
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        uploadTimedOut = true;
+        clearInterval(progressInterval);
+        reject(new Error(`Upload timed out. Large videos (${Math.round(fileSizeMB)}MB) may take longer. Please try again or check your connection.`));
+      }, timeoutMs);
+    });
 
     try {
       // Generate unique filename
@@ -209,36 +347,48 @@ export default function UploadPage() {
       // Create a more conservative file name for production
       const fileName = `${timestamp}-${finalName}${extension.toLowerCase()}`;
       
-      // First, get a signed upload URL from our API
-      const urlResponse = await fetch('/api/get-upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName })
-      });
+      // Upload directly using Supabase client (handles CORS properly)
+      const supabase = createSupabaseBrowserClient();
 
-      if (!urlResponse.ok) {
-        const error = await urlResponse.json();
-        throw new Error(error.error || 'Failed to get upload URL');
+      console.log('[Upload] Starting Supabase upload:', { fileName, fileSize: file.size, timeoutMs });
+
+      // Race the upload against the timeout
+      const uploadPromise = supabase.storage
+        .from('videos')
+        .upload(fileName, file, {
+          contentType: file.type || 'video/mp4',
+          upsert: true,
+        });
+
+      const { data: uploadData, error: uploadError } = await Promise.race([
+        uploadPromise,
+        timeoutPromise
+      ]) as Awaited<typeof uploadPromise>;
+
+      if (uploadError) {
+        console.error('Supabase upload failed:', uploadError);
+        // More specific error messages
+        if (uploadError.message?.includes('row-level security')) {
+          throw new Error('Storage permission error. Please contact support.');
+        } else if (uploadError.message?.includes('exceeded')) {
+          throw new Error('File size exceeds the maximum allowed (2GB).');
+        }
+        throw new Error(uploadError.message || 'Failed to upload video to storage');
       }
 
-      const { uploadUrl, path } = await urlResponse.json();
-
-      // Upload directly to Supabase using the signed URL
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type || 'video/mp4',
-        },
-      });
-
-      if (!uploadResponse.ok) {
-        console.error('Direct upload failed:', uploadResponse.status, uploadResponse.statusText);
-        throw new Error('Failed to upload video to storage');
+      if (!uploadData?.path) {
+        throw new Error('Upload completed but no path returned. Please try again.');
       }
 
-      // Construct the public URL
-      const supabaseVideoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${path}`;
+      console.log('[Upload] Supabase upload success:', uploadData.path);
+      clearInterval(progressInterval);
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('videos')
+        .getPublicUrl(uploadData.path);
+
+      const supabaseVideoUrl = urlData.publicUrl;
       
       if (!supabaseVideoUrl) {
         throw new Error("Failed to get video URL from storage.");
@@ -261,7 +411,10 @@ export default function UploadPage() {
           videoUrl: supabaseVideoUrl,
           thumbnailUrl: thumbnail,
           metadata: videoMetadata,
-          workflowOptions
+          workflowOptions,
+          // Enhanced content generation settings
+          personaId: selectedPersonaId,
+          brandSettings: brandSettings
         })
       });
 
@@ -278,26 +431,17 @@ export default function UploadPage() {
         const remaining = usage.limit - usage.used;
         toast.warning(`You have ${remaining} video${remaining !== 1 ? 's' : ''} remaining this month.`);
       }
-      
-      // Step 3: Start the processing workflows (without awaiting)
-      const processingWorkflows = [];
-      if (workflowOptions.transcription) processingWorkflows.push('transcript');
-      if (workflowOptions.clips) processingWorkflows.push('clips');
-      
+
+      // Step 3: Redirect to processing page (processing will auto-start there)
       setSubmissionStatus("Redirecting to processing page...");
       toast.success("Project created! Starting processing...");
-      
-      // Start processing in background (don't await)
-      ProjectService.startProcessing(project.id).catch(error => {
-        console.error('Error starting processing:', error);
-        // User is already on processing page, they'll see the error there
-      });
-      
-      // Redirect immediately to processing page
+
+      // Redirect immediately - processing page will auto-start workflows
       router.push(`/studio/processing/${project.id}`);
 
     } catch (err) {
       console.error('Upload error:', err);
+      clearInterval(progressInterval);
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload and create project.';
       toast.error(errorMessage, { id: toastId });
       setError(errorMessage);
@@ -309,13 +453,9 @@ export default function UploadPage() {
   };
 
   return (
-    <>
-      {/* Global Workflow Header */}
-      <WorkflowHeader currentStep={0} />
-      
-      <div className="mx-auto max-w-5xl animate-in pt-6">
-        {/* Header Section */}
-        <div className="text-center mb-10">
+    <div className="mx-auto max-w-5xl animate-in">
+      {/* Header Section */}
+      <div className="text-center mb-10">
         <h1 className="text-4xl font-bold mb-3">
           Upload Your <span className="gradient-text">Video</span>
         </h1>
@@ -426,7 +566,226 @@ export default function UploadPage() {
                                   className="text-base"
                                 />
                               </div>
-                              <Button 
+
+                              {/* Persona Selection */}
+                              <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                  <IconUser className="h-4 w-4" />
+                                  AI Persona (for thumbnails & content)
+                                </Label>
+                                {loadingPersonas ? (
+                                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                                    <LoadingSpinner size="sm" />
+                                    <span className="text-sm text-muted-foreground">Loading personas...</span>
+                                  </div>
+                                ) : personas.length === 0 ? (
+                                  <div className="p-3 border rounded-lg bg-muted/50">
+                                    <p className="text-sm text-muted-foreground">
+                                      No personas created yet.{' '}
+                                      <a href="/personas" className="text-primary hover:underline">
+                                        Create one
+                                      </a>{' '}
+                                      for personalized AI-generated thumbnails.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowPersonaDropdown(!showPersonaDropdown)}
+                                      className="w-full flex items-center justify-between p-3 border rounded-lg bg-background hover:bg-muted/50 transition-colors"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        {selectedPersona ? (
+                                          <>
+                                            <div className="relative">
+                                              {selectedPersona.avatar_url ? (
+                                                <Image
+                                                  src={selectedPersona.avatar_url}
+                                                  alt={selectedPersona.name}
+                                                  width={32}
+                                                  height={32}
+                                                  className="rounded-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                  <IconUser className="h-4 w-4 text-primary" />
+                                                </div>
+                                              )}
+                                              {(selectedPersona.status === 'analyzing' || selectedPersona.status === 'training' || selectedPersona.status === 'processing') && (
+                                                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center">
+                                                  <IconLoader2 className="h-2 w-2 text-white animate-spin" />
+                                                </div>
+                                              )}
+                                            </div>
+                                            <span className="font-medium">{selectedPersona.name}</span>
+                                            {selectedPersona.status === 'ready' && (
+                                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/30">
+                                                Ready
+                                              </Badge>
+                                            )}
+                                            {(selectedPersona.status === 'analyzing' || selectedPersona.status === 'training' || selectedPersona.status === 'processing') && (
+                                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                                                <IconLoader2 className="h-2.5 w-2.5 animate-spin" />
+                                                {selectedPersona.portraitsGenerated !== undefined && selectedPersona.portraitsGenerated > 0 
+                                                  ? `${selectedPersona.portraitsGenerated}/10` 
+                                                  : 'Training'}
+                                              </Badge>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                              <IconUser className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <span className="text-muted-foreground">Select a persona</span>
+                                          </>
+                                        )}
+                                      </div>
+                                      <IconChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showPersonaDropdown ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {showPersonaDropdown && (
+                                      <div className="absolute z-10 w-full mt-1 border rounded-lg bg-background shadow-lg max-h-60 overflow-auto">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedPersonaId(null)
+                                            setShowPersonaDropdown(false)
+                                          }}
+                                          className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+                                        >
+                                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                            <IconUser className="h-4 w-4 text-muted-foreground" />
+                                          </div>
+                                          <span className="text-muted-foreground">No persona (generic content)</span>
+                                        </button>
+                                        {personas.map((persona) => {
+                                          const isTraining = persona.status === 'analyzing' || persona.status === 'training' || persona.status === 'processing'
+                                          const isReady = persona.status === 'ready'
+                                          const isFailed = persona.status === 'failed'
+                                          
+                                          return (
+                                            <button
+                                              key={persona.id}
+                                              type="button"
+                                              onClick={() => {
+                                                setSelectedPersonaId(persona.id)
+                                                setShowPersonaDropdown(false)
+                                              }}
+                                              className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${selectedPersonaId === persona.id ? 'bg-primary/5' : ''}`}
+                                            >
+                                              <div className="relative">
+                                                {persona.avatar_url ? (
+                                                  <Image
+                                                    src={persona.avatar_url}
+                                                    alt={persona.name}
+                                                    width={32}
+                                                    height={32}
+                                                    className="rounded-full object-cover"
+                                                  />
+                                                ) : (
+                                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                    <IconUser className="h-4 w-4 text-primary" />
+                                                  </div>
+                                                )}
+                                                {isTraining && (
+                                                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center">
+                                                    <IconLoader2 className="h-2 w-2 text-white animate-spin" />
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <p className="font-medium truncate">{persona.name}</p>
+                                                  {isReady && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/30">
+                                                      Ready
+                                                    </Badge>
+                                                  )}
+                                                  {isTraining && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                                                      <IconLoader2 className="h-2.5 w-2.5 animate-spin" />
+                                                      {persona.portraitsGenerated !== undefined && persona.portraitsGenerated > 0 
+                                                        ? `${persona.portraitsGenerated}/10` 
+                                                        : 'Training'}
+                                                    </Badge>
+                                                  )}
+                                                  {isFailed && (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-red-500/10 text-red-600 border-red-500/30">
+                                                      Failed
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                {isTraining && persona.portraitsGenerated !== undefined && persona.portraitsGenerated > 0 && (
+                                                  <p className="text-xs text-amber-600">Generating portraits ({persona.portraitsGenerated}/10 done)</p>
+                                                )}
+                                                {!isTraining && persona.description && (
+                                                  <p className="text-xs text-muted-foreground truncate max-w-[250px]">{persona.description}</p>
+                                                )}
+                                              </div>
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Brand Settings Display */}
+                              {brandSettings && (brandSettings.voice || brandSettings.colors) && (
+                                <div className="space-y-2">
+                                  <Label className="flex items-center gap-2">
+                                    <IconPalette className="h-4 w-4" />
+                                    Brand Settings
+                                  </Label>
+                                  <div className="p-3 border rounded-lg bg-muted/30 space-y-2">
+                                    {brandSettings.name && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Brand:</span>
+                                        <span className="font-medium">{brandSettings.name}</span>
+                                      </div>
+                                    )}
+                                    {brandSettings.voice && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Voice:</span>
+                                        <span className="font-medium">{brandSettings.voice}</span>
+                                      </div>
+                                    )}
+                                    {brandSettings.colors && (
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-muted-foreground">Colors:</span>
+                                        <div className="flex gap-1">
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.primary }}
+                                            title="Primary"
+                                          />
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.secondary }}
+                                            title="Secondary"
+                                          />
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-border"
+                                            style={{ backgroundColor: brandSettings.colors.accent }}
+                                            title="Accent"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      These settings will guide AI-generated content.{' '}
+                                      <a href="/settings/brand" className="text-primary hover:underline">
+                                        Edit in settings
+                                      </a>
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              <Button
                                 onClick={handleContinueToWorkflows}
                                 className="w-full"
                                 disabled={!projectTitle.trim()}
@@ -582,9 +941,36 @@ export default function UploadPage() {
                     <h3 className="text-xl font-semibold">Submitting Your Project</h3>
                     <p className="text-muted-foreground">{submissionStatus || "Please wait while we process your request..."}</p>
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  {file && (
+                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  <div className="text-sm text-muted-foreground space-y-1">
                     <p>This may take a few moments. Please don't close this page.</p>
+                    {file && submissionStatus === "Uploading video to cloud storage..." && (
+                      <p className="text-xs">
+                        Large videos may take several minutes to upload.
+                      </p>
+                    )}
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setSubmittingWorkflow(false);
+                      setUploading(false);
+                      setUploadProgress(0);
+                      setSubmissionStatus("");
+                      toast.info("Upload cancelled. You can try again.");
+                    }}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -604,7 +990,7 @@ export default function UploadPage() {
             <IconClock className="h-5 w-5 text-primary" />
             <div>
               <p className="font-medium text-sm">Processing Time</p>
-              <p className="text-xs text-muted-foreground">Usually 2-5 minutes per video</p>
+              <p className="text-xs text-muted-foreground">Usually 15-30 minutes per video</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
@@ -615,8 +1001,7 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
-        </div>
       </div>
-    </>
+    </div>
   )
 } 

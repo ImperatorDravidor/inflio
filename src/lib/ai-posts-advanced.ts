@@ -1,238 +1,417 @@
 /**
  * Advanced AI Posts Generation Service
- * Creates high-quality, platform-optimized content based on video analysis
+ * 
+ * Creates high-quality, platform-optimized social media post suggestions
+ * tied to actual video content using GPT-5.2 via the Responses API.
+ * 
+ * Each post is grounded in real transcript quotes, aligned with the user's
+ * brand identity and persona, and includes platform-specific copy.
  */
 
 import { getOpenAI } from '@/lib/openai'
 
-export interface AdvancedPostSuggestion {
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface BrandContext {
+  companyName?: string
+  voice?: string         // e.g. "professional, witty, concise"
+  personality?: string[] // e.g. ["authoritative", "warm"]
+  mission?: string
+  values?: string[]
+  colors?: { primary?: string[]; secondary?: string[]; accent?: string[] }
+  targetAudience?: {
+    description?: string
+    demographics?: { age?: string; location?: string; interests?: string[] }
+    psychographics?: string[]
+    needs?: string[]
+  }
+  contentGoals?: string[]
+  primaryPlatforms?: string[]
+}
+
+export interface PersonaContext {
   id: string
-  
-  // Clear content type indicator
-  contentType: {
-    format: 'carousel' | 'single' | 'reel' | 'story' | 'thread' | 'quote' | 'poll' | 'video'
-    icon: string // Visual icon for UI
-    label: string // User-friendly label
-    description: string // What this type does
-  }
-  
-  // Platform compatibility - clear and simple
-  platforms: {
-    primary: string[] // Best platforms for this content
-    secondary: string[] // Also works on these
-    icons: string[] // Platform icons for UI
-  }
-  
-  // The actual content - ready to use
-  content: {
-    title: string // Dashboard title
-    preview: string // Quick preview text
-    hook: string // Opening line
-    body: string // Main content
-    cta: string // Call to action
-    hashtags: string[] // Relevant hashtags
-    wordCount: number // Content length
-  }
-  
-  // Visual generation - clear and actionable
-  visual: {
-    description: string // What the visual should look like
-    aiPrompt: string // Ready-to-use AI image prompt
-    style: 'modern' | 'classic' | 'minimalist' | 'bold' | 'artistic' | 'photorealistic'
-    primaryColors: string[] // Hex colors
-    textOverlay?: string // Text to add on image
-    dimensions: string // Size specifications
-  }
-  
-  // Why this will work - simple insights
-  insights: {
-    whyItWorks: string // Brief explanation
-    targetAudience: string // Who will engage
-    bestTime: string // When to post
-    engagementTip: string // How to maximize engagement
+  name: string
+  description?: string
+  brandVoice?: string
+  hasPortraits: boolean
+  portraitCount: number
+}
+
+export interface ContentAnalysisContext {
+  topics?: string[]
+  keywords?: string[]
+  keyPoints?: string[]
+  sentiment?: string
+  summary?: string
+  keyMoments?: Array<{ timestamp?: number; description?: string }>
+  socialMediaHooks?: string[]
+}
+
+export interface GeneratePostsInput {
+  transcript: string
+  projectTitle: string
+  contentAnalysis: ContentAnalysisContext
+  platforms: string[]
+  brand?: BrandContext
+  persona?: PersonaContext | null
+  tone?: string
+  contentGoal?: string
+  contentTypes?: string[]
+  creativity?: number
+  contentBrief?: ContentBrief | null
+}
+
+export interface GeneratedPost {
+  contentType: 'carousel' | 'single' | 'reel' | 'story' | 'thread' | 'quote'
+  title: string
+  transcriptQuote: string
+  hook: string
+  platformCopy: Record<string, {
+    caption: string
+    hashtags: string[]
+    cta: string
+  }>
+  carouselSlides?: Array<{
+    slideNumber: number
+    headline: string
+    body: string
+    visualPrompt: string
+  }>
+  imagePrompt: string
+  imageStyle: string
+  imageDimensions: string
+  engagement: {
+    whyItWorks: string
+    targetAudience: string
+    bestTimeToPost: string
     estimatedReach: 'viral' | 'high' | 'medium' | 'targeted'
   }
-  
-  // Quick actions for the user
-  actions: {
-    canEditText: boolean
-    canGenerateImage: boolean
-    readyToPost: boolean
-    needsPersona: boolean
-  }
 }
+
+export interface ContentBrief {
+  coreNarrative: string
+  primaryTheme: string
+  keyTakeaways: string[]
+  transcriptHighlights: string[]
+  targetAudience: string
+  toneGuidance: string
+  visualDirection: string
+  cta: string
+}
+
+// ─── Helper ──────────────────────────────────────────────────────────────────
+
+export function extractOutputText(response: any): string {
+  if (response.output && Array.isArray(response.output)) {
+    for (const item of response.output) {
+      if (item.type === 'message' && item.content) {
+        for (const content of item.content) {
+          if (content.type === 'output_text' && content.text) {
+            return content.text
+          }
+        }
+      }
+    }
+  }
+  if (response.output_text) {
+    return response.output_text
+  }
+  throw new Error('Could not extract output text from GPT-5.2 response')
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
 
 export class AdvancedPostsService {
+  private static readonly MODEL = 'gpt-5.2'
+
   /**
-   * Generate high-quality post suggestions based on content analysis
+   * Generate high-quality, content-tied post suggestions.
+   * Uses GPT-5.2 Responses API with medium reasoning for structured output.
    */
   static async generateAdvancedPosts(
-    transcript: string,
-    projectTitle: string,
-    contentAnalysis: any,
-    settings: {
-      platforms: string[]
-      usePersona?: boolean
-      personaDetails?: any
-      brandVoice?: string
-    }
-  ): Promise<AdvancedPostSuggestion[]> {
-    
+    input: GeneratePostsInput
+  ): Promise<GeneratedPost[]> {
     const openai = getOpenAI()
-    
-    // Extract comprehensive insights from content analysis (NO TRUNCATION)
-    const keyTopics = contentAnalysis?.topics?.join(', ') || 'general content'
-    const keywords = contentAnalysis?.keywords?.join(', ') || ''
-    const sentiment = contentAnalysis?.sentiment || 'neutral'
-    const summary = contentAnalysis?.summary || ''
-    const keyMoments = contentAnalysis?.keyMoments || []
-    const viralHooks = contentAnalysis?.contentSuggestions?.socialMediaHooks || []
-    const mainPoints = contentAnalysis?.mainPoints || []
-    const actionableInsights = contentAnalysis?.actionableInsights || []
-    
-    const systemPrompt = `You are an elite content strategist and viral social media expert with deep expertise in psychology, storytelling, and platform algorithms.
 
-Your mission: Analyze this video content THOROUGHLY and create exceptional social media posts that:
-- Stop the scroll immediately with pattern-interrupting hooks
-- Deliver genuine value that changes how people think or act
-- Are meticulously optimized for each platform's algorithm
-- Feature clear visual concepts that amplify the message
-- Drive measurable engagement and audience growth
+    const {
+      transcript,
+      projectTitle,
+      contentAnalysis,
+      platforms,
+      brand,
+      persona,
+      tone,
+      contentGoal,
+      contentTypes,
+      creativity,
+      contentBrief
+    } = input
 
-Quality Standards:
-- Every word must earn its place - no fluff
-- Hook must create curiosity gap or emotional response in 3 seconds
-- Body must teach, inspire, or challenge conventional thinking
-- CTA must be specific and compelling
-- Visual must be thumb-stopping and on-brand
+    // ── Build rich context blocks ──────────────────────────────────────────
 
-${settings.brandVoice ? `Brand Voice: ${settings.brandVoice}` : 'Professional yet approachable, authentic, value-driven'}
-${settings.usePersona && settings.personaDetails ? `\nBrand Persona: ${settings.personaDetails.context}` : ''}
+    const transcriptBlock = transcript.substring(0, 8000)
 
-Remember: Generic posts get ignored. Create content that people feel compelled to engage with.`
+    const topicsBlock = contentAnalysis.topics?.slice(0, 8).join(', ') || 'not analysed'
+    const keywordsBlock = contentAnalysis.keywords?.slice(0, 12).join(', ') || ''
+    const keyPointsBlock = contentAnalysis.keyPoints?.map(p => `  - ${p}`).join('\n') || '  (none)'
+    const sentimentBlock = contentAnalysis.sentiment || 'neutral'
+    const summaryBlock = contentAnalysis.summary || ''
 
-    const userPrompt = `DEEP CONTENT ANALYSIS - Read everything carefully:
+    const keyMomentsBlock = contentAnalysis.keyMoments?.slice(0, 6).map((m) => {
+      const ts = m.timestamp || 0
+      const min = Math.floor(ts / 60)
+      const sec = String(Math.floor(ts % 60)).padStart(2, '0')
+      return `  [${min}:${sec}] ${m.description || ''}`
+    }).join('\n') || '  (none identified)'
 
-VIDEO TITLE: "${projectTitle}"
+    const hooksBlock = contentAnalysis.socialMediaHooks?.slice(0, 5).join('\n  - ') || ''
 
-FULL TRANSCRIPT (use all of this):
-"${transcript}"
+    // Brand context
+    let brandBlock = ''
+    if (brand) {
+      const parts: string[] = []
+      if (brand.companyName) parts.push(`Company: ${brand.companyName}`)
+      if (brand.voice) parts.push(`Voice: ${brand.voice}`)
+      if (brand.personality?.length) parts.push(`Personality: ${brand.personality.join(', ')}`)
+      if (brand.mission) parts.push(`Mission: ${brand.mission}`)
+      if (brand.values?.length) parts.push(`Values: ${brand.values.join(', ')}`)
+      if (brand.colors?.primary?.length) parts.push(`Primary colors: ${brand.colors.primary.join(', ')}`)
+      if (brand.colors?.accent?.length) parts.push(`Accent colors: ${brand.colors.accent.join(', ')}`)
+      if (brand.targetAudience?.description) parts.push(`Target audience: ${brand.targetAudience.description}`)
+      if (brand.targetAudience?.demographics?.age) parts.push(`Audience age: ${brand.targetAudience.demographics.age}`)
+      if (brand.targetAudience?.demographics?.interests?.length) {
+        parts.push(`Audience interests: ${brand.targetAudience.demographics.interests.join(', ')}`)
+      }
+      if (brand.targetAudience?.psychographics?.length) {
+        parts.push(`Audience psychographics: ${brand.targetAudience.psychographics.join(', ')}`)
+      }
+      if (brand.contentGoals?.length) parts.push(`Content goals: ${brand.contentGoals.join(', ')}`)
+      brandBlock = parts.join('\n')
+    }
 
-COMPREHENSIVE ANALYSIS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Topics Covered: ${keyTopics}
-Key Keywords: ${keywords}
-Emotional Tone: ${sentiment}
-Summary: ${summary}
+    // Persona context
+    let personaBlock = ''
+    if (persona) {
+      personaBlock = [
+        `Persona: ${persona.name}`,
+        persona.description ? `Description: ${persona.description}` : '',
+        persona.brandVoice ? `Persona brand voice: ${persona.brandVoice}` : '',
+        persona.hasPortraits ? `Has ${persona.portraitCount} AI portraits available for image generation` : 'No portraits available yet'
+      ].filter(Boolean).join('\n')
+    }
 
-${mainPoints.length > 0 ? `\nMain Points:\n${mainPoints.map((p: any, i: number) => `${i + 1}. ${p}`).join('\n')}` : ''}
+    // Determine which content types to generate
+    const requestedTypes = contentTypes?.length
+      ? contentTypes
+      : ['carousel', 'quote', 'single', 'thread', 'reel']
 
-${keyMoments.length > 0 ? `\nKey Moments (with timestamps):\n${keyMoments.map((m: any) => `• [${m.timestamp}] ${m.description}`).join('\n')}` : ''}
+    // ── System instructions ────────────────────────────────────────────────
 
-${viralHooks.length > 0 ? `\nIdentified Viral Hooks:\n${viralHooks.map((h: string) => `• ${h}`).join('\n')}` : ''}
+    const instructions = `You are a world-class social media content strategist. Your job is to turn video content into scroll-stopping social media posts that are directly tied to the actual content.
 
-${actionableInsights.length > 0 ? `\nActionable Insights:\n${actionableInsights.map((i: string) => `• ${i}`).join('\n')}` : ''}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL RULES:
+1. Every post MUST include a real quote or specific detail from the transcript. No generic filler.
+2. Every hook must reference something the speaker actually said or a specific insight from the video.
+3. Platform copy must be genuinely different per platform (not the same text resized).
+4. Image prompts must be detailed and specific (50+ words), referencing brand colors and visual style.
+5. Carousel slides must each have distinct content — not the same idea rephrased.
+6. Engagement rationale must reference the specific content, not generic "this type works well."
 
-TARGET PLATFORMS: ${settings.platforms.join(', ')}
+${brandBlock ? `\nBRAND IDENTITY:\n${brandBlock}` : ''}
+${personaBlock ? `\nPERSONA:\n${personaBlock}` : ''}
+${tone ? `\nTONE: ${tone}` : ''}
+${contentGoal ? `\nPRIMARY GOAL: ${contentGoal}` : ''}
+${contentBrief ? `
+CONTENT BRIEF (align all posts with this strategic narrative):
+- Core narrative: ${contentBrief.coreNarrative}
+- Theme: ${contentBrief.primaryTheme}
+- Key takeaways: ${contentBrief.keyTakeaways?.join('; ')}
+- Tone: ${contentBrief.toneGuidance}
+- CTA direction: ${contentBrief.cta}
+- Visual direction: ${contentBrief.visualDirection}` : ''}`
 
-TASK: Create 8 EXCEPTIONAL post suggestions (quality over quantity). Each must be:
-- Deeply rooted in the actual content above
-- Strategically different in style and purpose
-- Immediately actionable and ready to post
-- Featuring a complete visual concept
+    // ── User prompt ────────────────────────────────────────────────────────
 
-Cover these strategic post types:
-1. 🎯 Hook Carousel: Multi-slide story that builds curiosity and delivers a payoff (5-7 slides)
-2. 💡 Insight Quote: One powerful takeaway from the video as a shareable visual quote
-3. 🎬 Behind-the-Scenes: Authentic moment or process revealed (builds connection)
-4. 📊 Data Showcase: Surprising statistic or metric presented visually (credibility)
-5. 🔥 Hot Take: Controversial opinion or challenge to conventional thinking (engagement)
-6. 📝 Thread Story: Multi-tweet narrative that unfolds the key insight (Twitter/X)
-7. ⚡ Quick Win: Single actionable tip they can implement today (immediate value)
-8. 🎪 Pattern Interrupt: Unexpected angle or format that stops the scroll
+    const userPrompt = `Create 5 high-quality social media post suggestions from this video content.
 
-For each post, you MUST think through:
-- What specific moment/insight from the video does this leverage?
-- Why would someone stop scrolling for THIS?
-- What emotion does this trigger? (curiosity, FOMO, inspiration, shock)
-- What action do we want them to take?
-- How does the visual amplify the message?
+═══ VIDEO ═══
+Title: "${projectTitle}"
 
-For each post, provide this exact structure:
+═══ CONTENT ANALYSIS ═══
+Topics: ${topicsBlock}
+Keywords: ${keywordsBlock}
+Sentiment: ${sentimentBlock}
+${summaryBlock ? `Summary: ${summaryBlock}` : ''}
+
+Key Points:
+${keyPointsBlock}
+
+Key Moments:
+${keyMomentsBlock}
+
+${hooksBlock ? `Suggested Hooks:\n  - ${hooksBlock}` : ''}
+
+═══ FULL TRANSCRIPT ═══
+${transcriptBlock}
+
+═══ REQUIREMENTS ═══
+Target platforms: ${platforms.join(', ')}
+Content types to generate: ${requestedTypes.join(', ')}
+${persona?.hasPortraits ? 'Include the persona/creator in image prompts where appropriate.' : ''}
+
+Generate exactly 5 posts. For each post, return this JSON structure:
+
 {
-  "id": "unique-id",
-  "contentType": {
-    "format": "carousel|single|reel|story|thread|quote|poll",
-    "icon": "emoji representing the type",
-    "label": "User-friendly name",
-    "description": "What this post type does best"
-  },
-  "platforms": {
-    "primary": ["best platform(s) for this content"],
-    "secondary": ["also works on"],
-    "icons": ["platform emojis"]
-  },
-  "content": {
-    "title": "Catchy dashboard title",
-    "preview": "First 50 chars of content...",
-    "hook": "Opening line that grabs attention",
-    "body": "Full post content with emojis and formatting",
-    "cta": "Clear call to action",
-    "hashtags": ["relevant", "hashtags"],
-    "wordCount": number
-  },
-  "visual": {
-    "description": "What the visual looks like",
-    "aiPrompt": "Detailed prompt for AI image generation (be specific about style, composition, colors, mood)",
-    "style": "modern|classic|minimalist|bold|artistic|photorealistic",
-    "primaryColors": ["#hex1", "#hex2"],
-    "textOverlay": "Text to add on image (if any)",
-    "dimensions": "1080x1080 or platform-specific"
-  },
-  "insights": {
-    "whyItWorks": "Brief explanation of why this will perform well",
-    "targetAudience": "Who will engage with this",
-    "bestTime": "Optimal posting time",
-    "engagementTip": "How to maximize engagement",
-    "estimatedReach": "viral|high|medium|targeted"
-  },
-  "actions": {
-    "canEditText": true,
-    "canGenerateImage": true,
-    "readyToPost": true/false,
-    "needsPersona": true/false
-  }
+  "posts": [
+    {
+      "contentType": "carousel|single|reel|story|thread|quote",
+      "title": "Compelling title for the dashboard (based on actual content)",
+      "transcriptQuote": "An exact or closely paraphrased quote from the transcript that this post is built around",
+      "hook": "The opening line — must reference the transcript quote or a specific video insight",
+      "platformCopy": {
+        "<platform>": {
+          "caption": "Full platform-optimized caption with formatting, emojis where appropriate",
+          "hashtags": ["relevant", "hashtags", "without-hash-symbol"],
+          "cta": "Platform-specific call to action"
+        }
+      },
+      "carouselSlides": [
+        {
+          "slideNumber": 1,
+          "headline": "Slide headline",
+          "body": "Slide body text",
+          "visualPrompt": "Detailed image generation prompt for this specific slide (50+ words)"
+        }
+      ],
+      "imagePrompt": "Detailed AI image generation prompt (50+ words). Include style, composition, lighting, mood, colors${brand?.colors?.primary?.length ? `, incorporating brand colors ${brand.colors.primary.join(' and ')}` : ''}${persona?.hasPortraits ? ', featuring the creator/persona from reference images' : ''}",
+      "imageStyle": "photorealistic|modern|minimalist|bold|artistic|editorial",
+      "imageDimensions": "1080x1350 for carousel/single, 1920x1080 for reel/story",
+      "engagement": {
+        "whyItWorks": "Specific reason tied to the actual content and audience psychology",
+        "targetAudience": "Who specifically will engage with this and why",
+        "bestTimeToPost": "Day and time recommendation",
+        "estimatedReach": "viral|high|medium|targeted"
+      }
+    }
+  ]
 }
 
-Make each suggestion:
-- Unique and valuable
-- Platform-optimized
-- Visually compelling
-- Easy to implement
-- Based on the actual content analysis
+IMPORTANT:
+- Only include "carouselSlides" for carousel type posts. Omit for other types.
+- Include a platformCopy entry for each of these platforms: ${platforms.join(', ')}
+- Each caption must respect platform character limits (Twitter: 280, Instagram: 2200, LinkedIn: 3000, Facebook: 2200).
+- Mix up the content types. Don't make all 5 the same type.
+- Every "transcriptQuote" must be a real phrase from the transcript above.`
 
-Return as a JSON object with a "posts" array containing all 10 suggestions.`
+    // ── Call GPT-5.2 Responses API ─────────────────────────────────────────
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.8, // Creative and engaging while maintaining quality
-      max_tokens: 6000, // More room for thorough, quality responses
-      response_format: { type: 'json_object' }
+    console.log('[AdvancedPostsService] Calling GPT-5.2 with', {
+      transcriptLength: transcriptBlock.length,
+      platforms,
+      hasBrand: !!brand,
+      hasPersona: !!persona,
+      contentTypes: requestedTypes
     })
 
-    const response = completion.choices[0].message.content
-    if (!response) {
-      throw new Error('No response from AI')
+    const response = await openai.responses.create({
+      model: this.MODEL,
+      input: userPrompt,
+      instructions,
+      reasoning: { effort: 'medium' },
+      text: { format: { type: 'json_object' } },
+      max_output_tokens: 6000
+    })
+
+    const outputText = extractOutputText(response)
+
+    let parsed: { posts: GeneratedPost[] }
+    try {
+      parsed = JSON.parse(outputText)
+    } catch (parseError) {
+      console.error('[AdvancedPostsService] Failed to parse GPT response:', outputText.substring(0, 200))
+      throw new Error('Failed to parse AI response as JSON')
     }
 
-    const { posts } = JSON.parse(response)
-    
-    // Return the high-quality posts directly
-    return posts
+    if (!parsed.posts || !Array.isArray(parsed.posts)) {
+      throw new Error('AI response missing "posts" array')
+    }
+
+    console.log('[AdvancedPostsService] Generated', parsed.posts.length, 'posts')
+
+    return parsed.posts
+  }
+
+  /**
+   * Generate a Content Brief that ties all downstream content together.
+   * Called once after content analysis, stored on the project.
+   */
+  static async generateContentBrief(
+    transcript: string,
+    contentAnalysis: ContentAnalysisContext,
+    brand?: BrandContext,
+    persona?: PersonaContext | null
+  ): Promise<ContentBrief> {
+    const openai = getOpenAI()
+
+    const transcriptBlock = transcript.substring(0, 6000)
+
+    let brandBlock = ''
+    if (brand) {
+      const parts: string[] = []
+      if (brand.companyName) parts.push(`Company: ${brand.companyName}`)
+      if (brand.voice) parts.push(`Voice: ${brand.voice}`)
+      if (brand.targetAudience?.description) parts.push(`Audience: ${brand.targetAudience.description}`)
+      if (brand.contentGoals?.length) parts.push(`Goals: ${brand.contentGoals.join(', ')}`)
+      if (brand.mission) parts.push(`Mission: ${brand.mission}`)
+      brandBlock = `\nBRAND:\n${parts.join('\n')}`
+    }
+
+    let personaBlock = ''
+    if (persona) {
+      personaBlock = `\nPERSONA: ${persona.name}${persona.description ? ` - ${persona.description}` : ''}`
+    }
+
+    const instructions = `You are a content strategist. Create a concise Content Brief that will align ALL downstream content (blog posts, social posts, captions, thumbnails) around the same narrative.
+
+The brief must be grounded in real content from the transcript.${brandBlock}${personaBlock}
+
+Return a JSON object with these exact keys:
+- coreNarrative: 1-2 sentence summary of the key message
+- primaryTheme: The main topic/theme
+- keyTakeaways: Array of 3-5 specific, quotable takeaways
+- transcriptHighlights: Array of 3-5 of the best actual quotes from the transcript (exact words)
+- targetAudience: Who this content is for
+- toneGuidance: How all content should sound (be specific)
+- visualDirection: Consistent visual style for images/thumbnails
+- cta: What the creator wants the audience to do`
+
+    const input = `Create a Content Brief for this video content.
+
+TOPICS: ${contentAnalysis.topics?.join(', ') || 'N/A'}
+KEY POINTS: ${contentAnalysis.keyPoints?.join(', ') || 'N/A'}
+SENTIMENT: ${contentAnalysis.sentiment || 'neutral'}
+SUMMARY: ${contentAnalysis.summary || ''}
+
+TRANSCRIPT:
+${transcriptBlock}`
+
+    console.log('[AdvancedPostsService] Generating content brief...')
+
+    const response = await openai.responses.create({
+      model: this.MODEL,
+      input,
+      instructions,
+      reasoning: { effort: 'medium' },
+      text: { format: { type: 'json_object' } },
+      max_output_tokens: 1500,
+    })
+
+    const outputText = extractOutputText(response)
+    const brief = JSON.parse(outputText) as ContentBrief
+
+    console.log('[AdvancedPostsService] Content brief generated:', brief.primaryTheme)
+
+    return brief
   }
 }
