@@ -3,11 +3,8 @@
 import { useGSAP } from "@gsap/react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { gsap } from "gsap";
-import { SplitText } from "gsap/SplitText";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-
-gsap.registerPlugin(SplitText);
 
 interface ShaderPlaneProps {
 	vertexShader: string;

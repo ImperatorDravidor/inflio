@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 export interface UserUsage {
   user_id: string
   used: number
-  usage_limit: number
+  limit: number  // Changed from usage_limit to match database column
   plan: 'basic' | 'pro' | 'enterprise'
   reset_date: string
   created_at?: string
@@ -26,6 +26,7 @@ export class ServerUsageService {
    * Get or create usage record for a user
    */
   static async getUsage(userId: string): Promise<UserUsage> {
+    console.log('[ServerUsageService] Getting usage for user:', userId)
     const supabase = createSupabaseServerClient()
     
     // Try to get existing usage record
@@ -35,20 +36,37 @@ export class ServerUsageService {
       .eq('user_id', userId)
       .single()
 
+    console.log('[ServerUsageService] Query result:', { data: existingUsage, error: fetchError })
+
     if (existingUsage && !fetchError) {
-      // Check if we need to reset monthly usage
-      const resetDate = new Date(existingUsage.reset_date)
-      if (new Date() >= resetDate) {
-        return await this.resetMonthlyUsage(userId, existingUsage)
+      console.log('[ServerUsageService] Found existing usage:', existingUsage)
+      
+      // Map database column names to interface (database uses usage_limit, code uses limit)
+      const mappedUsage: UserUsage = {
+        user_id: existingUsage.user_id,
+        used: existingUsage.used,
+        limit: existingUsage.usage_limit || existingUsage.limit, // Support both column names
+        plan: existingUsage.plan,
+        reset_date: existingUsage.reset_date,
+        created_at: existingUsage.created_at,
+        updated_at: existingUsage.updated_at
       }
-      return existingUsage
+      
+      // Check if we need to reset monthly usage
+      const resetDate = new Date(mappedUsage.reset_date)
+      if (new Date() >= resetDate) {
+        return await this.resetMonthlyUsage(userId, mappedUsage)
+      }
+      return mappedUsage
     }
 
     // Create new usage record if none exists
     if (fetchError?.code === 'PGRST116') { // Not found
+      console.log('[ServerUsageService] No record found, creating new one')
       return await this.createUsageRecord(userId)
     }
 
+    console.error('[ServerUsageService] Failed to fetch usage:', fetchError)
     throw new Error(`Failed to fetch usage: ${fetchError?.message}`)
   }
 
@@ -56,29 +74,45 @@ export class ServerUsageService {
    * Create a new usage record for a user
    */
   private static async createUsageRecord(userId: string): Promise<UserUsage> {
+    console.log('[ServerUsageService] Creating new usage record for user:', userId)
     const supabase = createSupabaseServerClient()
-    
-    const newUsage: UserUsage = {
+
+    // Database uses usage_limit column, but we'll map it to limit in the return
+    const dbRecord = {
       user_id: userId,
       used: 0,
-      usage_limit: this.PLAN_LIMITS.basic,
+      usage_limit: this.PLAN_LIMITS.basic,  // Database column is usage_limit
       plan: 'basic',
       reset_date: this.getNextResetDate().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
 
+    console.log('[ServerUsageService] Inserting new usage record:', dbRecord)
+
     const { data, error } = await supabase
       .from('user_usage')
-      .insert(newUsage)
+      .insert(dbRecord)
       .select()
       .single()
 
     if (error) {
+      console.error('[ServerUsageService] Failed to create record:', error)
       throw new Error(`Failed to create usage record: ${error.message}`)
     }
 
-    return data
+    console.log('[ServerUsageService] Created usage record:', data)
+    
+    // Map database column to interface
+    return {
+      user_id: data.user_id,
+      used: data.used,
+      limit: data.usage_limit || data.limit,
+      plan: data.plan,
+      reset_date: data.reset_date,
+      created_at: data.created_at,
+      updated_at: data.updated_at
+    }
   }
 
   /**
@@ -87,16 +121,13 @@ export class ServerUsageService {
   private static async resetMonthlyUsage(userId: string, currentUsage: UserUsage): Promise<UserUsage> {
     const supabase = createSupabaseServerClient()
     
-    const updatedUsage = {
-      ...currentUsage,
-      used: 0,
-      reset_date: this.getNextResetDate().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-
     const { data, error } = await supabase
       .from('user_usage')
-      .update(updatedUsage)
+      .update({
+        used: 0,
+        reset_date: this.getNextResetDate().toISOString(),
+        updated_at: new Date().toISOString()
+      })
       .eq('user_id', userId)
       .select()
       .single()
@@ -105,7 +136,16 @@ export class ServerUsageService {
       throw new Error(`Failed to reset usage: ${error.message}`)
     }
 
-    return data
+    // Map database column to interface
+    return {
+      user_id: data.user_id,
+      used: data.used,
+      limit: data.usage_limit || data.limit,
+      plan: data.plan,
+      reset_date: data.reset_date,
+      created_at: data.created_at,
+      updated_at: data.updated_at
+    }
   }
 
   /**
@@ -114,12 +154,12 @@ export class ServerUsageService {
    */
   static async incrementUsage(userId: string): Promise<boolean> {
     const supabase = createSupabaseServerClient()
-    
+
     // Get current usage
     const usage = await this.getUsage(userId)
-    
+
     // Check if limit reached (unless unlimited)
-    if (usage.usage_limit !== -1 && usage.used >= usage.usage_limit) {
+    if (usage.limit !== -1 && usage.used >= usage.limit) {  // Changed from usage_limit to limit
       return false
     }
 
@@ -145,7 +185,7 @@ export class ServerUsageService {
   static async canProcessVideo(userId: string): Promise<boolean> {
     try {
       const usage = await this.getUsage(userId)
-      return usage.usage_limit === -1 || usage.used < usage.usage_limit
+      return usage.limit === -1 || usage.used < usage.limit  // Changed from usage_limit to limit
     } catch (error) {
       console.error('Error checking usage:', error)
       // Default to allowing if there's an error (to not block users)
@@ -158,12 +198,12 @@ export class ServerUsageService {
    */
   static async updatePlan(userId: string, plan: 'basic' | 'pro' | 'enterprise'): Promise<UserUsage> {
     const supabase = createSupabaseServerClient()
-    
+
     const { data, error } = await supabase
       .from('user_usage')
       .update({
         plan,
-        usage_limit: this.PLAN_LIMITS[plan],
+        usage_limit: this.PLAN_LIMITS[plan],  // Database column is usage_limit
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)

@@ -66,6 +66,24 @@ export function useUserProfile() {
 
     try {
       const response = await fetch(`/api/onboarding?clerkUserId=${user.id}`)
+      
+      // Check if response is OK before parsing
+      if (!response.ok) {
+        console.error(`Profile fetch failed: ${response.status} ${response.statusText}`)
+        setError(`Failed to load profile: ${response.status}`)
+        setIsLoading(false)
+        return
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Profile fetch returned non-JSON response:", contentType)
+        setError("Server returned invalid response")
+        setIsLoading(false)
+        return
+      }
+
       const data = await response.json()
       
       if (data.profile) {
@@ -75,7 +93,7 @@ export function useUserProfile() {
       }
     } catch (err) {
       console.error("Error fetching profile:", err)
-      setError("Failed to load profile")
+      setError(err instanceof Error ? err.message : "Failed to load profile")
     } finally {
       setIsLoading(false)
     }

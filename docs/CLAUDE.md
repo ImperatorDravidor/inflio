@@ -222,14 +222,21 @@ When handling errors:
 5. **Soft delete pattern** - Set `deleted_at` instead of DELETE for recovery
 6. **Status transitions** - Always validate state machine transitions
 
-### Typecheck Command
+### Testing & Validation Commands
 
-Since there's no explicit typecheck script in package.json, use:
 ```bash
+# Type checking (no explicit script in package.json)
 npx tsc --noEmit
-```
 
-This validates TypeScript without generating output files.
+# Test OAuth configuration
+npm run test:oauth
+
+# Run a single test file
+npx jest path/to/test.ts
+
+# Validate Klap API configuration
+node -e "console.log('KLAP_API_KEY:', process.env.KLAP_API_KEY ? 'Set' : 'Not set')"
+```
 
 ### Storage Setup
 
@@ -243,5 +250,44 @@ This creates the required buckets and RLS policies for:
 - `thumbnails` - Public bucket for thumbnails
 - `subtitles` - Public bucket for subtitle files
 - `blog-images` - Public bucket for blog images
+- `persona-training` - For AI persona training data
+- `persona-lora` - For LoRA model files
 
 If you get "row-level security policy" errors, ensure you've run this migration.
+
+### Video Processing Architecture
+
+**URL-Based Processing Flow**:
+1. Video uploaded to Supabase Storage → Generate signed URL
+2. Send URL to Klap AI (not file upload) → Avoid size limits
+3. Klap processes asynchronously → Poll for status
+4. Retrieve generated clips → Store references in DB
+
+**Klap API Integration Points**:
+- `KlapAPIService.createVideoTask()` - Initiates processing
+- `KlapAPIService.pollTaskUntilReady()` - 30-second polling intervals
+- `KlapAPIService.getClipsFromFolder()` - Retrieves generated clips
+- Processing time: 15-25 minutes for typical videos
+
+### Important Implementation Details
+
+**Parallel Processing Strategy**:
+- Video processing tasks run in parallel: transcription, clip generation, content analysis
+- Use event-driven updates for real-time progress tracking
+- Background jobs handle long-running operations
+
+**Error Handling Patterns**:
+- AI services use `ai-error-handler.ts` for consistent error responses
+- Retry logic with exponential backoff for API failures
+- Graceful degradation when services are unavailable
+
+**State Management**:
+- Project status transitions: `draft` → `processing` → `ready` → `published`
+- Klap processing states: `idle` → `queued` → `processing` → `completed`/`failed`
+- Social post states: `draft` → `scheduled` → `publishing` → `published`/`failed`
+
+**Performance Considerations**:
+- Use URL-based processing to avoid file size limits
+- Implement chunked uploads for large videos (`chunked-uploader.ts`)
+- Cache frequently accessed data in memory or Redis
+- Optimize database queries with proper indexes

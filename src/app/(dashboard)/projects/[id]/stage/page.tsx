@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AnimatedBackground } from "@/components/animated-background"
+import { WorkflowHeader } from "@/components/workflow-header"
 import { EnhancedContentStager } from "@/components/staging/enhanced-content-stager"
 import { AISchedulingAssistant } from "@/components/staging/ai-scheduling-assistant"
 import { StagingReview } from "@/components/staging/staging-review"
@@ -39,14 +40,6 @@ import { useClerkUser } from "@/hooks/use-clerk-user"
 import { cn } from "@/lib/utils"
 import { StagingSessionsService } from "@/lib/staging/staging-sessions-service"
 
-interface StagingStep {
-  id: string
-  title: string
-  description: string
-  completed: boolean
-  current: boolean
-}
-
 interface StagingDraft {
   projectId: string
   savedAt: string
@@ -64,10 +57,16 @@ export default function ProjectStagePage() {
   
   const projectId = params.id as string
   const selectedContent = searchParams.get('content')?.split(',') || []
+  const stepParam = searchParams.get('step')
   
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<any>(null)
-  const [currentStep, setCurrentStep] = useState(0)
+  // Initialize step from URL parameter or default to 2 (Prepare Content)
+  const [currentStep, setCurrentStep] = useState(() => {
+    const step = stepParam ? parseInt(stepParam) : 2
+    // Ensure step is within valid range (2-4 for staging steps)
+    return Math.min(Math.max(step, 2), 4)
+  })
   const [stagedContent, setStagedContent] = useState<any[]>([])
   const [scheduledPosts, setScheduledPosts] = useState<any[]>([])
   const [publishing, setPublishing] = useState(false)
@@ -78,30 +77,6 @@ export default function ProjectStagePage() {
   const [savingDraft, setSavingDraft] = useState(false)
   const [contentLoaded, setContentLoaded] = useState(false)
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  const steps: StagingStep[] = [
-    {
-      id: 'content',
-      title: 'Prepare Content',
-      description: 'Add platform-specific details',
-      completed: currentStep > 0,
-      current: currentStep === 0
-    },
-    {
-      id: 'schedule',
-      title: 'Schedule Posts',
-      description: 'AI-powered optimal timing',
-      completed: currentStep > 1,
-      current: currentStep === 1
-    },
-    {
-      id: 'review',
-      title: 'Review & Publish',
-      description: 'Final review before publishing',
-      completed: currentStep > 2,
-      current: currentStep === 2
-    }
-  ]
 
   // Track if we've already loaded content to prevent re-runs
   const hasLoadedContent = useRef(false)
@@ -196,7 +171,10 @@ export default function ProjectStagePage() {
   }
 
   const loadDraft = (draft: StagingDraft) => {
-    setCurrentStep(draft.currentStep)
+    // Adjust step number for new 5-step workflow
+    // Old drafts had steps 0-2, new has steps 2-4 for the same content
+    const adjustedStep = draft.currentStep < 2 ? draft.currentStep + 2 : draft.currentStep
+    setCurrentStep(adjustedStep)
     setStagedContent(draft.stagedContent)
     setScheduledPosts(draft.scheduledPosts)
     setContentLoaded(true)
@@ -270,7 +248,7 @@ export default function ProjectStagePage() {
     
     setStagedContent(clearedContent)
     setScheduledPosts([])
-    setCurrentStep(0)
+    setCurrentStep(2) // Reset to Prepare Content (3rd step)
     setIsDirty(false)
     clearDraft()
     
@@ -466,7 +444,7 @@ export default function ProjectStagePage() {
 
   const handleSchedulingComplete = (scheduled: any[]) => {
     setScheduledPosts(scheduled)
-    setCurrentStep(2)
+    setCurrentStep(4) // Go to Review & Publish (5th step)
     setIsDirty(true)
   }
 
@@ -510,7 +488,7 @@ export default function ProjectStagePage() {
   }
 
   const handleBack = () => {
-    if (currentStep > 0) {
+    if (currentStep > 2) { // Can't go back before Prepare Content (step 3)
       setCurrentStep(currentStep - 1)
     } else {
       if (isDirty) {
@@ -522,7 +500,7 @@ export default function ProjectStagePage() {
   }
 
   const handleNext = () => {
-    if (currentStep < steps.length - 1) {
+    if (currentStep < 4) { // Maximum step is 4 (Review & Publish)
       setCurrentStep(currentStep + 1)
     }
   }
@@ -551,7 +529,10 @@ export default function ProjectStagePage() {
     <div className="relative min-h-screen">
       <AnimatedBackground variant="subtle" />
       
-      <div className="relative max-w-7xl mx-auto px-4 py-8">
+      {/* Global Workflow Header */}
+      <WorkflowHeader currentStep={currentStep} projectId={projectId} />
+      
+      <div className="relative max-w-7xl mx-auto px-4 py-8 pt-24">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -604,60 +585,10 @@ export default function ProjectStagePage() {
           </div>
         </div>
 
-        {/* Progress Steps */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            {steps.map((step, index) => (
-              <div
-                key={step.id}
-                className={cn(
-                  "flex items-center",
-                  index < steps.length - 1 && "flex-1"
-                )}
-              >
-                <div className="flex flex-col items-center">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
-                      step.completed && "bg-primary border-primary text-primary-foreground",
-                      step.current && "border-primary text-primary",
-                      !step.completed && !step.current && "border-muted-foreground/30"
-                    )}
-                  >
-                    {step.completed ? (
-                      <IconCheck className="h-5 w-5" />
-                    ) : (
-                      <span className="text-sm font-medium">{index + 1}</span>
-                    )}
-                  </div>
-                  <div className="mt-2 text-center">
-                    <p className={cn(
-                      "text-sm font-medium",
-                      step.current && "text-primary"
-                    )}>
-                      {step.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {step.description}
-                    </p>
-                  </div>
-                </div>
-                {index < steps.length - 1 && (
-                  <div
-                    className={cn(
-                      "flex-1 h-[2px] mx-4 mt-[-20px]",
-                      step.completed ? "bg-primary" : "bg-muted"
-                    )}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Step Content */}
         <div className="space-y-6">
-          {currentStep === 0 && (
+          {currentStep === 2 && (
             <EnhancedContentStager
               content={stagedContent}
               onUpdate={handleContentUpdate}
@@ -665,19 +596,19 @@ export default function ProjectStagePage() {
             />
           )}
           
-          {currentStep === 1 && (
+          {currentStep === 3 && (
             <AISchedulingAssistant
               content={stagedContent}
               onComplete={handleSchedulingComplete}
-              onBack={() => setCurrentStep(0)}
+              onBack={() => setCurrentStep(2)}
             />
           )}
           
-          {currentStep === 2 && (
+          {currentStep === 4 && (
             <StagingReview
               scheduledPosts={scheduledPosts}
               onPublish={handlePublish}
-              onBack={() => setCurrentStep(1)}
+              onBack={() => setCurrentStep(3)}
               publishing={publishing}
             />
           )}

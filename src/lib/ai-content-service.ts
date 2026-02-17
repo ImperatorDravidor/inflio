@@ -87,7 +87,7 @@ export interface ContentAnalysis {
 
 export class AIContentService {
   /**
-   * Extract keywords and topics from transcript using OpenAI GPT-5
+   * Extract keywords and topics from transcript using OpenAI GPT-4o
    */
   static async analyzeTranscript(transcription: TranscriptionData, useDeepAnalysis: boolean = true): Promise<ContentAnalysis> {
     try {
@@ -201,10 +201,10 @@ Return in this exact JSON format:
       "engagementScore": 85
     }
   ],
-  "modelVersion": "gpt-5"
+  "modelVersion": "gpt-4o"
 }`
 
-      // Using GPT-5 with automatic fallback
+      // Using GPT-4o with automatic fallback
       const completion = await executeWithModelFallback(
         openai,
         {
@@ -258,7 +258,7 @@ Return in this exact JSON format:
         summary: analysis.summary || 'No summary available',
         sentiment: ['positive', 'neutral', 'negative'].includes(analysis.sentiment) ? analysis.sentiment : 'neutral',
         keyMoments: Array.isArray(analysis.keyMoments) ? analysis.keyMoments.slice(0, 5) : [],
-        modelVersion: 'gpt-5',
+        modelVersion: 'gpt-4o',
         contentSuggestions: {
           blogPostIdeas: Array.isArray(analysis.contentSuggestions?.blogPostIdeas) ? analysis.contentSuggestions.blogPostIdeas : [],
           socialMediaHooks: Array.isArray(analysis.contentSuggestions?.socialMediaHooks) ? analysis.contentSuggestions.socialMediaHooks : [],
@@ -328,7 +328,7 @@ Return in JSON format:
   "seoDescription": "SEO meta description"
 }`
 
-      // Using GPT-5 with automatic fallback
+      // Using GPT-4o with automatic fallback
       const completion = await executeWithModelFallback(
         openai,
         {
@@ -396,7 +396,7 @@ Return JSON:
   "type": "text|carousel|video"
 }`
 
-        // Using GPT-5 with automatic fallback
+        // Using GPT-4o with automatic fallback
         const completion = await executeWithModelFallback(
           openai,
           {
