@@ -128,6 +128,7 @@ import { EnhancedVideoPlayer } from "@/components/video-player-enhanced"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import type { Platform } from "@/lib/social/types"
 import { PersonaSelector } from "@/components/persona-selector"
 import type { Persona } from "@/lib/services/persona-service"
@@ -2267,56 +2268,60 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                     <TabsContent value="clips" className="mt-0">
                       {project.folders.clips.length > 0 ? (
                       <>
+                          {/* Section Header */}
                           <div className="flex justify-between items-center mb-6">
-                            <div>
-                              <h2 className="text-2xl font-bold">
-                                {project.folders.clips.length} AI-Generated Clips
-                              </h2>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Ranked by viral potential • Best to worst
-                              </p>
-                            </div>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <h2 className="text-2xl font-bold">
+                                  {project.folders.clips.length} Short-Form Clips
+                                </h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Ranked by AI relevance
+                                </p>
+                              </div>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button className="text-muted-foreground hover:text-foreground transition-colors">
+                                    <IconInfoCircle className="h-4 w-4" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="max-w-xs">
+                                  Clips are automatically generated and ranked by our AI partner. Rankings reflect estimated engagement potential.
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           </div>
                           
-                        {/* Clips List - Horizontal Layout */}
+                        {/* Clips List */}
                         <div className="space-y-4">
                             {[...project.folders.clips]
                               .sort((a, b) => (b.score || 0) - (a.score || 0))
                               .map((clip: ClipData, index: number) => {
-                                // More detailed scoring tiers (score is already 0-100 scale)
-                                const getScoreTier = (score: number) => {
-                                  const scorePercent = score // Score is already 0-100
-                                if (scorePercent >= 95) return { label: "🚀 Guaranteed Viral", color: "from-purple-600 to-pink-600", textColor: "text-purple-600", borderColor: "border-purple-500/50", bgColor: "bg-purple-50 dark:bg-purple-950/20" }
-                                if (scorePercent >= 90) return { label: "🔥 Viral Potential", color: "from-red-500 to-pink-500", textColor: "text-red-600", borderColor: "border-red-500/50", bgColor: "bg-red-50 dark:bg-red-950/20" }
-                                if (scorePercent >= 85) return { label: "💎 Exceptional", color: "from-orange-500 to-red-500", textColor: "text-orange-600", borderColor: "border-orange-500/50", bgColor: "bg-orange-50 dark:bg-orange-950/20" }
-                                if (scorePercent >= 80) return { label: "⭐ Outstanding", color: "from-yellow-500 to-orange-500", textColor: "text-yellow-700", borderColor: "border-yellow-500/50", bgColor: "bg-yellow-50 dark:bg-yellow-950/20" }
-                                if (scorePercent >= 75) return { label: "✨ Very Good", color: "from-green-500 to-yellow-500", textColor: "text-green-700", borderColor: "border-green-500/50", bgColor: "bg-green-50 dark:bg-green-950/20" }
-                                if (scorePercent >= 70) return { label: "👍 Good", color: "from-blue-500 to-green-500", textColor: "text-blue-700", borderColor: "border-blue-500/50", bgColor: "bg-blue-50 dark:bg-blue-950/20" }
-                                if (scorePercent >= 65) return { label: "📈 Above Average", color: "from-indigo-500 to-blue-500", textColor: "text-indigo-700", borderColor: "border-indigo-500/50", bgColor: "bg-indigo-50 dark:bg-indigo-950/20" }
-                                if (scorePercent >= 60) return { label: "✓ Decent", color: "from-gray-500 to-indigo-500", textColor: "text-gray-700", borderColor: "border-gray-500/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
-                                if (scorePercent >= 50) return { label: "💡 Has Potential", color: "from-gray-400 to-gray-500", textColor: "text-gray-600", borderColor: "border-gray-400/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
-                                return { label: "🔄 Needs Work", color: "from-gray-300 to-gray-400", textColor: "text-gray-500", borderColor: "border-gray-300/50", bgColor: "bg-gray-50 dark:bg-gray-950/20" }
+                                // Grounded scoring tiers based on rank + score
+                                const getClipTier = (score: number, rank: number) => {
+                                  if (rank < 3) return { label: "Top Pick", badgeClass: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30", accentColor: "border-l-amber-500" }
+                                  if (score >= 80) return { label: "Recommended", badgeClass: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30", accentColor: "border-l-blue-500" }
+                                  if (score >= 60) return { label: "Good", badgeClass: "bg-muted text-muted-foreground border-border", accentColor: "border-l-border" }
+                                  return { label: "Review", badgeClass: "bg-muted text-muted-foreground/70 border-border", accentColor: "border-l-border" }
                                 }
                                 
-                                const tier = getScoreTier(clip.score || 0)
+                                const tier = getClipTier(clip.score || 0, index)
+                                const clipDuration = clip.duration ? formatDuration(clip.duration) : formatDuration(clip.endTime - clip.startTime)
                                 
                                 return (
                               <motion.div
                                 key={`${clip.id}_${index}`}
-                                  initial={{ opacity: 0, x: -20 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.05 }}
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.04 }}
                               >
                                 <Card className={cn(
-                                    "overflow-hidden transition-all hover:shadow-xl border-2",
-                                    tier.borderColor,
-                                    tier.bgColor
+                                    "overflow-hidden transition-all hover:shadow-lg border-l-4",
+                                    tier.accentColor
                                   )}>
                                     <div className="flex flex-col md:flex-row">
-                                      {/* Video Preview - Left Side */}
-                                      <div className="relative w-full md:w-80 aspect-[9/16] bg-black rounded-lg overflow-hidden border-2 border-gray-700/50 cursor-pointer group flex-shrink-0"
+                                      {/* Video Preview */}
+                                      <div className="relative w-full md:w-64 aspect-[9/16] bg-black overflow-hidden cursor-pointer group flex-shrink-0"
                                 onClick={() => {
                                   setSelectedClip(clip)
                                   setShowVideoModal(true)
@@ -2331,7 +2336,6 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                           preload="auto"
                                           controls={false}
                                           crossOrigin="anonymous"
-
                                               onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
                                           onMouseLeave={(e) => {
                                             e.currentTarget.pause()
@@ -2342,161 +2346,144 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                             setVideoErrors(prev => ({ ...prev, [clip.id]: true }))
                                           }}
                                         />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
                                       </>
                                     ) : (
                                       <VideoErrorState />
                                     )}
                                     
                                     {/* Rank Badge */}
-                                    {index < 3 && (
-                                      <div className="absolute top-3 left-3">
-                                        <Badge className={cn(
-                                          "font-bold text-sm px-3 py-1.5 shadow-lg",
-                                          index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
-                                          index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
-                                          "bg-gradient-to-r from-orange-400 to-orange-600 text-white"
-                                        )}>
-                                          #{index + 1}
-                                        </Badge>
-                                      </div>
-                                    )}
+                                    <div className="absolute top-3 left-3">
+                                      <Badge className={cn(
+                                        "font-bold text-sm px-2.5 py-1 shadow-lg",
+                                        index === 0 ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black" : 
+                                        index === 1 ? "bg-gradient-to-r from-gray-300 to-gray-400 text-black" : 
+                                        index === 2 ? "bg-gradient-to-r from-orange-400 to-orange-600 text-white" :
+                                        "bg-black/60 text-white backdrop-blur-sm"
+                                      )}>
+                                        #{index + 1}
+                                      </Badge>
+                                    </div>
                                     
                                         {/* Play overlay */}
                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                           <div className="bg-white rounded-full p-3 shadow-xl">
-                                            <IconPlayerPlay className="h-8 w-8 text-black" />
+                                            <IconPlayerPlay className="h-6 w-6 text-black" />
                                       </div>
                                     </div>
                                     
                                     {/* Duration */}
                                     <div className="absolute bottom-3 right-3">
-                                      <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-sm font-medium">
-                                            <span data-duration-id={clip.id}>
-                                              {clip.duration ? formatDuration(clip.duration) : formatDuration(clip.endTime - clip.startTime)}
-                                            </span>
+                                      <div className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-medium">
+                                              {clipDuration}
                                       </div>
                                     </div>
                                   </div>
                                   
-                                      {/* Clip Details - Right Side */}
-                                      <div className="flex-1 p-6 space-y-4">
-                                    <div>
-                                          <h3 className="text-xl font-semibold mb-2">
+                                      {/* Clip Details */}
+                                      <div className="flex-1 p-5 flex flex-col">
+                                        {/* Title + Metadata Row */}
+                                        <div className="mb-3">
+                                          <h3 className="text-lg font-semibold leading-tight mb-2">
                                         {clip.title || 'Untitled Clip'}
                                       </h3>
-                                          <div className="flex items-center gap-3 mb-3">
-                                        <Badge className={cn(
-                                              "text-sm font-medium",
-                                          "bg-gradient-to-r", tier.color,
-                                          "text-white border-0"
-                                        )}>
-                                          {tier.label}
-                                        </Badge>
-                                            <span className={cn("text-2xl font-bold", tier.textColor)}>
-                                              {Math.round(clip.score || 0)}/100
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <Badge variant="outline" className={cn("text-xs font-medium border", tier.badgeClass)}>
+                                              {tier.label}
+                                            </Badge>
+                                            <span className="text-xs text-muted-foreground">
+                                              AI Score {Math.round(clip.score || 0)}
+                                            </span>
+                                            <span className="text-muted-foreground/40">·</span>
+                                            <span className="text-xs text-muted-foreground">
+                                              {clipDuration}
                                             </span>
                                       </div>
                                     </div>
                                         
-                                        {/* Virality Score Explanation */}
+                                        {/* Why this clip works */}
                                         {(clip.viralityExplanation || clip.description) && (
-                                          <div className="bg-background rounded-lg p-4 border">
-                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                                              <IconSparkles className="h-4 w-4 text-primary" />
-                                              AI Analysis
-                                            </h4>
-                                            <p className="text-sm text-muted-foreground">
-                                              {clip.viralityExplanation || clip.description}
-                                            </p>
-                                          </div>
+                                          <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+                                            {clip.viralityExplanation || clip.description}
+                                          </p>
                                         )}
-                                        
-                                        {/* Clip Transcript - Moved below score */}
                                         
                                         {/* Tags */}
                                         {clip.tags && clip.tags.length > 0 && (
-                                          <div className="flex flex-wrap gap-2">
+                                          <div className="flex flex-wrap gap-1.5 mb-3">
                                             {clip.tags.map((tag: string, idx: number) => (
-                                              <Badge key={idx} variant="secondary" className="text-xs">
+                                              <Badge key={idx} variant="secondary" className="text-xs px-2 py-0.5">
                                                 {tag}
                                               </Badge>
                                             ))}
                                           </div>
                                         )}
-                                    
-                                    {/* Clip Metadata */}
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                          <div>
-                                            <span className="text-muted-foreground">Duration</span>
-                                            <p className="font-medium">{formatDuration(clip.duration || (clip.endTime - clip.startTime))}</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-muted-foreground">Time Range</span>
-                                            <p className="font-medium">
-                                              {formatDuration(clip.startTime)} - {formatDuration(clip.endTime)}
-                                            </p>
-                                          </div>
-                                        </div>
-                                    
-                                    {/* Score Progress */}
-                                        <div className="space-y-2">
-                                          <div className="flex justify-between items-center text-sm">
-                                        <span className="text-muted-foreground">Virality Score</span>
-                                            <span className="font-medium">
-                                              {clip.score >= 80 ? "Excellent" :
-                                               clip.score >= 70 ? "Good" :
-                                               clip.score >= 60 ? "Fair" :
-                                               "Needs Improvement"}
-                                        </span>
-                                      </div>
-                                          <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-                                        <motion.div
-                                          className={cn(
-                                            "absolute left-0 top-0 h-full rounded-full",
-                                            "bg-gradient-to-r", tier.color
-                                          )}
-                                          initial={{ width: 0 }}
-                                          animate={{ width: `${clip.score || 0}%` }}
-                                          transition={{ duration: 1, delay: index * 0.1 }}
-                                        />
-                                      </div>
-                                    </div>
-                                    
-                                        {/* Clip Transcript */}
+
+                                        {/* Transcript (collapsed) */}
                                         {clip.transcript && (
-                                          <div className="bg-muted/50 rounded-lg p-4 cursor-pointer hover:bg-muted/70 transition-colors"
+                                          <div className="bg-muted/40 rounded-md px-3 py-2 cursor-pointer hover:bg-muted/60 transition-colors mb-3"
                                                onClick={(e) => {
                                                  e.stopPropagation()
                                                  setSelectedTranscript(clip.transcript || '')
                                                  setShowTranscriptModal(true)
                                                }}
                                           >
-                                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                                              <IconFileText className="h-4 w-4 text-primary" />
-                                              Transcript
-                                              <span className="text-xs text-muted-foreground ml-auto">Click to expand</span>
-                                            </h4>
-                                            <p className="text-sm text-muted-foreground line-clamp-3">
-                                              {clip.transcript}
-                                            </p>
+                                            <div className="flex items-center gap-2 text-xs">
+                                              <IconFileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                              <span className="text-muted-foreground font-medium">Transcript</span>
+                                              <IconChevronDown className="h-3 w-3 text-muted-foreground ml-auto" />
+                                            </div>
                                           </div>
                                         )}
-                                    
-                                        {/* Quick Actions */}
-                                        <div className="flex items-center gap-2 pt-2">
+
+                                        {/* Action Buttons */}
+                                        <div className="flex items-center gap-2 mt-auto pt-2">
                                           <Button
                                             size="sm"
-                                            variant="default"
+                                            variant="outline"
                                             onClick={() => {
                                               setSelectedClip(clip)
                                               setShowVideoModal(true)
                                             }}
-                                            className="w-full"
                                           >
-                                            <IconPlayerPlay className="h-4 w-4 mr-2" />
+                                            <IconPlayerPlay className="h-3.5 w-3.5 mr-1.5" />
                                             Play
                                           </Button>
+                                          {clip.exportUrl && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                const link = document.createElement('a')
+                                                link.href = clip.exportUrl!
+                                                link.download = `${(clip.title || 'clip').replace(/[^a-zA-Z0-9]/g, '_')}.mp4`
+                                                link.target = '_blank'
+                                                link.rel = 'noopener noreferrer'
+                                                document.body.appendChild(link)
+                                                link.click()
+                                                document.body.removeChild(link)
+                                                toast.success('Download started')
+                                              }}
+                                            >
+                                              <IconDownload className="h-3.5 w-3.5 mr-1.5" />
+                                              Download
+                                            </Button>
+                                          )}
+                                          {clip.exportUrl && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                navigator.clipboard.writeText(clip.exportUrl!)
+                                                toast.success('Link copied to clipboard')
+                                              }}
+                                            >
+                                              <IconCopy className="h-3.5 w-3.5 mr-1.5" />
+                                              Copy Link
+                                            </Button>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -2527,7 +2514,7 @@ ${post.tags.map(tag => `- ${tag}`).join('\n')}
                                   <div>
                                     <h3 className="text-lg font-semibold mb-2">Generating Clips</h3>
                                     <p className="text-muted-foreground mb-4">
-                                      AI is analyzing your video to create viral short-form clips. This typically takes 10-15 minutes.
+                                      AI is analyzing your video to create short-form clips. This typically takes 10-15 minutes.
                                     </p>
                                     <div className="max-w-xs mx-auto space-y-2">
                                       <Progress value={clipsTask.progress || 0} className="h-2" />
